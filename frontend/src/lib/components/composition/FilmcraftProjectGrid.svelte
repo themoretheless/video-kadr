@@ -1,7 +1,7 @@
 <script lang="ts">
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import { on } from 'svelte/events'
-  import { editFilmcraftMarks, moveFilmcraftProjectCards, type FilmcraftImportResult, type FilmcraftSourceEditFence } from '$lib/api'
+  import { editFilmcraftMarks, moveFilmcraftProjectCards, stackFilmcraftProjectCards, type FilmcraftImportResult, type FilmcraftSourceEditFence } from '$lib/api'
   import FilmcraftPosterPreview from './FilmcraftPosterPreview.svelte'
 
   let { project, sources, token, sequenceId, clipId, onedit, selected = $bindable<string[]>([]), disabled = false }: {
@@ -85,15 +85,36 @@
       positions[item.id] = { x: 12 + index % columns * 152, y: top + Math.floor(index / columns) * 116, size: 128 }
       index++
     }
+    const anchors = new Set(cards.filter(card => card.freeformStack === card.id).map(card => card.id))
+    const depths: Record<string, number> = {}
+    for (const item of cards) {
+      const anchor = item.freeformStack
+      if (!anchor || anchor === item.id || !anchors.has(anchor)) continue
+      const leader = positions[anchor]
+      const member = positions[item.id]
+      if (!leader || !member) continue
+      const depth = (depths[anchor] ?? 0) + 1
+      depths[anchor] = depth
+      member.x = leader.x + depth * 6
+      member.y = leader.y + depth * 6
+    }
     return positions
   })
   const canvasHeight = $derived(Object.values(layout).reduce((height, card) => Math.max(height, card.y + card.size * 9 / 16 + 40), 160))
   const canvasRight = $derived(Object.values(layout).reduce((right, card) => Math.max(right, card.x + card.size + 12), 0))
 
+  const visibleItems = $derived(visible.flatMap(entry => entry.kind === 'item' ? [entry.item] : []))
+  const stackSelection = $derived(selected.filter(id => Object.hasOwn(layout, id)))
+  const canUnstack = $derived(visibleItems.some(item => item.freeformStack && stackSelection.includes(item.id)))
+  function stackCount(id: string) { return visibleItems.filter(item => item.freeformStack === id).length }
+
   function beginMove(id: string, event: PointerEvent) {
     suppressClick = false
     if (!freeform || !token || disabled || moving || marking || event.button !== 0) return
-    const items = [id, ...(selected.includes(id) ? selected.filter(item => item !== id && Object.hasOwn(layout, item)) : [])]
+    const stack = visibleItems.find(item => item.id === id)?.freeformStack
+    const items = [...new Set([id, ...(selected.includes(id) ? stackSelection : []),
+      ...visibleItems.filter(item => stack && item.freeformStack === stack).map(item => item.id)])]
+    if (stack && Object.hasOwn(layout, stack)) items.splice(0, items.length, stack, ...items.filter(item => item !== stack))
     drag = { pointer: event.pointerId, startX: event.clientX, startY: event.clientY, x: 0, y: 0, items, document: project.documentText }
     ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
   }
@@ -120,16 +141,26 @@
       const card = layout[id]
       return card ? [[id, [card.x + dx, card.y + dy] as [number, number]]] : []
     }))
-    const expected = { document: moved.document, sequenceId, clipId, token }
+    await editFreeform(token, (owner, document, signal) => moveFilmcraftProjectCards(owner, { document, positions, snap: snapCards }, signal))
+  }
+
+  async function editStack(stack: boolean) {
+    if (!token || disabled || moving || marking || !stackSelection.length) return
+    const items = [...stackSelection]
+    await editFreeform(token, (owner, document, signal) => stackFilmcraftProjectCards(owner, stack, { document, items, width: canvasWidth }, signal))
+  }
+
+  async function editFreeform(owner: string, run: (owner: string, document: string, signal: AbortSignal) => Promise<FilmcraftImportResult>) {
+    const expected = { document: project.documentText, sequenceId, clipId, token: owner }
     const request = new AbortController()
     moveRequest = request
     moving = true
     markError = ''
     try {
-      const result = await moveFilmcraftProjectCards(token, { document: expected.document, positions, snap: snapCards }, request.signal)
+      const result = await run(owner, expected.document, request.signal)
       if (!request.signal.aborted) onedit(result, expected)
     } catch (error) {
-      if (!request.signal.aborted && project.documentText === expected.document && token === expected.token) {
+      if (!request.signal.aborted && project.documentText === expected.document && token === owner) {
         markError = error instanceof Error ? error.message : String(error)
       }
     } finally {
@@ -212,7 +243,11 @@
       <label>Поиск <input type="search" aria-label="Поиск по папке Filmcraft" value={query} oninput={event => { query = event.currentTarget.value; page = 0; hover = undefined }} /></label>
       <label><input type="checkbox" bind:checked={hoverEnabled} onchange={() => { hover = undefined }} />Просмотр при наведении</label>
       <label><input type="checkbox" bind:checked={freeform} onchange={() => { hover = undefined; drag = undefined }} />Свободная раскладка</label>
-      {#if freeform}<label><input type="checkbox" bind:checked={snapCards} />Привязка к сетке</label>{/if}
+      {#if freeform}
+        <label><input type="checkbox" bind:checked={snapCards} />Привязка к сетке</label>
+        <button type="button" disabled={disabled || !token || moving || marking || stackSelection.length < 2} onclick={() => editStack(true)}>Сложить в стек</button>
+        <button type="button" disabled={disabled || !token || moving || marking || !canUnstack} onclick={() => editStack(false)}>Разобрать стек</button>
+      {/if}
       {#if !freeform && pages > 1}
         <button type="button" aria-label="Предыдущая страница карточек" disabled={currentPage === 0} onclick={() => { page = currentPage - 1; hover = undefined }}>‹</button>
         <span>{currentPage + 1} / {pages}</span>
@@ -239,9 +274,12 @@
             <li style:left={position ? `${Math.max(0, position.x + (dragged?.x ?? 0))}px` : undefined}
                 style:top={position ? `${Math.max(0, position.y + (dragged?.y ?? 0))}px` : undefined}
                 style:width={position ? `${position.size}px` : undefined}
-                class:dragged={Boolean(dragged)} class:selected={selected.includes(entry.item.id)} onpointermove={event => scrub(entry.item.id, event)} onpointerleave={() => { hover = undefined }}>
+                class:stackAnchor={freeform && entry.item.freeformStack === entry.item.id} class:dragged={Boolean(dragged)} class:selected={selected.includes(entry.item.id)} onpointermove={event => scrub(entry.item.id, event)} onpointerleave={() => { hover = undefined }}>
               {#if entry.item.kind === 'Media' || entry.item.kind === 'Sequence'}
                 <FilmcraftPosterPreview card lazy={freeform} document={project.documentText} item={entry.item.id} name={entry.item.name} {sources} {token} markRange={entry.item.cardMarkRange} hoverFraction={hoverEnabled && hover?.item === entry.item.id ? hover.fraction : undefined} />
+              {/if}
+              {#if freeform && entry.item.freeformStack === entry.item.id && stackCount(entry.item.id) > 1}
+                <span class="stack-count">×{stackCount(entry.item.id)}</span>
               {/if}
               <button type="button" class="item" aria-pressed={selected.includes(entry.item.id)} disabled={disabled} onpointerdown={event => beginMove(entry.item.id, event)} onpointermove={trackMove} onpointerup={finishMove}
                 onpointercancel={() => { drag = undefined }} onlostpointercapture={() => { drag = undefined }}
@@ -267,7 +305,9 @@
   ul.freeform { display: block; position: relative; margin: 0; }
   ul.freeform li { position: absolute; }
   ul.freeform button.item { touch-action: none; cursor: grab; }
-  ul.freeform li.dragged { z-index: 1; }
+  ul.freeform li.stackAnchor { z-index: 1; }
+  ul.freeform li.dragged { z-index: 2; }
+  .stack-count { position: absolute; top: 0.15rem; left: 0.2rem; padding-inline: 0.3rem; border-radius: 0.2rem; background: var(--panel); }
   li.selected { border-color: var(--accent); }
   button.item, button.folder { width: 100%; overflow-wrap: anywhere; }
   button.item::after { content: ""; position: absolute; inset: 0; }

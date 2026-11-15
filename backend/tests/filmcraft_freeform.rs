@@ -43,3 +43,31 @@ async fn freeform_move_is_atomic_and_round_trips_filmcraft_metadata() {
         json!({"x":40.0,"y":40.0,"size":143.0})
     );
 }
+
+#[test]
+fn unstacking_the_lead_releases_and_spreads_all_members_in_one_snapshot() {
+    use video_kadr_backend::domain::filmcraft_freeform::stack_cards;
+    let fixture: Value =
+        serde_json::from_str(include_str!("fixtures/filmcraft-video-source.json")).unwrap();
+    let document = &fixture["cases"][0]["document"];
+    let stacked = stack_cards(
+        json!({"document":document,"items":["1","2"],"width":800}),
+        true,
+    )
+    .unwrap();
+    let metadata = |id: &str| &stacked["document"]["project"]["items"][id]["metadata"];
+    assert_eq!(metadata("1")["Freeform Stack"], "1");
+    assert_eq!(metadata("2")["Freeform Stack"], "1");
+    assert_eq!(metadata("6")["Freeform Position"], "316,12");
+    let released = stack_cards(
+        json!({"document":stacked["documentText"],"items":["1"]}),
+        false,
+    )
+    .unwrap();
+    let metadata = |id: &str| &released["document"]["project"]["items"][id]["metadata"];
+    assert!(metadata("1")["Freeform Stack"].is_null());
+    assert!(metadata("2")["Freeform Stack"].is_null());
+    assert_eq!(metadata("1")["Freeform Position"], "12,12");
+    assert_eq!(metadata("2")["Freeform Position"], "164,12");
+    assert!(stack_cards(json!({"document":document,"items":["1","999"]}), true).is_err());
+}
