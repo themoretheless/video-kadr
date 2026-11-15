@@ -244,6 +244,41 @@ it('uploads the selected template design and binds its bundled font before conve
  }
 })
 
+it('loads only the chosen template from a directory of Concat bundles', async () => {
+ const store = await import('$lib/state/store.svelte')
+ const upload = vi.spyOn(store, 'doUpload').mockResolvedValue({
+  id: 'design', filename: 'design.mov', url: '/files/sources/design.mov',
+  mediaType: 'video', duration: 1, width: 16, height: 16,
+ })
+ try {
+  function file(path: string, contents: string) {
+   const asset = new File([contents], path.split('/').at(-1)!)
+   Object.defineProperty(asset, 'webkitRelativePath', { value: `Templates/${path}` })
+   return asset
+  }
+  const design = file('B/assets/design.mov', 'video')
+  const manifest = file('B/template.json', JSON.stringify({
+   ...original, name: 'Selected template',
+   media: [{ ...original.media[0], path: 'assets/design.mov' }],
+  }))
+  component = mount(Panel, { target: document.body, props: { token: 'session' } })
+  await tick()
+  const picker = document.querySelector<HTMLInputElement>('input[webkitdirectory]')!
+  Object.defineProperty(picker, 'files', { value: [manifest, design, file('A/template.json', 'invalid')] })
+  picker.dispatchEvent(new Event('change', { bubbles: true }))
+  await tick()
+  const select = document.querySelector<HTMLSelectElement>('select')!
+  expect([...select.options].map(option => option.textContent)).toEqual(['Выберите шаблон', 'A', 'B'])
+  expect(upload).not.toHaveBeenCalled()
+  select.value = '1'
+  select.dispatchEvent(new Event('change', { bubbles: true }))
+  await vi.waitFor(() => expect(document.body.textContent).toContain('Selected template'))
+  expect(upload).toHaveBeenCalledExactlyOnceWith(design, false)
+ } finally {
+  upload.mockRestore()
+ }
+})
+
 it('commits a batch of slot replacements together and undoes it in one step', async () => {
  const template = {
   ...original,

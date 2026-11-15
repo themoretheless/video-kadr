@@ -5,7 +5,7 @@
  import type {CompositionSource} from '$lib/composition/types'
  import {importConcatProject,importConcatProjectWithSavedStills,importConcatProjectWithSavedCutouts,getCompositionProjects,fillConcatMediaSlot,type ConcatProjectImportReport,type ConcatFontBinding} from '$lib/api'
  import {concatImportMedia,concatImportFonts,concatImportStillDestinations,concatImportVideoDestinations,savedStillChoices,savedVideoChoices,type SavedStillChoice,type ConcatImportFont,type ConcatImportMedia,type ConcatImportSource} from '$lib/composition/concatProjectImport'
- import {concatTemplateSlotStats,readConcatTemplateFolder} from '$lib/composition/concatTemplateFolder'
+ import {concatTemplateFolders,concatTemplateSlotStats,readConcatTemplateFolder} from '$lib/composition/concatTemplateFolder'
  import {doUpload} from '$lib/state/store.svelte'
  import {compositionSourceFromMediaInfo} from '$lib/state/composition/media.svelte'
  import {adoptImportedConcatProject,nestedComposition,nestedHistory} from '$lib/state/nestedComposition.svelte'
@@ -18,6 +18,8 @@
  const stillDestinations=$derived(concatImportStillDestinations(document))
  function chosenMask(key:string,mediaId:string,video=false){return (video?savedVideoMasks:savedMasks).find(mask=>mask.key===maskChoices[key]&&mask.sourceId===bindings[mediaId])}
  let importingTemplate = $state(false)
+ let templateFolders = $state<ReturnType<typeof concatTemplateFolders>>([])
+ let selectedFolder = $state('')
  let templateProjectName = $state('')
  let templateDetails = $state<Pick<Awaited<ReturnType<typeof readConcatTemplateFolder>>, 'format' | 'slotCount'>>()
  let folderPoster=$state<File>()
@@ -48,7 +50,24 @@
  $effect(()=>{const current=token;if(current!==lastToken)untrack(()=>{lastToken=current;folderPoster=undefined;uploadedSources=[];savedMasks=[];savedVideoMasks=[];maskChoices={};invalidate()})})
  $effect(()=>()=>{request++;fontEpoch++;controller?.abort()})
  async function load(file:File|undefined){invalidate();fontEpoch++;fontTickets=Object.create(null);fonts=[];fontBindings={};fontNames={};document=null;media=[];bindings={};slotChoices={};sourceOverrides={};slotUndo=[];maskChoices={};folderPoster=undefined;uploadedSources=[];importingTemplate=false;preserveMediaIds=false;if(!file)return;const serial=request;try{if(file.size>4*1024*1024)throw new Error('Файл Concat превышает 4 МиБ');const parsed:unknown=JSON.parse(await file.text());if(serial!==request)return;media=concatImportMedia(parsed);fonts=concatImportFonts(parsed);document=parsed}catch(failure){if(serial===request)error=failure instanceof Error?failure.message:String(failure)}}
- async function loadFolder(files:File[]){
+ async function chooseDirectory(files: File[]) {
+  templateFolders = concatTemplateFolders(files)
+  selectedFolder = ''
+  const first = templateFolders[0]
+  if (first?.direct) {
+   await loadFolder(first.files)
+   return
+  }
+  await load(undefined)
+  if (files.length && !templateFolders.length) error = 'В выбранной папке нет шаблонов Concat'
+ }
+ async function chooseTemplate(key: string) {
+  selectedFolder = key
+  const folder = key ? templateFolders[Number(key)] : undefined
+  if (folder) await loadFolder(folder.files)
+  else await load(undefined)
+ }
+ async function loadFolder(files: readonly File[]){
   await load(undefined)
   if(!token||!files.length)return
   const serial=request,owner=token
@@ -208,12 +227,22 @@
 </script>
 <details><summary>Импорт проекта Concat</summary>
  <fieldset disabled={disabled||busy||nestedHistory.busy||!token}>
-  <label>Файл Concat JSON <input type="file" accept=".json,application/json" aria-label="Файл проекта Concat" onchange={event=>{const file=event.currentTarget.files?.[0];event.currentTarget.value='';void load(file)}} /></label>
-  <label>Папка шаблона Concat <input type="file" webkitdirectory multiple onchange={event=>{
+  <label>Файл Concat JSON <input type="file" accept=".json,application/json" aria-label="Файл проекта Concat" onchange={event=>{const file=event.currentTarget.files?.[0];event.currentTarget.value='';templateFolders=[];selectedFolder='';void load(file)}} /></label>
+  <label>Папка шаблона или библиотеки Concat <input type="file" webkitdirectory multiple onchange={event=>{
     const files=Array.from(event.currentTarget.files??[])
     event.currentTarget.value=''
-    void loadFolder(files)
+    void chooseDirectory(files)
   }} /></label>
+  {#if templateFolders.length && !templateFolders[0]?.direct}
+   <label>Шаблон Concat
+    <select value={selectedFolder} onchange={event=>void chooseTemplate(event.currentTarget.value)}>
+     <option value="">Выберите шаблон</option>
+     {#each templateFolders as folder, index (index)}
+      <option value={String(index)}>{folder.name}</option>
+     {/each}
+    </select>
+   </label>
+  {/if}
   {#if importingTemplate && templateDetails}
    <div>
     {#if posterUrl}<img src={posterUrl} alt="Обложка шаблона Concat" width="160" height="90" onerror={()=>{folderPoster=undefined}} />{/if}

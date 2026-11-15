@@ -1,5 +1,24 @@
 import { concatImportFonts, concatImportMedia } from './concatProjectImport'
 
+export function concatTemplateFolders(files: readonly File[]) {
+  const direct = files.find(file => /^[^/]+\/template\.json$/.test(file.webkitRelativePath))
+  if (direct) return [{ name: direct.webkitRelativePath.split('/')[0]!, files, direct: true }]
+
+  const folders = new Map<string, File[]>()
+  for (const file of files) {
+    const parts = file.webkitRelativePath.split('/')
+    if (parts.length < 3 || !parts[0] || !parts[1]) continue
+    const root = parts.slice(0, 2).join('/')
+    const group = folders.get(root) ?? []
+    group.push(file)
+    folders.set(root, group)
+  }
+  return [...folders]
+    .filter(([root, group]) => group.some(file => file.webkitRelativePath === `${root}/template.json`))
+    .map(([root, group]) => ({ name: root.split('/')[1]!, files: group, direct: false }))
+    .sort((left, right) => left.name.localeCompare(right.name))
+}
+
 function outputFormat(document: { video?: unknown }) {
   const video = document.video
   if (!video || typeof video !== 'object') return undefined
@@ -12,7 +31,9 @@ function outputFormat(document: { video?: unknown }) {
 
 /** Index only files explicitly selected by the browser directory picker. */
 export async function readConcatTemplateFolder(files: readonly File[]) {
-  const manifests = files.filter(file => /^[^/]+\/template\.json$/.test(file.webkitRelativePath))
+  const direct = files.filter(file => /^[^/]+\/template\.json$/.test(file.webkitRelativePath))
+  const manifests = direct.length ? direct :
+    files.filter(file => /^[^/]+\/[^/]+\/template\.json$/.test(file.webkitRelativePath))
   if (manifests.length !== 1) throw new Error('Выберите папку Concat с файлом template.json')
   const manifest = manifests[0]!
   if (manifest.size > 4 * 1024 * 1024) throw new Error('Файл Concat превышает 4 МиБ')
