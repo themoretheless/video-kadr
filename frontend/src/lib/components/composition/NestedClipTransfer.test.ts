@@ -8,7 +8,7 @@ import { expect, it, vi } from 'vitest'
 import * as api from '$lib/api'
 import { state as library } from '$lib/state/store.svelte'
 import NestedClipTransfer from './NestedClipTransfer.svelte'
-import { closeNestedComposition, nestedComposition, nestedHistory, undoNestedComposition, trimNestedClipEnds, nestedClipboard } from '$lib/state/nestedComposition.svelte'
+import { closeNestedComposition, nestedComposition, nestedHistory, nestedPlayback, undoNestedComposition, trimNestedClipEnds, nestedClipboard } from '$lib/state/nestedComposition.svelte'
 import { addClip, addTrack, createComposition, registerSource } from '$lib/composition/commands'
 import { buildCompositionWireDocument } from '$lib/composition/payload'
 import { cuesToTextClips, parseSrt } from '$lib/subtitles/srt'
@@ -72,6 +72,60 @@ it('edits the selected file caption and keeps its submicrosecond clock through U
     undoNestedComposition()
     undoNestedComposition()
     undoNestedComposition()
+    expect(JSON.stringify(nestedComposition.document)).toBe(original)
+  } finally {
+    await unmount(component)
+    target.remove()
+    closeNestedComposition()
+  }
+})
+
+it('navigates exact caption starts across visible tracks without editing the timeline', async () => {
+  closeNestedComposition()
+  const content = buildCompositionWireDocument(createComposition({ width: 320, height: 180, fps: 24, backgroundColor: '#000000' }))
+  const makeCue = (id: string, start: string) => ({ id, timelineStartTick: start, timelineEndTick: '508032000000', text: id })
+  nestedComposition.document = { schemaVersion: 1, root: 'root', compositions: { root: { instances: [], content: {
+    ...content, captionTracks: [
+      { id: 'one', name: 'One', clips: [makeCue('first', '254016000001')] },
+      { id: 'hidden', name: 'Hidden', hidden: true, clips: [makeCue('skipped', '254016000002')] },
+      { id: 'two', name: 'Two', clips: [makeCue('second', '254016000003')] },
+      { id: 'locked', name: 'Locked', locked: true, clips: [makeCue('locked-cue', '381024000001')] },
+    ],
+  } } } }
+  const original = JSON.stringify(nestedComposition.document)
+  const target = document.createElement('div')
+  document.body.append(target)
+  const component = mount(NestedClipTransfer, { target })
+  const step = async (label: string) => {
+    [...target.querySelectorAll('button')].find(button => button.textContent?.trim() === label)!.click()
+    await tick()
+  }
+  const checked = () => target.querySelector<HTMLInputElement>('[data-caption-id]:checked')?.dataset.captionId
+  try {
+    await tick()
+    nestedPlayback.playing = true
+    await step('Следующая реплика')
+    expect(nestedPlayback.playing).toBe(false)
+    expect(nestedComposition.timeUs).toBe(1_000_000)
+    expect(checked()).toBe('first')
+    await step('Следующая реплика')
+    expect(nestedComposition.timeUs).toBe(1_000_000)
+    expect(checked()).toBe('second')
+    await step('Следующая реплика')
+    expect(nestedComposition.timeUs).toBe(1_500_000)
+    expect(checked()).toBeUndefined()
+    await step('Предыдущая реплика')
+    expect(checked()).toBe('second')
+    target.querySelector<HTMLButtonElement>('[aria-label="Перейти к реплике first"]')!.click()
+    await tick()
+    expect(checked()).toBe('first')
+    nestedComposition.timeUs = 0
+    await tick()
+    nestedComposition.timeUs = 1_000_000
+    await tick()
+    await step('Следующая реплика')
+    expect(checked()).toBe('first')
+    expect(nestedHistory.past).toHaveLength(0)
     expect(JSON.stringify(nestedComposition.document)).toBe(original)
   } finally {
     await unmount(component)

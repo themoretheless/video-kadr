@@ -22,12 +22,13 @@
   import {authState} from '$lib/state/auth.svelte'
   import { listenMany, eventListener } from '../../../composables/globalListeners'
   import { shortcutCommandForEvent, shortcutState, shortcutLabel } from '$lib/state/shortcuts.svelte'
-  import { nestedComposition, nestedHistory, freezeNestedVideoClip, stepNestedConcatKey, clearNestedConcatKeys, quickPoseNestedClips, mergeNestedCaptionClips, moveNestedClips, removeNestedClips, trimNestedClipEnds, trimNestedClipStarts, editNestedClipLinks, splitNestedClips, replaceNestedMedia, switchNestedMediaVersion, duplicateNestedClips, copyNestedClips, nestedClipboard, copyNestedSelectionToClipboard, pasteNestedClipboard, cutNestedSelectionToClipboard, undoNestedComposition, redoNestedComposition, importNestedClipboardText } from '$lib/state/nestedComposition.svelte'
+  import { nestedComposition, nestedHistory, nestedPlayback, freezeNestedVideoClip, stepNestedConcatKey, clearNestedConcatKeys, quickPoseNestedClips, mergeNestedCaptionClips, moveNestedClips, removeNestedClips, trimNestedClipEnds, trimNestedClipStarts, editNestedClipLinks, splitNestedClips, replaceNestedMedia, switchNestedMediaVersion, duplicateNestedClips, copyNestedClips, nestedClipboard, copyNestedSelectionToClipboard, pasteNestedClipboard, cutNestedSelectionToClipboard, undoNestedComposition, redoNestedComposition, importNestedClipboardText } from '$lib/state/nestedComposition.svelte'
   import type { WireCompositionTrack } from '$lib/composition/types'
   import { nativeClipEnd } from '$lib/composition/nativeClipInsert'
   import { pasteNativeCaptionTracks } from '$lib/composition/nativeCaptionClipboard'
   import { serializeNativeClipboard } from '$lib/composition/nativeClipboardText'
-  import { captionDisplaySeconds, captionFrameDelta, exactCaptionDeltaTicks, parseCaptionEditSeconds } from '$lib/composition/captionTime'
+  import { captionDisplaySeconds, captionFrameDelta, captionMicrosecondsFloor, exactCaptionDeltaTicks, parseCaptionEditSeconds, type CaptionTimestamp } from '$lib/composition/captionTime'
+  import { captionNavigationTarget } from '$lib/composition/captionNavigation'
   import { prepareNativeClipboardPaste } from '$lib/composition/nativeClipboard'
   import { prepareNativeClipCopy } from '$lib/composition/nativeClipCopy'
   import { duplicateNativeClips } from '$lib/composition/nativeClipDuplicate'
@@ -89,6 +90,39 @@
   let captionSelected = $state<string[]>([])
   const captionContent = $derived(project?.compositions[active]?.content)
   const captionTracks = $derived(captionContent?.captionTracks ?? [])
+  let captionAnchor = $state<{ exact: CaptionTimestamp; projected: number } | null>(null)
+  $effect(() => {
+    if (captionAnchor && captionAnchor.projected !== nestedComposition.timeUs) captionAnchor = null
+  })
+  const captionNavigationDisabled = $derived(disabled || nestedHistory.busy || !!agentSession.lock)
+
+  function seekFileCaption(id: string, time: CaptionTimestamp, clearMedia: boolean) {
+    if (captionNavigationDisabled) return
+    const owner = captionTracks.find(track => track.clips.some(cue => cue.id === id))
+    if (!owner) return
+    const projected = captionMicrosecondsFloor(time)
+    captionAnchor = { exact: time, projected }
+    captionTrackId = owner.id
+    captionSelected = owner.locked ? [] : [id]
+    if (clearMedia) selected = []
+    nestedPlayback.playing = false
+    nestedPlayback.epoch++
+    nestedComposition.timeUs = projected
+    nestedHistory.error = ''
+  }
+
+  function navigateFileCaption(forward: boolean) {
+    if (captionNavigationDisabled || !captionContent) return
+    try {
+      const cursor = nestedComposition.timeUs
+      const time = captionAnchor?.projected === cursor ? captionAnchor.exact : cursor
+      const cue = captionNavigationTarget(captionContent, time, forward)
+      seekFileCaption(cue.id, cue.timelineStartTick, false)
+    } catch (error) {
+      nestedHistory.error = error instanceof Error ? error.message : String(error)
+    }
+  }
+
   let captionDelta = $state('1')
   let captionDeltaUnit = $state<'seconds' | 'frames'>('seconds')
 
@@ -176,7 +210,7 @@
   let alive = true
   $effect(() => () => { alive = false })
   let previousActive = ''
-  $effect(() => { if (active && active !== previousActive) { previousActive = active; selected = []; captionSelected = []; captionTrackId = ''; replacementSourceId = ''; targets = {}; destination = untrack(() => Object.keys(project?.compositions ?? {})).find(id => id !== active) ?? active } })
+  $effect(() => { if (active && active !== previousActive) { previousActive = active; selected = []; captionSelected = []; captionTrackId = ''; captionAnchor = null; replacementSourceId = ''; targets = {}; destination = untrack(() => Object.keys(project?.compositions ?? {})).find(id => id !== active) ?? active } })
   $effect(() => {
     if (!project || !project.compositions[active]) return
     const known = new Set(tracks.flatMap(track => track.clips.map(clip => clip.id)))
@@ -369,6 +403,12 @@
           }} />
       </details>
     {/if}
+    {#if captionTracks.some(track => !track.hidden && track.clips.length)}
+      <button class="btn ghost sm" type="button" disabled={captionNavigationDisabled}
+        onclick={() => navigateFileCaption(false)}>Предыдущая реплика</button>
+      <button class="btn ghost sm" type="button" disabled={captionNavigationDisabled}
+        onclick={() => navigateFileCaption(true)}>Следующая реплика</button>
+    {/if}
     {#each captionTracks as track (track.id)}
       <CaptionTrackStyle style={track.style} trackName={track.name}
         disabled={disabled || nestedHistory.busy || track.locked}
@@ -383,6 +423,9 @@
         onclick={() => addFileCaption(track.id)}>Добавить реплику на курсоре</button>
       {#each track.clips as cue (cue.id)}
         <label><input type="checkbox" data-caption-id={cue.id} disabled={track.locked} checked={captionSelected.includes(cue.id)} onchange={event=>{captionSelected=event.currentTarget.checked?[...captionSelected,cue.id]:captionSelected.filter(id=>id!==cue.id)}} /> {track.name} · {cue.text.slice(0,40)} · {captionDisplaySeconds(cue.timelineStartTick).toFixed(3)}–{captionDisplaySeconds(cue.timelineEndTick).toFixed(3)} с</label>
+        <button class="btn ghost sm" type="button" disabled={captionNavigationDisabled}
+          aria-label={`Перейти к реплике ${cue.id}`}
+          onclick={() => seekFileCaption(cue.id, cue.timelineStartTick, true)}>Перейти</button>
         {#if captionSelected.length === 1 && captionSelected[0] === cue.id}
           <NestedFileCaptionEditor compositionId={active} trackId={track.id} {cue} disabled={disabled||track.locked} />
         {/if}
