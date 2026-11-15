@@ -71,6 +71,9 @@ async fn saved_native_template_download_excludes_missing_slot_files_and_cleans_s
     let app = support::router(state.clone());
     let mut portable = document.clone();
     portable["compositions"]["root"]["content"]["tracks"] = json!([]);
+    use base64::{engine::general_purpose::STANDARD, Engine};
+    let font = include_bytes!("../vendor/concat-text/fonts/Inter-Regular.ttf");
+    portable["fonts"] = json!([{"family": "Inter", "data": STANDARD.encode(font)}]);
     let concat = state.db.create_owned_composition_project(
         "Portable Concat", &portable, &["design-file".into(), "missing-original".into()],
         &owner.user.username,
@@ -88,9 +91,10 @@ async fn saved_native_template_download_excludes_missing_slot_files_and_cleans_s
     {
         use std::io::Read;
         let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
-        assert_eq!(zip.len(), 2);
+        assert_eq!(zip.len(), 3);
         let manifest: serde_json::Value = serde_json::from_reader(zip.by_name("template.json").unwrap()).unwrap();
         assert_eq!(manifest["name"], "Portable Concat");
+        assert_eq!(manifest["video"], manifest["timelines"][0]["video"]);
         let media = manifest["media"].as_array().unwrap();
         let slot = media.iter().find(|item| item["id"] == "slot").unwrap();
         assert_eq!(slot["path"], "");
@@ -99,6 +103,23 @@ async fn saved_native_template_download_excludes_missing_slot_files_and_cleans_s
         let mut contents = Vec::new();
         zip.by_name(design["path"].as_str().unwrap()).unwrap().read_to_end(&mut contents).unwrap();
         assert_eq!(contents, std::fs::read(&path).unwrap());
+        let font_path = manifest["fonts"][0]["path"].as_str().unwrap().to_owned();
+        assert_eq!(manifest["fonts"][0]["family"], "Inter");
+        let mut packaged_font = Vec::new();
+        zip.by_name(&font_path).unwrap().read_to_end(&mut packaged_font).unwrap();
+        assert_eq!(packaged_font.as_slice(), font);
+        let imported = video_kadr_backend::domain::concat_project_import::import(
+            serde_json::from_value(json!({
+                "schemaVersion": 1,
+                "document": manifest,
+                "mediaBindings": {"slot": source("slot"), "design": source("design")},
+                "fontBindings": {font_path: {"data": STANDARD.encode(packaged_font)}},
+                "preserveMediaIds": true
+            })).unwrap()
+        ).unwrap();
+        assert_eq!(imported.status, "converted", "{:?}", imported.diagnostics);
+        let restored = imported.project.unwrap();
+        assert_eq!(serde_json::to_value(restored.fonts).unwrap(), portable["fonts"]);
     }
     let uri = format!("/api/composition-projects/{}/template", saved.id);
     let request = |token: Option<&str>| {

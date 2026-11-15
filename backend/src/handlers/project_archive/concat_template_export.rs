@@ -1,12 +1,14 @@
 use super::*;
 use crate::{
     domain::{
-        concat_project_export::export_with_paths, nested_composition::NestedCompositionProject,
+        concat_project_export::export_with_paths, concat_project_fonts,
+        nested_composition::NestedCompositionProject,
     },
     project_archive::MAX_ARCHIVE_TOTAL_MEDIA_BYTES,
     services::filmcraft_video_preview::SourceVideoRevision,
     template_bundle,
 };
+use base64::{engine::general_purpose::STANDARD, Engine};
 use std::io::{Read, Write};
 
 pub async fn export(
@@ -97,9 +99,38 @@ pub async fn export(
     let title = project.name.clone();
     let archive = tokio::task::spawn_blocking(move || -> AppResult<TemporaryFile> {
         let _slot = slot;
-        let mut document = export_with_paths(&plan.project, &paths)
+        let mut native = plan.project;
+        let fonts = std::mem::take(&mut native.fonts);
+        concat_project_fonts::bank(&fonts)
+            .map_err(|error| AppError::bad_request(format!("{error:#}")))?;
+        let mut document = export_with_paths(&native, &paths)
             .map_err(|error| AppError::bad_request(format!("{error:#}")))?;
         document["name"] = Value::String(title);
+        let active = document["timelines"]
+            .as_array()
+            .and_then(|timelines| {
+                timelines
+                    .iter()
+                    .find(|timeline| timeline["id"] == document["activeTimelineId"])
+            })
+            .ok_or_else(|| AppError::bad_request("В шаблоне нет активного таймлайна"))?;
+        document["video"] = active["video"].clone();
+        let mut font_files = Vec::new();
+        let mut font_links = Vec::new();
+        for (index, font) in fonts.into_iter().enumerate() {
+            let bytes = STANDARD
+                .decode(font.data)
+                .map_err(|error| AppError::bad_request(error.to_string()))?;
+            let extension = match bytes.get(..4) {
+                Some(b"OTTO") => "otf",
+                Some(b"ttcf") => "ttc",
+                _ => "ttf",
+            };
+            let path = format!("assets/font-{index:04}.{extension}");
+            font_links.push(serde_json::json!({ "family": font.family, "path": path }));
+            font_files.push((path, bytes));
+        }
+        document["fonts"] = Value::Array(font_links);
         let manifest = serde_json::to_vec(&document)
             .map_err(|error| AppError::internal("encode Concat template", error))?;
         if manifest.len() > 4 * 1024 * 1024 {
@@ -116,6 +147,10 @@ pub async fn export(
                 .compression_method(zip::CompressionMethod::Stored);
             zip.start_file("template.json", options)?;
             zip.write_all(&manifest)?;
+            for (path, bytes) in font_files {
+                zip.start_file(path, options)?;
+                zip.write_all(&bytes)?;
+            }
             for (path, name, length) in inputs {
                 zip.start_file(name, options)?;
                 let mut source = std::fs::File::open(path)?.take(length + 1);
