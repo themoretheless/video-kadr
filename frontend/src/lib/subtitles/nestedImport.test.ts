@@ -89,7 +89,8 @@ Dialogue: 0:00:01.00,0:00:02.00,{\pos(9999999, 38)}Invalid position
  })
  expect(clips[1]).toMatchObject({
   text: 'Invalid position',
-  transform: { x: { mode: 'constant', value: 0 }, y: { mode: 'constant', value: 0 } },
+  textAnchor: [0.5, 1],
+  transform: { x: { mode: 'constant', value: 0 }, y: { mode: 'constant', value: 75.6 } },
  })
 })
 

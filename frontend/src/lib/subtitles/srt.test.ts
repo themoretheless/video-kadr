@@ -49,6 +49,22 @@ describe('local SRT import/export', () => {
     expect(textClipsToCues(clips).map((cue) => cue.text)).toEqual(['Zero', 'Two'])
   })
 
+  it('places new plain captions at the bottom safe area with canvas-relative type and outline', () => {
+    const cues = parseSrt('1\n00:00:00,000 --> 00:00:01,000\nCaption')
+    const [landscape] = cuesToTextClips(cues, cue => cue.id, { width: 1920, height: 1080 })
+    const [portrait] = cuesToTextClips(cues, cue => cue.id, { width: 720, height: 1280 })
+    expect(landscape).toMatchObject({
+      x: 0, textAnchor: [0.5, 1], textBoxWidth: 1613,
+      style: { fontSizePx: 54, strokeColor: '#000000FF', color: '#FFFFFFFF', align: 'center' },
+    })
+    expect(landscape?.y).toBeCloseTo(453.6)
+    expect(landscape?.style.strokeWidthPx).toBeCloseTo(3.24)
+    expect(landscape?.style).not.toHaveProperty('backgroundColor')
+    expect(landscape?.style).not.toHaveProperty('shadowColor')
+    expect(portrait).toMatchObject({ textBoxWidth: 605, style: { fontSizePx: 64 } })
+    expect(portrait?.y).toBeCloseTo(537.6)
+  })
+
   it('rejects malformed ranges, empty captions, and pathologically long text', () => {
     expect(() => parseSrt('1\n00:00:02,000 --> 00:00:01,000\nBackwards')).toThrow(
       SubtitleFormatError,

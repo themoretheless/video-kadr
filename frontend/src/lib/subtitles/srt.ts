@@ -88,13 +88,14 @@ export function cuesToTextClips(
 ): TextClip[] {
   return cues.map((cue, index) => {
     validateCue(cue, index)
-    const anchor = cue.anchor ?? (cue.position ? [0.5, 1] as const : undefined)
+    const anchor = cue.anchor ?? (canvas || cue.position ? [0.5, 1] as const : undefined)
     const position = cue.position ?? (anchor && canvas ? {
       x: canvas.width * (CAPTION_SAFE_MARGIN + (1 - 2 * CAPTION_SAFE_MARGIN) * anchor[0]),
       y: canvas.height * (CAPTION_SAFE_MARGIN + (1 - 2 * CAPTION_SAFE_MARGIN) * anchor[1]),
     } : undefined)
     const durationTicks = cue.endTicks - cue.startTicks
     const animation = captionFade(cue.fade, durationTicks)
+    const fontSizePx = cue.style?.fontSizePx ?? (canvas ? Math.max(1, Math.round(canvas.height * 0.05)) : 48)
     return {
       id: idForCue(cue, index),
       kind: 'text',
@@ -108,9 +109,10 @@ export function cuesToTextClips(
       ...(animation ? { animation } : {}),
       opacity: 1,
       style: {
-        fontSizePx: 48,
+        fontSizePx,
         color: '#FFFFFFFF',
-        backgroundColor: '#00000099',
+        strokeColor: '#000000FF',
+        strokeWidthPx: Math.max(1, fontSizePx * 0.06),
         align: 'center',
         ...cue.style,
       },

@@ -1226,7 +1226,7 @@ describe('composition editor state', () => {
     expect(compositionState.document.tracks.find((candidate) => candidate.id === track.id)?.clips)
       .toMatchObject([
         { style: { color: '#123456FF', fontSizePx: 72 } },
-        { id: second!.id, style: { color: '#FFFFFFFF', fontSizePx: 48 } },
+        { id: second!.id, style: { color: '#FFFFFFFF', fontSizePx: Math.round(compositionState.document.canvas.height * 0.05) } },
       ])
   })
 
