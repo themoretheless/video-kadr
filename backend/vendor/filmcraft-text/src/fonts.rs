@@ -367,6 +367,12 @@ pub struct Resolved {
 fn style_wants(style: &str) -> (u16, bool) {
     let s = style.to_ascii_lowercase().replace([' ', '-'], "");
     let italic = s.contains("italic") || s.contains("oblique");
+    if let Some(weight) = s.strip_prefix("weight") {
+        let weight = weight.strip_suffix("italic").unwrap_or(weight);
+        if let Ok(weight) = weight.parse::<u16>() {
+            return (weight.clamp(100, 900), italic);
+        }
+    }
     let w = if s.contains("thin") || s.contains("hairline") {
         100
     } else if s.contains("extralight") || s.contains("ultralight") {

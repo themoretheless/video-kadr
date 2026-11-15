@@ -14,12 +14,16 @@ pub fn render(clip:&TextClip,canvas:(u32,u32),time:u64,checkpoint:&mut dyn FnMut
         let sampled=super::animated_color::PreparedColorTrack::new(super::animated_color::ColorSampleRequest{track:track.clone(),default,times_us:vec![]}).map_err(anyhow::Error::msg)?.sample(local as f64).map_err(anyhow::Error::msg)?;
         [sampled.r as f32/255.,sampled.g as f32/255.,sampled.b as f32/255.,sampled.a as f32/255.]
     }else{rgba(clip.style.color)};
-    let font_style = match (clip.style.bold, clip.style.italic) {
+    let weight_style = clip.style.font_weight.map(|weight| {
+        let slant = if clip.style.italic { " Italic" } else { "" };
+        format!("Weight {}{slant}", weight.round())
+    });
+    let font_style = weight_style.as_deref().unwrap_or(match (clip.style.bold, clip.style.italic) {
         (false, false) => "Regular",
         (true, false) => "Bold",
         (false, true) => "Italic",
         (true, true) => "Bold Italic",
-    };
+    });
     let size = clip.style.font_size as f32;
     let (dx, dy, shadow_color, shadow_blur) = if clip.style.concat_shadow {
         // Match the source offset and opacity, using the native mask blur.
@@ -120,6 +124,24 @@ mod tests {
         assert!(expanded.chunks_exact(4).zip(rounded.chunks_exact(4))
             .any(|(square, rounded)| square[3] > 0 && rounded[3] == 0));
         assert_eq!(glyphs(&rounded), glyphs(&expanded));
+    }
+
+    #[test]
+    fn caption_numeric_font_weight_selects_the_nearest_face() {
+        let mut caption = clip();
+        caption.style.font_family = "Inter".into();
+        let pixels = |clip: &TextClip| {
+            render(clip, (64, 64), 1500000, &mut || Ok(()))
+                .unwrap().unwrap().to_surface(&mut || Ok(())).unwrap().rgba
+        };
+        let regular = pixels(&caption);
+        caption.style.font_weight = Some(500.);
+        let medium = pixels(&caption);
+        assert_ne!(medium, regular);
+        caption.style.font_weight = Some(530.);
+        assert_eq!(pixels(&caption), medium);
+        caption.style.font_weight = Some(580.);
+        assert_ne!(pixels(&caption), medium);
     }
 
     #[test]

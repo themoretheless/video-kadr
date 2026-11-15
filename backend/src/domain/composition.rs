@@ -1519,6 +1519,8 @@ pub enum TextAlignment { Left, Center, Right }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TextStyle {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub font_weight: Option<f64>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub concat_shadow: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1549,6 +1551,7 @@ pub struct TextStyle {
 impl TextStyle {
     fn validate(&self) -> Result<(), CompositionError> {
         if !is_supported_composition_font_family(&self.font_family)
+            || self.font_weight.is_some_and(|weight| !(100.0..=900.0).contains(&weight))
             || self.background_padding.is_some_and(|padding| {
                 padding.iter().any(|value| !(0.0..=100_000.0).contains(value))
             })
@@ -3756,6 +3759,7 @@ source_out_tick: 99_000,
                 timeline_end_tick: 1_000_000,
                 text: "safe textfile content".into(),
                 style: TextStyle {
+                    font_weight: None,
                     concat_shadow: false,
                     background_padding: None,
                     background_radius: None,

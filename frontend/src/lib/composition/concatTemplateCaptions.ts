@@ -131,8 +131,8 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
         style = { ...style, fontFamily: value }
         break
       case 'fontWeight':
-        if (value !== 400 && value !== 700) return undefined
-        style = { ...style, bold: value === 700 }
+        if (typeof value !== 'number' || !(value >= 100 && value <= 900)) return undefined
+        style = { ...style, bold: value >= 600, fontWeight: value === 400 || value === 700 ? undefined : value }
         break
       case 'italic':
         if (typeof value !== 'boolean') return undefined

@@ -918,6 +918,7 @@ export interface WireImageClip {
 }
 
 export interface WireTextStyle {
+  readonly fontWeight?: number
   readonly concatShadow?: boolean
   readonly backgroundPadding?: readonly [number, number]
   readonly backgroundRadius?: number

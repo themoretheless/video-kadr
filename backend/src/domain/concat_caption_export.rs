@@ -55,7 +55,7 @@ pub(super) fn title(clip: &mut TextClip, width: u32, height: u32) -> Result<()> 
     let style = TitleStyle {
         font_family: clip.style.font_family.clone(),
         font_size: clip.style.font_size / f64::from(height),
-        font_weight: if clip.style.bold { 700.0 } else { 400.0 },
+        font_weight: clip.style.font_weight.unwrap_or(if clip.style.bold { 700.0 } else { 400.0 }),
         italic: clip.style.italic,
         opacity: clip.opacity_multiplier.unwrap_or(1.0),
         color: color(clip.style.color),

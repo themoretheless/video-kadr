@@ -113,6 +113,13 @@ it('opens an archived template directory without mixing in sibling assets', asyn
     ])
   styled.text.fontWeight = 550
   await expect(readConcatTemplateCaptions(sidecar, new File([JSON.stringify(withStyle)], 'template.json')))
+    .resolves.toEqual([
+      ['TL1', { ...staticClip, style: { ...staticClip.style, fontSize: 18, fontFamily: 'Arial', bold: false,
+        fontWeight: 550, italic: true, strokeWidth: 2, tracking: -3, lineHeight: 1.75, backgroundRadius: 4, align: 'right' } }],
+      clips[1],
+    ])
+  styled.text.fontWeight = 950
+  await expect(readConcatTemplateCaptions(sidecar, new File([JSON.stringify(withStyle)], 'template.json')))
     .resolves.toEqual([clips[1]])
   const resetBaseline = { ...first, text: { ...first.text, fontSize: 0.1, fontWeight: 400, italic: true,
     color: '#4080ff', strokeWidth: 2 / 180, strokeColor: '#112233', background: '#112233', align: 'right', maxWidth: 0.5 } }
