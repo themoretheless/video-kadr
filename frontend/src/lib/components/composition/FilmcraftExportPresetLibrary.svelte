@@ -10,6 +10,9 @@
   let selected = $state('')
   let exportNames = $state<string[]>([])
   let query = $state('')
+  let categoryFilter = $state('')
+  let formatFilter = $state('')
+  let importedNames = $state<string[]>()
   let favorites = $state(false)
   let manualName = $state('')
   let name = $state('')
@@ -148,7 +151,20 @@
   const loudnessValid = $derived(loudness !== 'on'
     || (loudnessTarget !== undefined && Number.isFinite(loudnessTarget)
       && loudnessPeak !== undefined && loudnessPeak >= -24 && loudnessPeak <= 0))
-  const filtered = $derived(entries.filter(p => (!favorites || p.favorite) && [p.name, p.category, p.description].some(v => v.toLowerCase().includes(query.toLowerCase()))))
+  const categories = $derived([...new Set(entries.map(preset => preset.category).filter(Boolean))].sort())
+  const filtered = $derived(entries.filter(preset =>
+    (!favorites || preset.favorite)
+    && (!categoryFilter || preset.category === categoryFilter)
+    && (!formatFilter || preset.settings.format === formatFilter)
+    && [preset.name, preset.category, preset.description].some(value => value.toLowerCase().includes(query.trim().toLowerCase()))
+  ))
+  function reveal(name: string) {
+    query = ''
+    categoryFilter = ''
+    formatFilter = ''
+    favorites = false
+    selected = name
+  }
   $effect(() => { if (opened && !filtered.some(p => p.name === selected)) selected = filtered[0]?.name ?? '' })
   const positive = (value: string) => /^\d+$/.test(value) && Number.isSafeInteger(Number(value)) && Number(value) > 0
   const valid = $derived((matchSource ? Number.isFinite(Number(scale)) && Number(scale) > 0 : ((!width && !height) || (positive(width) && positive(height)))) && (!bitrate || (videoBitrate && !!adaptiveBitrate) || positive(bitrate))
@@ -178,8 +194,8 @@
     exportNames = []
     busy = false
     error = ''
-    query = ''
-    favorites = false
+    reveal('')
+    importedNames = undefined
     resetDraft()
     return () => { void owner; ++generation; controller?.abort() }
   })
@@ -330,9 +346,7 @@
       onlibrarychange?.({ saved: overwrite ? result.name : undefined })
       await refresh(owner, signal)
       if (!signal.aborted) {
-        query = ''
-        favorites = false
-        selected = result.name
+        reveal(result.name)
         resetDraft()
       }
     })
@@ -349,9 +363,7 @@
       onlibrarychange?.({})
       await refresh(owner, signal)
       if (signal.aborted) return
-      query = ''
-      favorites = false
-      selected = result.name
+      reveal(result.name)
       resetDraft()
     })
   }
@@ -380,10 +392,20 @@
     void run(async (owner, signal) => {
       if (file.size > 1024 * 1024) throw new Error('Файл пресетов должен быть не больше 1 МБ')
       const contents = await file.text(); if (signal.aborted) return
-      await editFilmcraftExportPresets(owner, { action: 'import', file: JSON.parse(contents) as FilmcraftPresetFile }, signal)
+      importedNames = undefined
+      const result = await editFilmcraftExportPresets<{ imported: string[] }>(
+        owner, { action: 'import', file: JSON.parse(contents) as FilmcraftPresetFile }, signal,
+      )
       if (signal.aborted) return
       onlibrarychange?.({})
       await refresh(owner, signal)
+      if (signal.aborted) return
+      importedNames = [...new Set(result.imported)].filter(name => entries.some(entry => entry.name === name))
+      const first = importedNames[0]
+      if (first) {
+        reveal(first)
+        resetDraft()
+      }
     })
   }
   function exportFile(names?: string[]) {
@@ -412,6 +434,16 @@
       <button type="button" disabled={busy || disabled || !manualName.trim()} onclick={saveManual}>Сохранить текущие настройки</button>
     {/if}
     <label>Поиск <input aria-label="Поиск пресетов Filmcraft" bind:value={query} /></label>
+    <label>Категория <select aria-label="Фильтр категории пресетов Filmcraft" value={categoryFilter}
+      onchange={event => { categoryFilter = event.currentTarget.value }} disabled={busy || disabled}>
+      <option value="">Все категории</option>
+      {#each categories as category (category)}<option value={category}>{category}</option>{/each}
+    </select></label>
+    <label>Формат <select aria-label="Фильтр формата пресетов Filmcraft" value={formatFilter}
+      onchange={event => { formatFilter = event.currentTarget.value }} disabled={busy || disabled}>
+      <option value="">Все форматы</option>
+      {#each formats as [value, label] (value)}<option {value}>{label}</option>{/each}
+    </select></label>
     <label><input type="checkbox" bind:checked={favorites} /> Только избранные</label>
     <label>Сохранённый пресет <select aria-label="Сохранённый пресет Filmcraft" bind:value={selected} disabled={busy || disabled}>
       {#each filtered as item (item.name)}<option value={item.name}>{item.favorite ? '★ ' : ''}{item.name}</option>{/each}
@@ -698,6 +730,14 @@
         onclick={() => exportFile([...exportNames])}>Скачать выбранные пресеты ({exportNames.length})</button>
     </details>
     <label>Импорт пресетов <input aria-label="Импорт пресетов Filmcraft" type="file" accept="application/json,.json" disabled={busy || disabled} onchange={(event) => { importFile(event.currentTarget.files?.[0]); event.currentTarget.value = '' }} /></label>
+    {#if importedNames}
+      <p role="status">{importedNames.length ? `Импортировано пресетов: ${importedNames.length}` : 'В файле нет пресетов'}</p>
+      {#if importedNames.length}
+        <ul aria-label="Импортированные пресеты Filmcraft">
+          {#each importedNames as name (name)}<li>{name}</li>{/each}
+        </ul>
+      {/if}
+    {/if}
     {#if busy}<span role="status">Загрузка пресетов…</span>{/if}
     {#if error}<p role="alert">{error}</p>{/if}
   {/if}
