@@ -28,8 +28,8 @@ it('opens an archived template directory without mixing in sibling assets', asyn
   const manifestSha256 = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
   const constant = { mode: 'constant', value: 1 }
   const staticClip = {
-    id: 'cue', text: 'Text', timelineStartTick: 1000000, timelineEndTick: 2000000, style: { shadowX: 4, shadow: { red: 0.1, green: 0.2, blue: 0.3, alpha: 0.5 } },
-    opacity: constant, transform: { x: constant, y: constant, scaleX: constant, scaleY: constant, rotationDegrees: constant },
+    id: 'cue', text: 'Text', timelineStartTick: 1000000, timelineEndTick: 2000000, style: { align: 'center', shadowX: 4, shadow: { red: 0.1, green: 0.2, blue: 0.3, alpha: 0.5 } },
+    opacity: constant, transform: { anchorX: 0.5, anchorY: 0.5, x: constant, y: constant, scaleX: constant, scaleY: constant, rotationDegrees: constant },
   }
   const clips = [
     ['TL1', staticClip],
@@ -127,6 +127,17 @@ it('opens an archived template directory without mixing in sibling assets', asyn
     .resolves.toEqual([
       ['TL1', { ...staticClip, transform: { ...staticClip.transform,
         x: { mode: 'constant', value: 81 }, y: { mode: 'constant', value: -21.5 },
+      } }],
+      clips[1],
+    ])
+  const transformed = { ...placed, scale: 2, stretchX: 1.5, stretchY: 0.5, rotation: 30 }
+  const withTransform = { ...source, timelines: [{ id: 'TL1', video, clips: [transformed, second] }] }
+  await expect(readConcatTemplateCaptions(sidecar, new File([JSON.stringify(withTransform)], 'template.json')))
+    .resolves.toEqual([
+      ['TL1', { ...staticClip, transform: { ...staticClip.transform,
+        x: { mode: 'constant', value: 81 }, y: { mode: 'constant', value: -21.5 },
+        scaleX: { mode: 'constant', value: 3 }, scaleY: constant,
+        rotationDegrees: { mode: 'constant', value: 31 },
       } }],
       clips[1],
     ])

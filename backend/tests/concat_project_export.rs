@@ -326,6 +326,21 @@ fn caption_lane_exports_editable_concat_titles_with_bottom_anchor() {
         "Concat's standard shadow must be rendered after reopening",
     );
 
+    let mut scaled = serde_json::to_value(&project).unwrap();
+    let root = scaled["root"].as_str().unwrap().to_owned();
+    let caption = &mut scaled["compositions"][root]["content"]["tracks"][0]["clips"][0];
+    caption["textAnchor"] = json!([0.5,0.5]);
+    caption["transform"]["scaleX"]["value"] = json!(2.0);
+    caption["transform"]["scaleY"]["value"] = json!(0.75);
+    caption["transform"]["rotationDegrees"]["value"] = json!(25.0);
+    let source = export(&serde_json::from_value(scaled).unwrap()).unwrap();
+    let title = source["timelines"][0]["clips"].as_array().unwrap().iter()
+        .find(|clip| clip["id"] == "words").unwrap();
+    assert_eq!(title["stretchX"], 2.0);
+    assert_eq!(title["stretchY"], 0.75);
+    assert_eq!(title["rotation"], 25.0);
+    assert!(title["keys"].as_array().unwrap().iter().all(|key| key["property"] == "opacity"));
+
     let mut reexport = serde_json::to_value(&project).unwrap();
     let root = reexport["root"].as_str().unwrap().to_owned();
     let caption = &mut reexport["compositions"][&root]["content"]["tracks"][0]["clips"][0];

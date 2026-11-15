@@ -44,9 +44,10 @@ pub(super) fn title(clip: &mut TextClip, width: u32, height: u32) -> Result<()> 
     );
     let constant = |value: &AnimatableValue, expected: f64| matches!(value, AnimatableValue::Constant { value } if *value == expected);
     ensure!(
-        constant(&transform.scale_x, 1.0)
-            && constant(&transform.scale_y, 1.0)
-            && constant(&transform.rotation_degrees, 0.0),
+        centered
+            || (constant(&transform.scale_x, 1.0)
+                && constant(&transform.scale_y, 1.0)
+                && constant(&transform.rotation_degrees, 0.0)),
         "Transformed caption anchors require a Concat mapping"
     );
 
@@ -336,6 +337,18 @@ fn opacity_animation(clip: &mut TextClip, width: u32, height: u32) -> Result<()>
     else {
         anyhow::bail!("Animated caption position requires a Concat mapping");
     };
+    let (
+        AnimatableValue::Constant { value: sx },
+        AnimatableValue::Constant { value: sy },
+        AnimatableValue::Constant { value: rotation },
+    ) = (
+        &transform.scale_x,
+        &transform.scale_y,
+        &transform.rotation_degrees,
+    )
+    else {
+        anyhow::bail!("Animated caption pose requires a Concat mapping");
+    };
     let animation = SourceAnimation {
         duration_ticks: duration,
         rest: Pose {
@@ -343,11 +356,11 @@ fn opacity_animation(clip: &mut TextClip, width: u32, height: u32) -> Result<()>
             scale_y: 1.0,
             x: *x / f64::from(width),
             y: *y / f64::from(height),
-            rotation_degrees: 0.0,
+            rotation_degrees: *rotation,
             opacity: 1.0,
         },
         keys: BTreeMap::from([("opacity".to_owned(), keys)]),
-        stretch: [1.0, 1.0],
+        stretch: [*sx, *sy],
         canvas: [f64::from(width), f64::from(height)],
     };
     animation.validate()?;

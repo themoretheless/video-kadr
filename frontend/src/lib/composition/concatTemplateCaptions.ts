@@ -27,7 +27,7 @@ function normalizedClip(value: unknown): unknown {
   const clip = record(value)
   if (!clip) return value
   return {
-    mediaId: '', sourceStart: 0, offsetX: 0, offsetY: 0, opacity: 1, volume: 1, fadeIn: 0, fadeOut: 0, speed: 1,
+    mediaId: '', sourceStart: 0, scale: 1, rotation: 0, offsetX: 0, offsetY: 0, opacity: 1, volume: 1, fadeIn: 0, fadeOut: 0, speed: 1,
     preservePitch: true, stretchX: 1, stretchY: 1, flipH: false, flipV: false, keys: [], filters: [], videoEffects: [],
     ...clip,
     blend: clip.blend || 'normal',
@@ -187,6 +187,46 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
     }
   }
 
+  const poseFields = ['scale', 'stretchX', 'stretchY', 'rotation'] as const
+  const previousPose = poseFields.map(field => before[field] ?? (field === 'rotation' ? 0 : 1))
+  const editedPose = poseFields.map(field => after[field] ?? (field === 'rotation' ? 0 : 1))
+  if (!sameJson(previousPose, editedPose)) {
+    if (clip.concatTitle || !centeredCaption({ ...clip, style }) || !hasStaticCaptionPose(clip)) return undefined
+    const [scale, stretchX, stretchY, rotation] = editedPose
+    const [oldScale, oldStretchX, oldStretchY, oldRotation] = previousPose
+    if (typeof scale !== 'number' || !(scale >= 0.05 && scale <= 8) ||
+        typeof stretchX !== 'number' || !(stretchX >= 0.1 && stretchX <= 10) ||
+        typeof stretchY !== 'number' || !(stretchY >= 0.1 && stretchY <= 10) ||
+        typeof rotation !== 'number' || !Number.isFinite(rotation) ||
+        typeof oldScale !== 'number' || !(oldScale > 0) ||
+        typeof oldStretchX !== 'number' || !(oldStretchX > 0) ||
+        typeof oldStretchY !== 'number' || !(oldStretchY > 0) ||
+        typeof oldRotation !== 'number' || !Number.isFinite(oldRotation)) return undefined
+    const sx = scale * stretchX / (oldScale * oldStretchX)
+    const sy = scale * stretchY / (oldScale * oldStretchY)
+    const turn = rotation - oldRotation
+    const { scaleX, scaleY, rotationDegrees, concatAnimation } = transform
+    if (scaleX.mode !== 'constant' || scaleY.mode !== 'constant' || rotationDegrees.mode !== 'constant') return undefined
+    transform = {
+      ...transform,
+      scaleX: { mode: 'constant', value: scaleX.value * sx },
+      scaleY: { mode: 'constant', value: scaleY.value * sy },
+      rotationDegrees: { mode: 'constant', value: rotationDegrees.value + turn },
+      ...(concatAnimation ? { concatAnimation: {
+        ...concatAnimation, rest: {
+          ...concatAnimation.rest,
+          scaleX: concatAnimation.rest.scaleX * scale / oldScale,
+          scaleY: concatAnimation.rest.scaleY * scale / oldScale,
+          rotationDegrees: concatAnimation.rest.rotationDegrees + turn,
+        },
+        stretch: [
+          concatAnimation.stretch[0] * stretchX / oldStretchX,
+          concatAnimation.stretch[1] * stretchY / oldStretchY,
+        ] as const,
+      } } : {}),
+    }
+  }
+
   // Text and whole-clip moves retain the original local clock. A static title
   // also accepts Concat's new duration and, for a head trim, its source in-point.
   // The imported document already carries the updated display name in clipNames.
@@ -196,6 +236,10 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
     name: before.name,
     offsetX: before.offsetX ?? 0,
     offsetY: before.offsetY ?? 0,
+    scale: before.scale ?? 1,
+    stretchX: before.stretchX ?? 1,
+    stretchY: before.stretchY ?? 1,
+    rotation: before.rotation ?? 0,
     ...(retainKeys ? { keys: before.keys ?? [], opacity: before.opacity ?? 1 } : {}),
     ...(resized ? { duration: before.duration, sourceStart: before.sourceStart ?? 0 } : {}),
     text: comparisonText,
