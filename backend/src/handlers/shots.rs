@@ -297,6 +297,8 @@ pub struct DescribeShotRequest {
     focus: crate::analysis::scene_description::Focus,
     #[serde(default)]
     language: crate::analysis::scene_description::Language,
+    #[serde(default)]
+    fps: crate::analysis::scene_description::SamplingRate,
 }
 
 pub async fn library_shot_describe_handler(
@@ -339,6 +341,7 @@ pub async fn library_shot_describe_handler(
         request.focus,
         request.language,
         model_digest.as_deref(),
+        request.fps,
     );
     let file = directory.join(format!("description-{key}.json"));
     let lock = state.render_lock(&file.to_string_lossy()).await;
@@ -352,7 +355,7 @@ pub async fn library_shot_describe_handler(
     let (width, height) = shots::measurement_raster(probe.width, probe.height)
         .map_err(|error| AppError::bad_request(error.to_string()))?;
     let mut frames = Vec::new();
-    for tick in sample_ticks(start_ticks, end_ticks) {
+    for tick in sample_ticks(start_ticks, end_ticks, request.fps) {
         let image = shots::extract_rgb(&state.process_runtime, &path, tick, width, height)
             .await
             .map_err(|error| AppError::bad_request(error.to_string()))?;
@@ -403,6 +406,8 @@ pub struct ReadSceneDescriptions {
     focus: crate::analysis::scene_description::Focus,
     #[serde(default)]
     language: crate::analysis::scene_description::Language,
+    #[serde(default)]
+    fps: crate::analysis::scene_description::SamplingRate,
 }
 
 #[derive(Serialize)]
@@ -452,6 +457,7 @@ pub async fn library_shot_descriptions_handler(
             request.focus,
             request.language,
             digest.as_deref(),
+            request.fps,
         );
         if let Some(description) =
             read_scene_description(&directory.join(format!("description-{key}.json"))).await
@@ -471,6 +477,8 @@ pub struct SceneDescriptionCatalogQuery {
     focus: crate::analysis::scene_description::Focus,
     #[serde(default)]
     language: crate::analysis::scene_description::Language,
+    #[serde(default)]
+    fps: crate::analysis::scene_description::SamplingRate,
     start_ticks: Option<u64>,
     end_ticks: Option<u64>,
     cursor: Option<String>,
@@ -551,6 +559,7 @@ pub async fn library_scene_description_catalog(
             query.focus,
             query.language,
             digest.as_deref(),
+            query.fps,
         );
         format!("description-{key}.json")
     };

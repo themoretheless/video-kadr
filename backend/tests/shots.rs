@@ -365,14 +365,15 @@ async fn describe_scene(state: &video_kadr_backend::state::AppState, scan: &Valu
     .unwrap();
     let model = tokio::spawn(async move { axum::serve(bind, model).await.unwrap() });
     let app = router(state.clone().with_scene_description(Some(config.clone())));
-    let request = |token: Option<&str>, language: &str, hash: &Value| {
-        let mut request = post(
-            "/api/library/scene/shots/describe",
-            json!({
-                "span": {"startTicks":0,"endTicks":2_000_000},
-                "expectedSourceHash":hash, "language":language, "focus":"shot-type"
-            }),
-        );
+    let request = |token: Option<&str>, language: &str, hash: &Value, fps: Option<f64>| {
+        let mut body = json!({
+            "span":{"startTicks":0,"endTicks":2_000_000},
+            "expectedSourceHash":hash,"language":language,"focus":"shot-type"
+        });
+        if let Some(fps) = fps {
+            body["fps"] = json!(fps);
+        }
+        let mut request = post("/api/library/scene/shots/describe", body);
         if let Some(token) = token {
             request
                 .headers_mut()
@@ -402,17 +403,33 @@ async fn describe_scene(state: &video_kadr_backend::state::AppState, scan: &Valu
     let (status, cold, _) = send(&app, cached("en", hash, Some(&user.token))).await;
     assert_eq!((status, cold), (StatusCode::OK, json!([])));
     assert_eq!(
-        send(&app, request(None, "en", hash)).await.0,
+        send(&app, request(None, "en", hash, None)).await.0,
         StatusCode::UNAUTHORIZED
     );
     assert_eq!(
-        send(&app, request(Some(&user.token), "en", &json!("stale")))
+        send(
+            &app,
+            request(Some(&user.token), "en", &json!("stale"), None)
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        send(&app, request(Some(&user.token), "en", hash, Some(31.0)))
             .await
             .0,
         StatusCode::BAD_REQUEST
     );
-    for language in ["en", "en", "ru"] {
-        let (status, result, _) = send(&app, request(Some(&user.token), language, hash)).await;
+    for (language, fps) in [
+        ("en", None),
+        ("en", Some(1.0)),
+        ("ru", None),
+        ("en", Some(0.25)),
+        ("en", Some(0.25)),
+        ("en", Some(30.0)),
+    ] {
+        let (status, result, _) = send(&app, request(Some(&user.token), language, hash, fps)).await;
         assert_eq!(status, StatusCode::OK, "{result}");
         assert_eq!(result, json!({"text":"A hard cut","tags":["cut"]}));
     }
@@ -459,6 +476,10 @@ async fn describe_scene(state: &video_kadr_backend::state::AppState, scan: &Valu
         }])
     );
     assert_eq!(page["nextCursor"], Value::Null);
+    let (_, rate_page, _) = send(&offline, catalog("language=en&focus=shot-type&fps=0.25")).await;
+    assert_eq!(rate_page["descriptions"], page["descriptions"]);
+    let (_, uncached_rate, _) = send(&offline, catalog("language=en&focus=shot-type&fps=2")).await;
+    assert_eq!(uncached_rate["descriptions"], json!([]));
     assert_eq!(
         send(&offline, catalog("language=en&focus=general")).await.1["descriptions"],
         json!([])
@@ -478,7 +499,14 @@ async fn describe_scene(state: &video_kadr_backend::state::AppState, scan: &Valu
         .path();
     use video_kadr_backend::analysis::scene_description::{Focus, Language};
     for start in 1..=129 {
-        let key = config.cache_key(start, start + 1, Focus::ShotType, Language::En, None);
+        let key = config.cache_key(
+            start,
+            start + 1,
+            Focus::ShotType,
+            Language::En,
+            None,
+            Default::default(),
+        );
         let description =
             json!({"span":{"startTicks":start,"endTicks":start+1},"text":"Cached","tags":[]});
         std::fs::write(
@@ -499,7 +527,14 @@ async fn describe_scene(state: &video_kadr_backend::state::AppState, scan: &Valu
     assert_eq!(last["descriptions"][0]["span"]["startTicks"], 128);
     assert_eq!(last["nextCursor"], Value::Null);
 
-    let legacy_key = config.cache_key(0, 2_000_000, Focus::ShotType, Language::En, None);
+    let legacy_key = config.cache_key(
+        0,
+        2_000_000,
+        Focus::ShotType,
+        Language::En,
+        None,
+        Default::default(),
+    );
     std::fs::write(
         directory.join(format!("description-{legacy_key}.json")),
         r#"{"text":"Legacy","tags":[]}"#,
@@ -512,7 +547,14 @@ async fn describe_scene(state: &video_kadr_backend::state::AppState, scan: &Valu
     .await;
     assert_eq!(legacy["descriptions"][0]["description"]["text"], "Legacy");
     let requests = requests.lock().unwrap();
-    assert_eq!(requests.len(), 2);
+    assert_eq!(requests.len(), 4);
+    let sparse = requests[2]["messages"][0]["content"].as_array().unwrap();
+    assert_eq!(sparse.len(), 3);
+    assert_eq!(sparse[1]["text"], "Frame at 1.000000s:");
+    let dense = requests[3]["messages"][0]["content"].as_array().unwrap();
+    assert_eq!(dense.len(), 17);
+    assert_eq!(dense[1]["text"], "Frame at 0.125000s:");
+    assert_eq!(dense[15]["text"], "Frame at 1.875000s:");
     assert_eq!(requests[0]["model"], "test-vision");
     let frames = requests[0]["messages"][0]["content"].as_array().unwrap();
     assert_eq!(frames.len(), 5);

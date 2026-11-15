@@ -37,7 +37,7 @@ async function compute(actor: string, tool: string, args: Record<string, unknown
     throw new Error('ripple requires at least one discarded scene')
   }
   if (tool === 'describe_clip') {
-    if (Object.keys(args).some(key => !['clipId', 'media_id', 'composition_id', 'sourceSpan', 'focus', 'language'].includes(key)) ||
+    if (Object.keys(args).some(key => !['clipId', 'media_id', 'composition_id', 'sourceSpan', 'focus', 'language', 'fps'].includes(key)) ||
         (typeof clipId === 'string' && clipId.length > 128)) {
       throw new Error('Invalid describe_clip arguments')
     }
@@ -123,6 +123,7 @@ async function describeSource(sourceId: string, clipSpan: ShotSpan | undefined, 
   if (!access.token) throw new Error('Scene description requires an authenticated editor')
   const focus = args.focus === undefined ? 'general' : args.focus
   const language = args.language === undefined ? 'ru' : args.language
+  const fps = descriptionSamplingRate(args.fps)
   if (focus !== 'general' && focus !== 'shot-type') throw new Error('Invalid scene description focus')
   if (language !== 'ru' && language !== 'en') throw new Error('Invalid scene description language')
 
@@ -151,19 +152,20 @@ async function describeSource(sourceId: string, clipSpan: ShotSpan | undefined, 
   if (span.endTicks > scan.durationTicks) throw new Error('Description span must be inside the source duration')
   if (signal?.aborted || access.isActive?.() === false) throw new Error('Description command expired or editor disconnected')
   const description = await describeLibraryShot(sourceId, {
-    span, expectedSourceHash: scan.sourceHash, focus, language,
+    span, expectedSourceHash: scan.sourceHash, focus, language, fps,
   }, access.token, access.spaceId, signal)
   if (signal?.aborted || access.isActive?.() === false) throw new Error('Description command expired or editor disconnected')
-  return { sourceId, span, focus, language, ...description }
+  return { sourceId, span, focus, language, fps, ...description }
 }
 
 async function readSceneDescriptions(args: Record<string, unknown>, access: AgentAccess) {
   const { media_id: sourceId, startTicks, endTicks, cursor } = args
   const focus = args.focus === undefined ? 'general' : args.focus
   const language = args.language === undefined ? 'ru' : args.language
+  const fps = descriptionSamplingRate(args.fps)
   if (!access.token) throw new Error('Scene description requires an authenticated editor')
   if (typeof sourceId !== 'string' || !sourceId || sourceId.length > 128 ||
-      Object.keys(args).some(key => !['media_id', 'focus', 'language', 'startTicks', 'endTicks', 'cursor'].includes(key))) {
+      Object.keys(args).some(key => !['media_id', 'focus', 'language', 'startTicks', 'endTicks', 'cursor', 'fps'].includes(key))) {
     throw new Error('Invalid scene description source')
   }
   if ((focus !== 'general' && focus !== 'shot-type') || (language !== 'ru' && language !== 'en')) {
@@ -182,8 +184,16 @@ async function readSceneDescriptions(args: Record<string, unknown>, access: Agen
   const remaining = access.expiresAt === undefined ? 120_000 : access.expiresAt - Date.now()
   if (remaining <= 0 || access.isActive?.() === false) throw new Error('Description command expired or editor disconnected')
   const signal = AbortSignal.timeout(Math.min(remaining, 120_000))
-  const result = await getSceneDescriptionCatalog(sourceId, { focus, language, ...span, cursor },
+  const result = await getSceneDescriptionCatalog(sourceId, { focus, language, fps, ...span, cursor },
     access.token, access.spaceId, signal)
   if (signal.aborted || access.isActive?.() === false) throw new Error('Description command expired or editor disconnected')
-  return { sourceId, focus, language, ...result }
+  return { sourceId, focus, language, fps, ...result }
+}
+
+function descriptionSamplingRate(value: unknown): number {
+  if (value === undefined) return 1
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0 || value > 30) {
+    throw new Error('fps must be greater than 0 and at most 30')
+  }
+  return Math.max(1, Math.round(value * 1000)) / 1000
 }

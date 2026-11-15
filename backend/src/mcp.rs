@@ -223,7 +223,7 @@ async fn rpc(
     }
     if method == "resources/templates/list" {
         return Ok(Json(json!({"jsonrpc":"2.0","id":request["id"],"result":{"resourceTemplates":[{
-            "uriTemplate":"media://{id}/description{?focus,language,startTicks,endTicks,cursor}",
+            "uriTemplate":"media://{id}/description{?focus,language,fps,startTicks,endTicks,cursor}",
             "name":"Cached scene descriptions",
             "mimeType":"application/json"
         }]}})).into_response());
@@ -292,6 +292,11 @@ fn cached_scene_resource(uri: &str) -> Option<Value> {
     for (key, value) in url::form_urlencoded::parse(query.as_bytes()) {
         let arg = match key.as_ref() {
             "focus" | "language" | "cursor" => json!(value),
+            "fps" => {
+                let fps = value.parse::<f64>().ok()?;
+                if !fps.is_finite() || fps <= 0.0 || fps > 30.0 { return None; }
+                json!(fps)
+            }
             "startTicks" | "endTicks" => {
                 let tick = value.parse::<u64>().ok()?;
                 if tick > 9_007_199_254_740_991 { return None; }
@@ -471,6 +476,7 @@ fn tool_schema(name: &str) -> Value {
             "media_id":{"type":"string","minLength":1,"maxLength":128},
             "focus":{"type":"string","enum":["general","shot-type"],"default":"general"},
             "language":{"type":"string","enum":["ru","en"],"default":"ru"},
+            "fps":{"type":"number","exclusiveMinimum":0,"maximum":30,"default":1},
             "startTicks":{"type":"integer","minimum":0},
             "endTicks":{"type":"integer","minimum":1},
             "cursor":{"type":"string","pattern":"^[0-9]+-[0-9]+$"}
@@ -480,7 +486,8 @@ fn tool_schema(name: &str) -> Value {
             "composition_id":{"type":"string","minLength":1,"maxLength":128,"description":"Nested composition scope for clipId; defaults to the root."},
             "sourceSpan":{"type":"object","description":"Optional half-open source range in microseconds; defaults to the clip's visible source range or the entire unplaced video.","properties":{"startTicks":{"type":"integer","minimum":0},"endTicks":{"type":"integer","minimum":1}},"required":["startTicks","endTicks"],"additionalProperties":false},
             "focus":{"type":"string","enum":["general","shot-type"],"default":"general"},
-            "language":{"type":"string","enum":["ru","en"],"default":"ru"}
+            "language":{"type":"string","enum":["ru","en"],"default":"ru"},
+            "fps":{"type":"number","exclusiveMinimum":0,"maximum":30,"default":1}
         }),
         "compare_frames" => {
             json!({"clipId":{"type":"string"},"leftTick":{"type":"integer","minimum":0},"rightTick":{"type":"integer","minimum":0}})
@@ -1076,10 +1083,10 @@ mod tests {
             "jsonrpc":"2.0","id":1,"method":"resources/templates/list"
         }))).await.unwrap()).await;
         assert_eq!(list["result"]["resourceTemplates"][0]["uriTemplate"],
-            "media://{id}/description{?focus,language,startTicks,endTicks,cursor}");
+            "media://{id}/description{?focus,language,fps,startTicks,endTicks,cursor}");
         assert!(cached_scene_resource("media://clip/description?language=en&language=ru").is_none());
         assert!(cached_scene_resource("media://clip/description?unexpected=1").is_none());
-        let uri = "media://Clip-1/description?language=en&startTicks=1&endTicks=2";
+        let uri = "media://Clip-1/description?language=en&fps=0.5&startTicks=1&endTicks=2";
         app.clone().oneshot(request("/api/agent/poll", json!({"editorId":"cache-reader"}))).await.unwrap();
         let rpc = app.clone();
         let read = tokio::spawn(async move {
@@ -1097,7 +1104,7 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(1)).await;
         }
         assert_eq!(command["tool"], "read_scene_descriptions");
-        assert_eq!(command["args"], json!({"media_id":"Clip-1","language":"en","startTicks":1,"endTicks":2}));
+        assert_eq!(command["args"], json!({"media_id":"Clip-1","language":"en","fps":0.5,"startTicks":1,"endTicks":2}));
         let result = app.oneshot(request("/api/agent/result", json!({
             "editorId":"cache-reader","id":command["id"],"result":{"descriptions":[]}
         }))).await.unwrap();

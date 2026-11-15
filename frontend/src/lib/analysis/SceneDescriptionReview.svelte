@@ -17,6 +17,8 @@
 
   let focus = $state<'general' | 'shot-type'>('general')
   let language = $state<'ru' | 'en'>('ru')
+  let fps = $state(1)
+  const samplingRates = [0.1, 0.25, 0.5, 1, 2, 4, 8, 15, 30]
   let descriptions = $state<Record<string, SceneDescription>>({})
   let pending = $state<string>()
   let setupOpen = $state(false)
@@ -44,7 +46,7 @@
     const controller = new AbortController()
     const owner = token
     const spans = cacheSpans
-    const options = { expectedSourceHash: sourceHash, focus, language }
+    const options = { expectedSourceHash: sourceHash, focus, language, fps }
     const source = sourceId
     const space = spaceId
     readingCache = true
@@ -59,7 +61,7 @@
           }, owner, space, controller.signal)
           if (controller.signal.aborted) return
           for (const { span, description } of cached) {
-            descriptions[descriptionKey(span, options.focus, options.language)] ??= description
+            descriptions[descriptionKey(span, options.focus, options.language, options.fps)] ??= description
           }
         }
       } catch {
@@ -70,8 +72,8 @@
     }
   })
 
-  function descriptionKey({ startTicks, endTicks }: ShotSpan, viewFocus = focus, viewLanguage = language): string {
-    return `${startTicks}:${endTicks}:${viewFocus}:${viewLanguage}`
+  function descriptionKey({ startTicks, endTicks }: ShotSpan, viewFocus = focus, viewLanguage = language, viewFps = fps): string {
+    return `${startTicks}:${endTicks}:${viewFocus}:${viewLanguage}:${viewFps}`
   }
 
   async function describe({ startTicks, endTicks }: ShotSpan, owner: string): Promise<boolean> {
@@ -81,7 +83,7 @@
     failure = undefined
     try {
       const description = await describeLibraryShot(sourceId, {
-        span, expectedSourceHash: sourceHash, focus, language,
+        span, expectedSourceHash: sourceHash, focus, language, fps,
       }, owner, spaceId, lifecycle.signal)
       if (lifecycle.signal.aborted) return false
       descriptions[key] = description
@@ -144,7 +146,14 @@
         <option value="general">Содержание сцены</option><option value="shot-type">Камера и план</option>
       </select>
     </label>
-    <small>Запрос описания передаёт кадры настроенной на сервере модели.</small>
+    <label>Кадров в секунду
+      <select value={String(fps)} onchange={event => { fps = Number(event.currentTarget.value); batchMessage = '' }}>
+        {#each samplingRates as rate (rate)}
+          <option value={String(rate)}>{rate.toLocaleString('ru')}</option>
+        {/each}
+      </select>
+    </label>
+    <small>Настроенная на сервере модель получает до восьми кадров из каждой сцены.</small>
   </fieldset>
   {#if readingCache}<small role="status">Восстанавливаю готовые описания…</small>{/if}
   {#if batch}

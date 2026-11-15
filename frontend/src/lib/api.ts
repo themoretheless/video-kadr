@@ -1072,6 +1072,7 @@ interface SceneDescriptionOptions {
   expectedSourceHash: string
   focus: 'general' | 'shot-type'
   language: 'ru' | 'en'
+  fps?: number
 }
 
 export interface CachedSceneDescription {
@@ -1084,6 +1085,7 @@ export function getSceneDescriptionCatalog(
   options: {
     focus: SceneDescriptionOptions['focus']
     language: SceneDescriptionOptions['language']
+    fps?: number
     startTicks?: number
     endTicks?: number
     cursor?: string
@@ -1093,6 +1095,7 @@ export function getSceneDescriptionCatalog(
   signal?: AbortSignal,
 ): Promise<{ sourceHash: string; descriptions: CachedSceneDescription[]; nextCursor: string | null }> {
   const query = new URLSearchParams({ focus: options.focus, language: options.language })
+  if (options.fps !== undefined) query.set('fps', String(options.fps))
   if (options.startTicks !== undefined) query.set('startTicks', String(options.startTicks))
   if (options.endTicks !== undefined) query.set('endTicks', String(options.endTicks))
   if (options.cursor !== undefined) query.set('cursor', options.cursor)

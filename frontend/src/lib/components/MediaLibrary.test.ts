@@ -188,6 +188,7 @@ describe('MediaLibrary', () => {
           expectedSourceHash: sourceHash,
           focus: 'shot-type',
           language: 'ru',
+          fps: 2,
         })
         return Response.json({ text: 'Панорама города', tags: ['общий план', 'улица'] })
       }
@@ -214,6 +215,9 @@ describe('MediaLibrary', () => {
     const focus = target.querySelector<HTMLSelectElement>('fieldset label:nth-of-type(2) select')!
     focus.value = 'shot-type'
     focus.dispatchEvent(new Event('change', { bubbles: true }))
+    const fps = target.querySelector<HTMLSelectElement>('fieldset label:nth-of-type(3) select')!
+    fps.value = '2'
+    fps.dispatchEvent(new Event('change', { bubbles: true }))
     await tick()
     await vi.waitFor(() => expect(buttonByText(target, 'Описать сцену').disabled).toBe(false))
     buttonByText(target, 'Описать сцену').click()

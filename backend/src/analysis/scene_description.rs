@@ -117,6 +117,7 @@ impl Config {
         focus: Focus,
         language: Language,
         digest: Option<&str>,
+        sampling: SamplingRate,
     ) -> String {
         let mut identity = json!([
             PROMPT_REVISION,
@@ -127,8 +128,13 @@ impl Config {
             focus,
             language
         ]);
-        if let (Some(digest), Some(parts)) = (digest, identity.as_array_mut()) {
-            parts.push(json!(digest));
+        if let Some(parts) = identity.as_array_mut() {
+            if let Some(digest) = digest {
+                parts.push(json!(digest));
+            }
+            if sampling != SamplingRate::default() {
+                parts.push(json!({"fpsMilli": sampling.0}));
+            }
         }
         format!("{:x}", Sha256::digest(identity.to_string()))
     }
@@ -250,9 +256,37 @@ fn parse_description(bytes: &[u8]) -> Result<Description> {
     Ok(description)
 }
 
-pub fn sample_ticks(start: u64, end: u64) -> impl Iterator<Item = u64> {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SamplingRate(u32);
+
+impl Default for SamplingRate {
+    fn default() -> Self {
+        Self(1000)
+    }
+}
+
+impl<'de> Deserialize<'de> for SamplingRate {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let fps = f64::deserialize(deserializer)?;
+        if !fps.is_finite() || fps <= 0.0 || fps > 30.0 {
+            return Err(serde::de::Error::custom(
+                "fps must be greater than 0 and at most 30",
+            ));
+        }
+        Ok(Self((fps * 1000.0).round().max(1.0) as u32))
+    }
+}
+
+pub fn sample_ticks(start: u64, end: u64, sampling: SamplingRate) -> impl Iterator<Item = u64> {
     let duration = end - start;
-    let count = duration.div_ceil(1_000_000).min(8);
+    let scaled = u128::from(duration) * u128::from(sampling.0);
+    let count = if sampling == SamplingRate::default() {
+        // Keep the existing 1 fps sampling and its cache entries.
+        scaled.div_ceil(1_000_000_000)
+    } else {
+        (scaled + 500_000_000) / 1_000_000_000
+    }
+    .clamp(1, 8) as u64;
     (0..count).map(move |i| {
         let offset = u128::from(duration) * u128::from(2 * i + 1) / u128::from(2 * count);
         start + offset as u64

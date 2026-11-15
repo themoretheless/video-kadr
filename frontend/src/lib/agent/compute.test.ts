@@ -29,12 +29,12 @@ describe('MCP shot analysis', () => {
     const cached = { sourceHash: scan.sourceHash, descriptions: [], nextCursor: null }
     vi.mocked(api.getSceneDescriptionCatalog).mockResolvedValue(cached)
     const access = { token: 'owner', spaceId: 'personal' }
-    const args = { media_id: 'source', focus: 'shot-type', language: 'en', cursor: '1-2' }
+    const args = { media_id: 'source', focus: 'shot-type', language: 'en', fps: 0.5, cursor: '1-2' }
     await expect(executeAgentRequest('agent', 'read_scene_descriptions', args, access)).resolves.toEqual({
-      sourceId: 'source', focus: 'shot-type', language: 'en', ...cached,
+      sourceId: 'source', focus: 'shot-type', language: 'en', fps: 0.5, ...cached,
     })
     expect(api.getSceneDescriptionCatalog).toHaveBeenCalledWith('source', {
-      focus: 'shot-type', language: 'en', cursor: '1-2',
+      focus: 'shot-type', language: 'en', fps: 0.5, cursor: '1-2',
     }, 'owner', 'personal', expect.any(AbortSignal))
     await expect(executeAgentRequest('agent', 'read_scene_descriptions', { ...args, startTicks: 1, endTicks: 2 }, access))
       .rejects.toThrow('valid source span or a cursor')
@@ -85,10 +85,10 @@ describe('MCP shot analysis', () => {
     })
     const span = { startTicks: 1_000_000, endTicks: 2_000_000 }
     await expect(executeAgentRequest('agent', 'describe_clip', {
-      media_id: 'unplaced', sourceSpan: span, focus: 'shot-type', language: 'en',
+      media_id: 'unplaced', sourceSpan: span, focus: 'shot-type', language: 'en', fps: 2,
     }, access)).resolves.toMatchObject({ sourceId: 'unplaced', span, ...result })
     expect(api.describeLibraryShot).toHaveBeenLastCalledWith('unplaced', {
-      span, expectedSourceHash: scan.sourceHash, focus: 'shot-type', language: 'en',
+      span, expectedSourceHash: scan.sourceHash, focus: 'shot-type', language: 'en', fps: 2,
     }, 'owner', 'space', expect.any(AbortSignal))
     expect(JSON.stringify(compositionState.document)).toBe(before)
     expect(compositionState.history.past).toHaveLength(history)

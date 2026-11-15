@@ -57,7 +57,7 @@ it('describes a reverse trimmed clip in source time and cancels on selection cha
     expect(new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get('x-space-id')).toBe('timeline-space')
     expect(request(0)).toEqual({
       span: { startTicks: 500_000, endTicks: 3_500_000 },
-      expectedSourceHash: sourceHash, focus: 'general', language: 'ru',
+      expectedSourceHash: sourceHash, focus: 'general', language: 'ru', fps: 1,
     })
 
     button('Описать все сцены (2)').click()
