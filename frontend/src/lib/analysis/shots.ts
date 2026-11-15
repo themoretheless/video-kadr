@@ -4,6 +4,7 @@ import { assertCompositionLocksPreserved } from '../composition/locks.js'
 import { assertValidComposition } from '../composition/validation.js'
 import { videoSourceTickAtTimelineTick } from '../composition/playback.js'
 import { speedRampTimelineTickAtSourceProgress } from '../composition/speedRamp.js'
+import { rippleDeleteClips } from '../composition/timelineProductivity.js'
 import { upsertCompositionMarker } from '../composition/markers.js'
 
 export interface ShotCut { tick: number; score: number }
@@ -65,8 +66,10 @@ export function shotCoverPosition(clip: VideoClip, row: ShotRow): { sourceTick: 
   return { sourceTick: videoSourceTickAtTimelineTick(clip, timelineTick), timelineTick }
 }
 
-/** All three review verbs consume the same frame-snapped boundary list. */
-export function applyShotReview(document: Composition, clipId: string, rows: readonly ShotRow[], action: 'split' | 'mark' | 'discard', discardedRowIds: readonly string[], idForSegment: (index: number) => string): { document: Composition; selectedClipId: string } {
+export type ShotReviewAction = 'split' | 'mark' | 'discard' | 'ripple-discard'
+
+/** All review edits consume the same frame-snapped boundary list. */
+export function applyShotReview(document: Composition, clipId: string, rows: readonly ShotRow[], action: ShotReviewAction, discardedRowIds: readonly string[], idForSegment: (index: number) => string): { document: Composition; selectedClipId: string } {
   assertValidComposition(document)
   const location = findClipLocation(document, clipId)
   if (location.track.locked) throw new Error('Дорожка заблокирована')
@@ -74,7 +77,8 @@ export function applyShotReview(document: Composition, clipId: string, rows: rea
   if (!rows.length || rows.length > 256) throw new Error('Review requires 1–256 shots')
   if (rows[0]!.timelineStartTicks !== location.clip.timelineStartTicks || rows.at(-1)!.timelineEndTicks !== clipEndTicks(location.clip) || rows.some((row, index) => row.timelineEndTicks <= row.timelineStartTicks || (index > 0 && row.timelineStartTicks !== rows[index - 1]!.timelineEndTicks))) throw new Error('Shot rows do not cover the selected clip')
   if (discardedRowIds.some((id) => !rows.some((row) => row.id === id))) throw new Error('Unknown discarded shot')
-  if (action === 'discard' && rows.every((row) => discardedRowIds.includes(row.id))) throw new Error('Нельзя исключить все сцены; используйте удаление клипа')
+  const discarding = action === 'discard' || action === 'ripple-discard'
+  if (discarding && rows.every((row) => discardedRowIds.includes(row.id))) throw new Error('Нельзя исключить все сцены; используйте удаление клипа')
   const boundaries = rows.slice(1).map((row) => Math.round(Math.round(row.timelineStartTicks * document.canvas.fps / 1_000_000) * 1_000_000 / document.canvas.fps))
   if (boundaries.some((tick, index) => tick <= location.clip.timelineStartTicks || tick >= clipEndTicks(location.clip) || (index > 0 && tick <= boundaries[index - 1]!))) throw new Error('Границы совпали на сетке кадров; увеличьте минимальную длину сцены')
   let result = document
@@ -82,7 +86,7 @@ export function applyShotReview(document: Composition, clipId: string, rows: rea
     for (let index = 0; index < boundaries.length; index++) result = upsertCompositionMarker(result, { id: idForSegment(index), tick: boundaries[index]!, label: `Shot ${index + 2}` })
     return { document: result, selectedClipId: clipId }
   }
-  const rejected = new Set(action === 'discard' ? discardedRowIds : [])
+  const rejected = new Set(discarding ? discardedRowIds : [])
   const rejectedSlots = rows.map(row => rejected.has(row.id))
   const cuts = [
     ...(rejectedSlots[0] ? [location.clip.timelineStartTicks] : []),
@@ -92,7 +96,8 @@ export function applyShotReview(document: Composition, clipId: string, rows: rea
   if (!cuts.length) return { document, selectedClipId: clipId }
   const link = document.links?.find(item => item.memberIds.includes(clipId))
   const partners = link?.memberIds.filter(member => member !== clipId) ?? []
-  const retained = new Map<number, Map<string, string>>()
+  const sceneMembers = new Map<number, Map<string, string>>()
+  const doomed: string[] = []
   let nextId = 0
   let selectedClipId = ''
   for (const member of [clipId, ...partners]) {
@@ -108,17 +113,17 @@ export function applyShotReview(document: Composition, clipId: string, rows: rea
       const nextCut = cuts.findIndex(cut => cut > piece.start)
       const slot = (nextCut === -1 ? cuts.length : nextCut) - Number(rejectedSlots[0])
       if (rejectedSlots[slot]) {
-        result = deleteClip(result, piece.id)
+        doomed.push(piece.id)
         continue
       }
       if (member === clipId && !selectedClipId) selectedClipId = piece.id
-      const ids = retained.get(slot) ?? new Map<string, string>()
+      const ids = sceneMembers.get(slot) ?? new Map<string, string>()
       ids.set(member, piece.id)
-      retained.set(slot, ids)
+      sceneMembers.set(slot, ids)
     }
   }
   if (link) {
-    const groups = [...retained.entries()].sort(([a], [b]) => a - b)
+    const groups = [...sceneMembers.entries()].sort(([a], [b]) => a - b)
       .map(([, ids]) => link.memberIds.flatMap(member => ids.has(member) ? [ids.get(member)!] : []))
       .filter(ids => ids.length > 1)
     result = { ...result, links: [
@@ -126,6 +131,8 @@ export function applyShotReview(document: Composition, clipId: string, rows: rea
       ...groups.map((memberIds, index) => ({ id: index === 0 ? link.id : idForSegment(nextId++), memberIds })),
     ] }
   }
+  if (action === 'ripple-discard' && doomed.length) result = rippleDeleteClips(result, doomed)
+  else for (const id of doomed) result = deleteClip(result, id)
   assertValidComposition(result)
   assertCompositionLocksPreserved(document, result)
   return { document: result, selectedClipId }

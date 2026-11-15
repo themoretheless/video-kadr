@@ -87,6 +87,17 @@ describe('source scan review', () => {
     expect(spans(discarded.document, 1)).toEqual([[4_500_000, 5_000_000], [6_000_000, 8_000_000], [9_000_000, 9_500_000]])
     expect(discarded.selectedClipId).toBe('shot-0')
     expect(discarded.document.links).toEqual([{ id: 'av', memberIds: ['shot-3', 'shot-0'] }])
+    const withCaptions = { ...document, captionTracks: [{
+      id: 'captions', name: 'Captions', clips: [
+        { id: 'cue', timelineStartTick: '1270080000001', timelineEndTick: '2286144000003', text: 'Entire video' },
+      ],
+    }] }
+    const rippled = applyShotReview(withCaptions, 'clip', rows, 'ripple-discard', [rows[1]!.id], id)
+    expect(spans(rippled.document, 0)).toEqual([[5_000_000, 6_000_000], [6_000_000, 7_000_000]])
+    expect(spans(rippled.document, 1)).toEqual([[4_500_000, 6_000_000], [6_000_000, 7_500_000]])
+    expect(rippled.document.captionTracks?.[0]?.clips[0]).toMatchObject({
+      timelineStartTick: '1270080000001', timelineEndTick: '1778112000003',
+    })
     const locked = { ...document, tracks: document.tracks.map(track => track.id === 'sound' ? { ...track, locked: true } : track) }
     expect(() => applyShotReview(locked, 'clip', rows, 'discard', [rows[0]!.id], id)).toThrow()
     expect(spans(document, 1)).toEqual([[4_500_000, 9_500_000]])

@@ -6,7 +6,7 @@
   import { spacesState } from '../state/spaces.svelte.js'
   import { agentSession } from '../agent/session.svelte.js'
   import ShotCover from './ShotCover.svelte'
-  import { reviewShotRows, shotCoverPosition, type ShotRow } from './shots.js'
+  import { reviewShotRows, shotCoverPosition, type ShotReviewAction, type ShotRow } from './shots.js'
   import { shotAnalysisState, applyCompositionShotReview, measurementKey, setShotReviewSettings } from './shotState.svelte.js'
 
   let threshold = $state(compositionState.document.shotReview?.threshold ?? 0.3)
@@ -90,7 +90,7 @@
     } catch (cause) { if (alive) error = cause instanceof Error ? cause.message : String(cause) }
     finally { if (alive) busy = false }
   }
-  async function apply(action: 'split' | 'mark' | 'discard'): Promise<void> {
+  async function apply(action: ShotReviewAction): Promise<void> {
     if (!clip || !scan || busy) return
     const clipId = clip.id
     const sourceId = clip.sourceId
@@ -154,6 +154,7 @@
         <button class="btn ghost sm" type="button" disabled={busy || rows.length < 2} onclick={() => void apply('split')}>Разделить по границам</button>
         <button class="btn ghost sm" type="button" disabled={busy || rows.length < 2} onclick={() => void apply('mark')}>Поставить маркеры</button>
         <button class="btn ghost sm" type="button" disabled={busy || !discardedIds.length} onclick={() => void apply('discard')}>Разделить и исключить снятые сцены</button>
+        <button class="btn ghost sm" type="button" disabled={busy || !discardedIds.length} onclick={() => void apply('ripple-discard')}>Исключить сцены со сдвигом</button>
       </div>
     {/if}
   {/if}

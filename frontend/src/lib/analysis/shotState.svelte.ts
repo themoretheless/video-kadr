@@ -1,7 +1,7 @@
 import { agentSession, bumpAgentRevision } from '../agent/session.svelte.js'
 import { compositionState, commitDocument, makeId, scheduleAutosave, selectCompositionClip } from '../state/composition/core.svelte.js'
 import { findClipLocation } from '../composition/commands.js'
-import { applyShotReview, reviewShotRows, type ShotMeasurement, type ShotScan } from './shots.js'
+import { applyShotReview, reviewShotRows, type ShotMeasurement, type ShotReviewAction, type ShotScan } from './shots.js'
 
 export const shotAnalysisState = $state({ scans: {} as Record<string, ShotScan>, measurements: {} as Record<string, ShotMeasurement> })
 export function measurementKey(scan: ShotScan, start: number, end: number): string { return `${scan.sourceHash}:${start}:${end}` }
@@ -18,7 +18,7 @@ export function setShotReviewSettings(threshold: number, minShotTicks: number): 
   scheduleAutosave()
 }
 
-export function applyCompositionShotReview(clipId: string, threshold: number, minShotTicks: number, disabledCuts: readonly number[], action: 'split' | 'mark' | 'discard', discardedIds: readonly string[]): void {
+export function applyCompositionShotReview(clipId: string, threshold: number, minShotTicks: number, disabledCuts: readonly number[], action: ShotReviewAction, discardedIds: readonly string[]): void {
   const { clip, track } = findClipLocation(compositionState.document, clipId)
   if (clip.kind !== 'video') throw new Error('Выберите видеоклип')
   const scan = shotAnalysisState.scans[clip.sourceId]
