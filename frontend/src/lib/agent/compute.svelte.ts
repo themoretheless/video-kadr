@@ -1,4 +1,4 @@
-import { scanLibraryShots, measureLibraryShots, compareLibraryFrames, describeLibraryShot } from '../api.js'
+import { scanLibraryShots, measureLibraryShots, compareLibraryFrames, describeLibraryShot, getSceneDescriptionCatalog } from '../api.js'
 import { findClipLocation } from '../composition/commands.js'
 import { cloneComposition, compositionState, commitDocument, makeId, selectCompositionClip } from '../state/composition/core.svelte.js'
 import { nestedComposition } from '../state/nestedComposition.svelte.js'
@@ -21,6 +21,7 @@ export async function executeAgentCompute(actor: string, tool: string, args: Rec
   }
 }
 async function compute(actor: string, tool: string, args: Record<string, unknown>, access: AgentAccess): Promise<unknown> {
+  if (tool === 'read_scene_descriptions') return readSceneDescriptions(args, access)
   const editing = ['auto_split_by_shot', 'mark_shots', 'apply_shot_cuts'].includes(tool)
   const clipId = args.clipId, mediaId = args.media_id
   if (editing && (typeof clipId !== 'string' || mediaId !== undefined)) throw new Error('Editing requires clipId')
@@ -154,4 +155,35 @@ async function describeSource(sourceId: string, clipSpan: ShotSpan | undefined, 
   }, access.token, access.spaceId, signal)
   if (signal?.aborted || access.isActive?.() === false) throw new Error('Description command expired or editor disconnected')
   return { sourceId, span, focus, language, ...description }
+}
+
+async function readSceneDescriptions(args: Record<string, unknown>, access: AgentAccess) {
+  const { media_id: sourceId, startTicks, endTicks, cursor } = args
+  const focus = args.focus === undefined ? 'general' : args.focus
+  const language = args.language === undefined ? 'ru' : args.language
+  if (!access.token) throw new Error('Scene description requires an authenticated editor')
+  if (typeof sourceId !== 'string' || !sourceId || sourceId.length > 128 ||
+      Object.keys(args).some(key => !['media_id', 'focus', 'language', 'startTicks', 'endTicks', 'cursor'].includes(key))) {
+    throw new Error('Invalid scene description source')
+  }
+  if ((focus !== 'general' && focus !== 'shot-type') || (language !== 'ru' && language !== 'en')) {
+    throw new Error('Invalid scene description settings')
+  }
+  let span: ShotSpan | undefined
+  if (startTicks !== undefined || endTicks !== undefined) {
+    if (typeof startTicks !== 'number' || typeof endTicks !== 'number' ||
+      !Number.isSafeInteger(startTicks) || !Number.isSafeInteger(endTicks) || startTicks < 0 || endTicks <= startTicks ||
+      cursor !== undefined) throw new Error('Specify a valid source span or a cursor')
+    span = { startTicks, endTicks }
+  }
+  if (cursor !== undefined && (typeof cursor !== 'string' || !/^[0-9]{1,20}-[0-9]{1,20}$/.test(cursor))) {
+    throw new Error('Invalid scene description cursor')
+  }
+  const remaining = access.expiresAt === undefined ? 120_000 : access.expiresAt - Date.now()
+  if (remaining <= 0 || access.isActive?.() === false) throw new Error('Description command expired or editor disconnected')
+  const signal = AbortSignal.timeout(Math.min(remaining, 120_000))
+  const result = await getSceneDescriptionCatalog(sourceId, { focus, language, ...span, cursor },
+    access.token, access.spaceId, signal)
+  if (signal.aborted || access.isActive?.() === false) throw new Error('Description command expired or editor disconnected')
+  return { sourceId, focus, language, ...result }
 }

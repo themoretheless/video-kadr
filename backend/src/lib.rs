@@ -893,6 +893,10 @@ pub fn build_router_with_mcp(
         )
         .route("/scene-model", get(handlers::scene_model_status).post(handlers::install_scene_model))
         .route(
+            "/library/:id/shots/description-catalog",
+            get(handlers::library_scene_description_catalog),
+        )
+        .route(
             "/library/:id/shots/descriptions",
             post(handlers::library_shot_descriptions_handler),
         )

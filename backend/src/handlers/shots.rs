@@ -383,7 +383,12 @@ pub async fn library_shot_describe_handler(
             ));
         }
     }
-    shots::write_cache(&file, &result)
+    let entry = serde_json::json!({
+        "span": {"startTicks": start_ticks, "endTicks": end_ticks},
+        "text": result.text,
+        "tags": result.tags
+    });
+    shots::write_cache(&file, &entry)
         .await
         .map_err(|error| AppError::internal("write scene description", error))?;
     Ok(Json(result))
@@ -457,6 +462,153 @@ pub async fn library_shot_descriptions_handler(
     authorize_source_access(&state, &id, &headers).await?;
     verify_source_hash(&path, &hash).await?;
     Ok(Json(results))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SceneDescriptionCatalogQuery {
+    #[serde(default)]
+    focus: crate::analysis::scene_description::Focus,
+    #[serde(default)]
+    language: crate::analysis::scene_description::Language,
+    start_ticks: Option<u64>,
+    end_ticks: Option<u64>,
+    cursor: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SceneDescriptionCatalog {
+    source_hash: String,
+    descriptions: Vec<CachedSceneDescription>,
+    next_cursor: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct CatalogEntry {
+    span: Span,
+    #[serde(flatten)]
+    description: crate::analysis::scene_description::Description,
+}
+
+pub async fn library_scene_description_catalog(
+    State(state): State<AppState>,
+    AxPath(id): AxPath<String>,
+    headers: HeaderMap,
+    Query(query): Query<SceneDescriptionCatalogQuery>,
+) -> AppResult<Json<SceneDescriptionCatalog>> {
+    super::publish::authenticated_actor(&state, &headers).await?;
+    let exact = match (query.start_ticks, query.end_ticks) {
+        (None, None) => None,
+        (Some(start_ticks), Some(end_ticks))
+            if start_ticks < end_ticks && query.cursor.is_none() =>
+        {
+            Some(Span {
+                start_ticks,
+                end_ticks,
+            })
+        }
+        _ => {
+            return Err(AppError::bad_request(
+                "Нужен непустой интервал исходника без курсора",
+            ))
+        }
+    };
+    let cursor = query
+        .cursor
+        .as_deref()
+        .map(|cursor| {
+            let invalid = || AppError::bad_request("Некорректный курсор описаний");
+            let (start, end) = cursor.split_once('-').ok_or_else(invalid)?;
+            let start = start.parse::<u64>().map_err(|_| invalid())?;
+            let end = end.parse::<u64>().map_err(|_| invalid())?;
+            if start >= end {
+                return Err(invalid());
+            }
+            Ok((start, end))
+        })
+        .transpose()?;
+
+    let path = source_path(&state, &id, &headers).await?;
+    let _permit = state
+        .acquire_job_slot(ResourceClass::Analysis)
+        .await
+        .map_err(|_| AppError::service_unavailable("Анализ останавливается"))?;
+    let (hash, directory) = cache_location(&state, &path).await?;
+    let mut page = SceneDescriptionCatalog {
+        source_hash: hash,
+        descriptions: Vec::new(),
+        next_cursor: None,
+    };
+    let Some(config) = state.scene_description.as_ref().as_ref() else {
+        return Ok(Json(page));
+    };
+    let digest = scene_description_digest(config).await?;
+    let file_name = |span: &Span| {
+        let key = config.cache_key(
+            span.start_ticks,
+            span.end_ticks,
+            query.focus,
+            query.language,
+            digest.as_deref(),
+        );
+        format!("description-{key}.json")
+    };
+    if let Some(span) = exact {
+        if let Some(description) = read_scene_description(&directory.join(file_name(&span))).await {
+            page.descriptions
+                .push(CachedSceneDescription { span, description });
+        }
+    } else {
+        const PAGE_SIZE: usize = 128;
+        let mut listing = match tokio::fs::read_dir(&directory).await {
+            Ok(listing) => listing,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Json(page)),
+            Err(error) => return Err(AppError::internal("list scene descriptions", error)),
+        };
+        let mut matches = std::collections::BTreeMap::new();
+        while let Some(file) = listing
+            .next_entry()
+            .await
+            .map_err(|error| AppError::internal("read scene description catalog", error))?
+        {
+            let name = file.file_name();
+            if !name.to_string_lossy().starts_with("description-") {
+                continue;
+            }
+            let Some(entry) = shots::read_cache::<CatalogEntry>(&file.path()).await else {
+                continue;
+            };
+            let key = (entry.span.start_ticks, entry.span.end_ticks);
+            if key.0 >= key.1
+                || cursor.is_some_and(|cursor| key <= cursor)
+                || name != file_name(&entry.span).as_str()
+                || entry.description.validate().is_err()
+            {
+                continue;
+            }
+            matches.insert(
+                key,
+                CachedSceneDescription {
+                    span: entry.span,
+                    description: entry.description,
+                },
+            );
+            if matches.len() > PAGE_SIZE + 1 {
+                matches.pop_last();
+            }
+        }
+        if matches.len() > PAGE_SIZE {
+            matches.pop_last();
+            if let Some(((start, end), _)) = matches.last_key_value() {
+                page.next_cursor = Some(format!("{start}-{end}"));
+            }
+        }
+        page.descriptions = matches.into_values().collect();
+    }
+    authorize_source_access(&state, &id, &headers).await?;
+    verify_source_hash(&path, &page.source_hash).await?;
+    Ok(Json(page))
 }
 
 async fn scene_description_digest(

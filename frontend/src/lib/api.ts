@@ -1079,6 +1079,28 @@ export interface CachedSceneDescription {
   description: SceneDescription
 }
 
+export function getSceneDescriptionCatalog(
+  id: string,
+  options: {
+    focus: SceneDescriptionOptions['focus']
+    language: SceneDescriptionOptions['language']
+    startTicks?: number
+    endTicks?: number
+    cursor?: string
+  },
+  token: string,
+  spaceId?: string | null,
+  signal?: AbortSignal,
+): Promise<{ sourceHash: string; descriptions: CachedSceneDescription[]; nextCursor: string | null }> {
+  const query = new URLSearchParams({ focus: options.focus, language: options.language })
+  if (options.startTicks !== undefined) query.set('startTicks', String(options.startTicks))
+  if (options.endTicks !== undefined) query.set('endTicks', String(options.endTicks))
+  if (options.cursor !== undefined) query.set('cursor', options.cursor)
+  return requestJson(`/api/library/${encodeURIComponent(id)}/shots/description-catalog?${query}`, {
+    headers: libraryAccessHeaders(token, spaceId), signal,
+  })
+}
+
 export function readLibraryShotDescriptions(
   id: string,
   body: SceneDescriptionOptions & { spans: readonly import('./analysis/shots.js').ShotSpan[] },

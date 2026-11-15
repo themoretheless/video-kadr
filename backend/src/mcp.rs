@@ -36,6 +36,7 @@ const TOOL_NAMES: &[&str] = &[
     "measure_shots",
     "compare_frames",
     "describe_clip",
+    "read_scene_descriptions",
     "auto_split_by_shot",
     "mark_shots",
     "apply_shot_cuts",
@@ -220,22 +221,28 @@ async fn rpc(
             {"uri":"project://history","name":"History and checkpoints","mimeType":"application/json"}
         ]}})).into_response());
     }
+    if method == "resources/templates/list" {
+        return Ok(Json(json!({"jsonrpc":"2.0","id":request["id"],"result":{"resourceTemplates":[{
+            "uriTemplate":"media://{id}/description{?focus,language,startTicks,endTicks,cursor}",
+            "name":"Cached scene descriptions",
+            "mimeType":"application/json"
+        }]}})).into_response());
+    }
     let uri = if method == "resources/read" {
         let uri = request["params"]["uri"]
             .as_str()
             .unwrap_or_default()
             .to_owned();
-        let tool = match uri.as_str() {
-            "project://document" => "get_project",
-            "project://history" => "get_history",
-            _ => {
-                return Ok(
-                    Json(error(request["id"].clone(), -32602, "Unknown resource")).into_response(),
-                )
+        let (tool, arguments) = match uri.as_str() {
+            "project://document" => ("get_project", json!({})),
+            "project://history" => ("get_history", json!({})),
+            _ => match cached_scene_resource(&uri) {
+                Some(arguments) => ("read_scene_descriptions", arguments),
+                None => return Ok(Json(error(request["id"].clone(), -32602, "Unknown resource")).into_response()),
             }
         };
         request["method"] = json!("tools/call");
-        request["params"] = json!({"name":tool});
+        request["params"] = json!({"name":tool,"arguments":arguments});
         Some(uri)
     } else {
         None
@@ -245,7 +252,10 @@ async fn rpc(
         dispatch_rpc(State(bridge.clone()), headers, peer, Json(request)).await?;
     if let Some(uri) = uri {
         if body["result"]["isError"] == true {
-            body = error(body["id"].clone(), -32000, "Visible editor unavailable");
+            let message = body["result"]["content"][0]["text"].as_str()
+                .and_then(|text| serde_json::from_str::<Value>(text).ok())
+                .and_then(|value| value["error"].as_str().map(str::to_owned));
+            body = error(body["id"].clone(), -32000, message.as_deref().unwrap_or("Visible editor unavailable"));
         } else if let Some(text) = body["result"]["content"][0]["text"].as_str() {
             body["result"] =
                 json!({"contents":[{"uri":uri,"mimeType":"application/json","text":text}]});
@@ -267,6 +277,31 @@ async fn rpc(
         );
     }
     Ok(response)
+}
+
+fn cached_scene_resource(uri: &str) -> Option<Value> {
+    if uri.len() > 1024 || uri.contains('#') { return None; }
+    let (path, query) = uri.split_once('?').unwrap_or((uri, ""));
+    let id = path.strip_prefix("media://")?.strip_suffix("/description")?;
+    if id.is_empty() || id.len() > 128
+        || !id.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+    {
+        return None;
+    }
+    let mut args = serde_json::Map::from_iter([("media_id".into(), json!(id))]);
+    for (key, value) in url::form_urlencoded::parse(query.as_bytes()) {
+        let arg = match key.as_ref() {
+            "focus" | "language" | "cursor" => json!(value),
+            "startTicks" | "endTicks" => {
+                let tick = value.parse::<u64>().ok()?;
+                if tick > 9_007_199_254_740_991 { return None; }
+                json!(tick)
+            }
+            _ => return None,
+        };
+        if args.insert(key.into_owned(), arg).is_some() { return None; }
+    }
+    Some(Value::Object(args))
 }
 
 async fn end_session(
@@ -432,6 +467,14 @@ fn tool_schema(name: &str) -> Value {
         | "apply_shot_cuts" => {
             json!({"clipId":{"type":"string"},"expectedRevision":{"type":"integer"},"threshold":{"type":"number","minimum":0.05,"maximum":1},"minShotTicks":{"type":"integer","minimum":1,"maximum":60000000},"disabledCuts":{"type":"array","items":{"type":"integer"}},"discardedRowIds":{"type":"array","items":{"type":"string"}},"stats":{"type":"boolean"}})
         }
+        "read_scene_descriptions" => json!({
+            "media_id":{"type":"string","minLength":1,"maxLength":128},
+            "focus":{"type":"string","enum":["general","shot-type"],"default":"general"},
+            "language":{"type":"string","enum":["ru","en"],"default":"ru"},
+            "startTicks":{"type":"integer","minimum":0},
+            "endTicks":{"type":"integer","minimum":1},
+            "cursor":{"type":"string","pattern":"^[0-9]+-[0-9]+$"}
+        }),
         "describe_clip" => json!({
             "clipId":{"type":"string","minLength":1,"maxLength":128},
             "composition_id":{"type":"string","minLength":1,"maxLength":128,"description":"Nested composition scope for clipId; defaults to the root."},
@@ -501,6 +544,9 @@ fn tool_schema(name: &str) -> Value {
     if name == "freeze_frame" { return json!({"name":name,"description":"Insert a captured one-second FreezeFrame into an authenticated saved native project. Requires current get_project.projectHash and an unchanged saved revision/document. Optional composition_id defaults root; time_us is absolute composition time. Publishes a fresh still, splits/ripples the video lane and creates one local Undo entry. This is a server-persisted mutation, not a dry-run/batch operation. Unsupported native effects/playback profiles refuse. If the server commits after the editor context changes, local state is retained and the caller must reload before another save.","inputSchema":{"type":"object","properties":properties,"required":required,"additionalProperties":false}}); }
     if name == "get_keyframes" { return json!({"name":name,"description":"Read scalar animation before editing: ordinary revision or native projectHash (optional native composition_id defaults root), constant value or keyframes with native tick/timeBase, layer-local t_local_us, timeline t_us, effective tangents and outgoing segment. Exact preset_id is omitted for hand-tuned segments and the last key. envelope defaults to visual; mask requires maskId. Native effect channels require effectIndex plus effectKind and use authored animation parameters. Read-only.","inputSchema":{"type":"object","properties":properties,"required":required,"additionalProperties":false}}); }
     if name == "get_color_track" { return json!({"name":name,"description":"Read text or color-layer animation (native nested scope defaults to root and returns projectHash; packed native timing retains fractional microseconds and nativeTrack): constant RGBA bytes or keyframes with authored tick/timeBase, layer-local t_local_us, timeline t_us, resolved temporal tangents and outgoing segment. Read-only. set_color_key uses composition playhead ticks; delete_color_key uses exact authored key ticks, including negative retained keys after trimming.","inputSchema":{"type":"object","properties":properties,"required":required,"additionalProperties":false}}); }
+    if name == "read_scene_descriptions" {
+        return json!({"name":name,"description":"Read saved descriptions for an authorized library video without running scene analysis or the model. Returns paginated source ranges; use nextCursor as cursor. Supply both startTicks and endTicks for exact lookup, including legacy entries.","annotations":{"readOnlyHint":true},"inputSchema":{"type":"object","properties":properties,"required":["media_id"],"additionalProperties":false}});
+    }
     if name == "describe_clip" {
         return json!({"name":name,"description":"Describe a video clip in an ordinary or nested timeline, or an authorized library video. Sampled frames are sent to the server-configured vision model. Returns text and tags without editing the project. Requires an authenticated editor.","annotations":{"readOnlyHint":true,"openWorldHint":true},"inputSchema":{"type":"object","properties":properties,"oneOf":[{"required":["clipId"]},{"required":["media_id"]}],"additionalProperties":false}});
     }
@@ -674,6 +720,7 @@ fn cleanup(inbox: &mut Inbox) {
     inbox.queue.retain(|id| inbox.pending.contains_key(id));
 }
 fn command_timeout_for_tool(name: &str) -> Duration {
+    if name == "read_scene_descriptions" { return Duration::from_secs(120); }
     if name == "describe_clip" {
         return Duration::from_secs(420);
     }
@@ -1020,6 +1067,44 @@ mod tests {
             app.oneshot(revoked).await.unwrap().status(),
             StatusCode::NOT_FOUND
         );
+    }
+
+    #[tokio::test]
+    async fn cached_scene_resource_is_discoverable_and_routed_without_a_compute_tool() {
+        let app = app();
+        let list = json_body(app.clone().oneshot(request("/mcp", json!({
+            "jsonrpc":"2.0","id":1,"method":"resources/templates/list"
+        }))).await.unwrap()).await;
+        assert_eq!(list["result"]["resourceTemplates"][0]["uriTemplate"],
+            "media://{id}/description{?focus,language,startTicks,endTicks,cursor}");
+        assert!(cached_scene_resource("media://clip/description?language=en&language=ru").is_none());
+        assert!(cached_scene_resource("media://clip/description?unexpected=1").is_none());
+        let uri = "media://Clip-1/description?language=en&startTicks=1&endTicks=2";
+        app.clone().oneshot(request("/api/agent/poll", json!({"editorId":"cache-reader"}))).await.unwrap();
+        let rpc = app.clone();
+        let read = tokio::spawn(async move {
+            rpc.oneshot(request("/mcp", json!({
+                "jsonrpc":"2.0","id":2,"method":"resources/read","params":{"uri":uri}
+            }))).await.unwrap()
+        });
+        let mut command = Value::Null;
+        for _ in 0..100 {
+            let reply = json_body(app.clone().oneshot(request("/api/agent/poll", json!({"editorId":"cache-reader"}))).await.unwrap()).await;
+            if !reply["command"].is_null() {
+                command = reply["command"].clone();
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+        assert_eq!(command["tool"], "read_scene_descriptions");
+        assert_eq!(command["args"], json!({"media_id":"Clip-1","language":"en","startTicks":1,"endTicks":2}));
+        let result = app.oneshot(request("/api/agent/result", json!({
+            "editorId":"cache-reader","id":command["id"],"result":{"descriptions":[]}
+        }))).await.unwrap();
+        assert_eq!(result.status(), StatusCode::NO_CONTENT);
+        let reply = json_body(read.await.unwrap()).await;
+        assert_eq!(reply["result"]["contents"][0]["uri"], uri);
+        assert_eq!(reply["result"]["contents"][0]["text"], "{\"descriptions\":[]}");
     }
 
     #[test]

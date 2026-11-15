@@ -12,7 +12,7 @@ import type { ShotScan } from '../analysis/shots.js'
 import { buildCompositionWireDocument } from '../composition/payload.js'
 import { closeNestedComposition, nestedComposition } from '../state/nestedComposition.svelte.js'
 
-vi.mock('../api.js', async (original) => ({ ...await original<typeof api>(), scanLibraryShots: vi.fn(), measureLibraryShots: vi.fn(), compareLibraryFrames: vi.fn(), describeLibraryShot: vi.fn() }))
+vi.mock('../api.js', async (original) => ({ ...await original<typeof api>(), scanLibraryShots: vi.fn(), measureLibraryShots: vi.fn(), compareLibraryFrames: vi.fn(), describeLibraryShot: vi.fn(), getSceneDescriptionCatalog: vi.fn() }))
 const scan: ShotScan = { version: 1, sourceHash: 'a'.repeat(64), floor: 0.05, durationTicks: 4_000_000, cuts: [{ tick: 1_000_000, score: 0.8 }, { tick: 3_000_000, score: 0.7 }] }
 let clipId: string
 beforeEach(() => {
@@ -25,6 +25,23 @@ beforeEach(() => {
 })
 
 describe('MCP shot analysis', () => {
+  it('passes the resource view to the read-only catalog without scanning or describing', async () => {
+    const cached = { sourceHash: scan.sourceHash, descriptions: [], nextCursor: null }
+    vi.mocked(api.getSceneDescriptionCatalog).mockResolvedValue(cached)
+    const access = { token: 'owner', spaceId: 'personal' }
+    const args = { media_id: 'source', focus: 'shot-type', language: 'en', cursor: '1-2' }
+    await expect(executeAgentRequest('agent', 'read_scene_descriptions', args, access)).resolves.toEqual({
+      sourceId: 'source', focus: 'shot-type', language: 'en', ...cached,
+    })
+    expect(api.getSceneDescriptionCatalog).toHaveBeenCalledWith('source', {
+      focus: 'shot-type', language: 'en', cursor: '1-2',
+    }, 'owner', 'personal', expect.any(AbortSignal))
+    await expect(executeAgentRequest('agent', 'read_scene_descriptions', { ...args, startTicks: 1, endTicks: 2 }, access))
+      .rejects.toThrow('valid source span or a cursor')
+    expect(api.getSceneDescriptionCatalog).toHaveBeenCalledTimes(1)
+    expect(api.scanLibraryShots).not.toHaveBeenCalled()
+    expect(api.describeLibraryShot).not.toHaveBeenCalled()
+  })
   it('returns a source scan without an edit and commits auto-split as one Undo', async () => {
     const previousHistory = compositionState.history.past.length
     const result = await executeAgentRequest('agent', 'analyze_clip', { clipId }) as { rows: unknown[] }

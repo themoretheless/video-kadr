@@ -418,7 +418,7 @@ async fn describe_scene(state: &video_kadr_backend::state::AppState, scan: &Valu
     }
     model.abort();
     let _ = model.await;
-    let mut without_ffmpeg = state.clone().with_scene_description(Some(config));
+    let mut without_ffmpeg = state.clone().with_scene_description(Some(config.clone()));
     let mut tools = (*state.tools).clone();
     tools.ffmpeg = false;
     without_ffmpeg.tools = Arc::new(tools);
@@ -440,6 +440,77 @@ async fn describe_scene(state: &video_kadr_backend::state::AppState, scan: &Valu
             .0,
         StatusCode::BAD_REQUEST
     );
+    let catalog = |query: &str| {
+        Request::get(format!(
+            "/api/library/scene/shots/description-catalog?{query}"
+        ))
+        .header("authorization", format!("Bearer {}", user.token))
+        .body(Body::empty())
+        .unwrap()
+    };
+    let (status, page, _) = send(&offline, catalog("language=en&focus=shot-type")).await;
+    assert_eq!(status, StatusCode::OK, "{page}");
+    assert_eq!(page["sourceHash"], *hash);
+    assert_eq!(
+        page["descriptions"],
+        json!([{
+            "span":{"startTicks":0,"endTicks":2_000_000},
+            "description":{"text":"A hard cut","tags":["cut"]}
+        }])
+    );
+    assert_eq!(page["nextCursor"], Value::Null);
+    assert_eq!(
+        send(&offline, catalog("language=en&focus=general")).await.1["descriptions"],
+        json!([])
+    );
+    assert_eq!(
+        send(&offline, catalog("startTicks=0&endTicks=1&cursor=0-1"))
+            .await
+            .0,
+        StatusCode::BAD_REQUEST
+    );
+
+    let directory = std::fs::read_dir(state.storage.join("shot-analysis"))
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    use video_kadr_backend::analysis::scene_description::{Focus, Language};
+    for start in 1..=129 {
+        let key = config.cache_key(start, start + 1, Focus::ShotType, Language::En, None);
+        let description =
+            json!({"span":{"startTicks":start,"endTicks":start+1},"text":"Cached","tags":[]});
+        std::fs::write(
+            directory.join(format!("description-{key}.json")),
+            description.to_string(),
+        )
+        .unwrap();
+    }
+    let (_, first, _) = send(&offline, catalog("language=en&focus=shot-type")).await;
+    assert_eq!(first["descriptions"].as_array().unwrap().len(), 128);
+    assert_eq!(first["nextCursor"], "127-128");
+    let (_, last, _) = send(
+        &offline,
+        catalog("language=en&focus=shot-type&cursor=127-128"),
+    )
+    .await;
+    assert_eq!(last["descriptions"].as_array().unwrap().len(), 2);
+    assert_eq!(last["descriptions"][0]["span"]["startTicks"], 128);
+    assert_eq!(last["nextCursor"], Value::Null);
+
+    let legacy_key = config.cache_key(0, 2_000_000, Focus::ShotType, Language::En, None);
+    std::fs::write(
+        directory.join(format!("description-{legacy_key}.json")),
+        r#"{"text":"Legacy","tags":[]}"#,
+    )
+    .unwrap();
+    let (_, legacy, _) = send(
+        &offline,
+        catalog("language=en&focus=shot-type&startTicks=0&endTicks=2000000"),
+    )
+    .await;
+    assert_eq!(legacy["descriptions"][0]["description"]["text"], "Legacy");
     let requests = requests.lock().unwrap();
     assert_eq!(requests.len(), 2);
     assert_eq!(requests[0]["model"], "test-vision");

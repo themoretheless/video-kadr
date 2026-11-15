@@ -22,7 +22,7 @@ class ActivityState {
 }
 export const agentActivity=new ActivityState()
 let completedOrder:string[]=[]
-const reads=new Set(['command_list','get_project','get_history','list_checkpoints','get_keyframes','get_color_track','analyze_clip','measure_shots','compare_frames','describe_clip','dry_run'])
+const reads=new Set(['command_list','get_project','get_history','list_checkpoints','get_keyframes','get_color_track','analyze_clip','measure_shots','compare_frames','describe_clip','read_scene_descriptions','dry_run'])
 function prune(){
  const removed=completedOrder.splice(0,Math.max(0,completedOrder.length-1000))
  if(removed.length){
