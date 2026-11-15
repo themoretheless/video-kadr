@@ -28,7 +28,7 @@ it('opens an archived template directory without mixing in sibling assets', asyn
   const manifestSha256 = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
   const constant = { mode: 'constant', value: 1 }
   const staticClip = {
-    id: 'cue', text: 'Text', timelineStartTick: 1000000, timelineEndTick: 2000000, style: { shadowX: 4 },
+    id: 'cue', text: 'Text', timelineStartTick: 1000000, timelineEndTick: 2000000, style: { shadowX: 4, shadow: { red: 0.1, green: 0.2, blue: 0.3, alpha: 0.5 } },
     opacity: constant, transform: { x: constant, y: constant, scaleX: constant, scaleY: constant, rotationDegrees: constant },
   }
   const clips = [
@@ -54,7 +54,7 @@ it('opens an archived template directory without mixing in sibling assets', asyn
   await expect(readConcatTemplateCaptions(sidecar, new File([manifest + ' '], 'template.json'))).resolves.toEqual(clips)
   const changed = { ...source, timelines: [{
     id: 'TL1', video: { width: 320, height: 180, rateNum: 24, rateDen: 1 }, clips: [
-      { ...first, text: { ...first.text, shadow: false } },
+      { ...first, text: { ...first.text, lineHeight: 1.5 } },
       { ...second, sourceStart: 0, mediaId: '', fadeIn: 0, filters: [] },
     ],
   }] }
@@ -100,6 +100,16 @@ it('opens an archived template directory without mixing in sibling assets', asyn
     ])
   styled.text.fontWeight = 550
   await expect(readConcatTemplateCaptions(sidecar, new File([JSON.stringify(withStyle)], 'template.json')))
+    .resolves.toEqual([clips[1]])
+  const narrowed = { ...first, text: { ...first.text, maxWidth: 0.625, shadow: false } }
+  const withWidth = { ...source, timelines: [{ id: 'TL1', video, clips: [narrowed, second] }] }
+  await expect(readConcatTemplateCaptions(sidecar, new File([JSON.stringify(withWidth)], 'template.json')))
+    .resolves.toEqual([
+      ['TL1', { ...staticClip, textBoxWidth: 200, style: { ...staticClip.style, shadow: { ...staticClip.style.shadow, alpha: 0 } } }],
+      clips[1],
+    ])
+  narrowed.text.maxWidth = 0
+  await expect(readConcatTemplateCaptions(sidecar, new File([JSON.stringify(withWidth)], 'template.json')))
     .resolves.toEqual([clips[1]])
   changed.timelines[0]!.video.width = 640
   await expect(readConcatTemplateCaptions(sidecar, new File([JSON.stringify(changed)], 'template.json')))

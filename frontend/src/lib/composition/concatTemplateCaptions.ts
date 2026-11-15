@@ -139,6 +139,21 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
     retainOriginalField(key)
   }
 
+  let textBoxWidth = clip.textBoxWidth
+  if (editedText.maxWidth !== previousText.maxWidth) {
+    const width = record(video)?.width
+    if (clip.concatTitle || typeof width !== 'number' || typeof editedText.maxWidth !== 'number') return undefined
+    const pixels = Math.fround(editedText.maxWidth * width)
+    if (!(pixels >= 1 && pixels <= 100000)) return undefined
+    textBoxWidth = pixels
+    retainOriginalField('maxWidth')
+  }
+  if (editedText.shadow !== previousText.shadow) {
+    if (clip.concatTitle || editedText.shadow !== false || !style?.shadow) return undefined
+    style = { ...style, shadow: { ...style.shadow, alpha: 0 } }
+    retainOriginalField('shadow')
+  }
+
   // Text and whole-clip moves retain the original local clock. A static title
   // also accepts Concat's new duration and, for a head trim, its source in-point.
   // The imported document already carries the updated display name in clipNames.
@@ -157,6 +172,7 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
     ...clip,
     text: editedText.content,
     style,
+    ...(textBoxWidth === undefined ? {} : { textBoxWidth }),
     timelineStartTick: start,
     timelineEndTick: start + duration,
   }
