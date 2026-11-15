@@ -21,7 +21,7 @@
  const stillDestinations=$derived(concatImportStillDestinations(document))
  function chosenMask(key:string,mediaId:string,video=false){return (video?savedVideoMasks:savedMasks).find(mask=>mask.key===maskChoices[key]&&mask.sourceId===bindings[mediaId])}
  let importingTemplate = $state(false)
- type TemplateDetails = Pick<Awaited<ReturnType<typeof readConcatTemplateFolder>>, 'format' | 'slotCount' | 'poster' | 'subtitleDocuments' | 'captionClips'>
+ type TemplateDetails = Pick<Awaited<ReturnType<typeof readConcatTemplateFolder>>, 'format' | 'slotCount' | 'slots' | 'poster' | 'subtitleDocuments' | 'captionClips'>
  let templateFolders = $state<(Omit<TemplateDetails, 'subtitleDocuments' | 'captionClips'> & { name: string; files: readonly File[] })[]>([])
  let selectedFolder = $state<number>()
  let templateProjectName = $state('')
@@ -72,6 +72,7 @@
       files: candidate.files,
       format: folder.format,
       slotCount: folder.slotCount,
+      slots: folder.slots,
       poster: folder.poster,
      })
     } catch {
@@ -119,7 +120,7 @@
    document=folder.document;media=folder.media;fonts=folder.fonts
    importingTemplate=true
    templateProjectName=importedName(folder.document)
-   templateDetails={format:folder.format,slotCount:folder.slotCount,poster:folder.poster,subtitleDocuments:folder.subtitleDocuments,captionClips:folder.captionClips}
+   templateDetails={format:folder.format,slotCount:folder.slotCount,slots:folder.slots,poster:folder.poster,subtitleDocuments:folder.subtitleDocuments,captionClips:folder.captionClips}
    uploadedSources=[...uploaded.values()];bindings=mapped;preserveMediaIds=true
    for(const font of folder.fonts){
     await loadFont(font.path,font.file,false)

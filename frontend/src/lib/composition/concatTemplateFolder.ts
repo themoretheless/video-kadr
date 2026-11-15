@@ -87,10 +87,14 @@ export async function readConcatTemplateFolder(files: readonly File[]) {
   const captionClips = captionFile ? await readConcatTemplateCaptions(captionFile, manifest) : undefined
   const cover = index.get('poster.jpg')
   const poster = cover && cover.size > 0 && cover.size <= 8 * 1024 * 1024 ? cover : undefined
+  const stats = concatTemplateSlotStats(document)
+  const slots = media.filter(item => item.placeholder)
+    .map(({ id, name, kind }) => ({ id, name, kind, seconds: stats.get(id)?.seconds ?? 0 }))
+    .sort((left, right) => (stats.get(left.id)?.first ?? Number.MAX_VALUE) - (stats.get(right.id)?.first ?? Number.MAX_VALUE))
   return {
     document, media, design, fonts, poster, subtitleDocuments, captionClips,
     format: outputFormat(document),
-    slotCount: media.filter(item => item.placeholder).length,
+    slotCount: slots.length, slots,
   }
 }
 

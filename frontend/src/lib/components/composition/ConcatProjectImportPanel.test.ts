@@ -342,7 +342,15 @@ it('loads only the chosen template from a directory of Concat bundles', async ()
   const picker = document.querySelector<HTMLInputElement>('input[webkitdirectory]')!
   const other = file('C/template.json', JSON.stringify({
    ...original, name: 'Another template',
-   media: [{ ...original.media[0], path: '', placeholder: true }],
+   media: [
+    { ...original.media[0], path: '', placeholder: true },
+    { id: 'm2', name: 'Logo', kind: 'image', path: '', placeholder: true },
+   ],
+   timelines: [{ ...original.timelines[0], clips: [
+    ...original.timelines[0]!.clips,
+    { id: 'logo-1', kind: 'image', trackId: 'T1', mediaId: 'm2', start: 0, duration: 0.5 },
+    { id: 'logo-2', kind: 'image', trackId: 'T1', mediaId: 'm2', start: 2, duration: 0.25 },
+   ] }],
   }))
   const missing = file('D/template.json', JSON.stringify({
    ...original, name: 'Missing footage',
@@ -355,6 +363,10 @@ it('loads only the chosen template from a directory of Concat bundles', async ()
   const cards = () => [...document.querySelectorAll<HTMLButtonElement>('[aria-label="Шаблоны Concat"] button')]
   await vi.waitFor(() => expect(cards()).toHaveLength(2))
   expect(cards().map(card => card.querySelector('strong')?.textContent)).toEqual(['Another template', 'Selected template'])
+  expect([...cards()[0]!.querySelectorAll('[aria-label="Слоты шаблона"] > span')].map(slot => slot.textContent)).toEqual([
+   'Logo · Изображение · 0,75 с',
+   'Camera.mov · Видео · 1 с',
+  ])
   const selected = cards()[1]!
   expect(selected.textContent).toContain('1280 × 720 · 25 кадр/с')
   expect(selected.querySelector('img')?.getAttribute('src')).toBe('blob:gallery-cover')
