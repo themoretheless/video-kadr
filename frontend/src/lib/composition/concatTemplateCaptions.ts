@@ -41,18 +41,26 @@ function normalizedVideo(value: unknown): unknown {
 function hasStaticCaptionPose(clip: WireTextClip): boolean {
   const transform = clip.transform
   return !!transform && !transform.position &&
-    (!transform.concatAnimation || Object.keys(transform.concatAnimation.keys).every(captionKey)) &&
+    (!transform.concatAnimation || Object.keys(transform.concatAnimation.keys).every(key => captionKey(key, centeredCaption(clip)))) &&
     !clip.colorAnimation && !clip.effects?.length &&
     [transform.x, transform.y, transform.scaleX, transform.scaleY, transform.rotationDegrees]
       .every(value => value?.mode === 'constant')
 }
 
-function captionKey(key: unknown): boolean {
-  return key === 'opacity' || key === 'offsetX' || key === 'offsetY'
+function centeredCaption(clip: WireTextClip): boolean {
+  const transform = clip.transform
+  const anchor = clip.textAnchor ?? [transform?.anchorX, transform?.anchorY]
+  return clip.style?.align === 'center' && transform?.anchorX === 0.5 && transform.anchorY === 0.5 &&
+    anchor[0] === 0.5 && anchor[1] === 0.5
 }
 
-function supportedCaptionKeys(value: unknown): boolean {
-  return value === undefined || Array.isArray(value) && value.every(key => captionKey(record(key)?.property))
+function captionKey(key: unknown, centered: boolean): boolean {
+  return key === 'opacity' || key === 'offsetX' || key === 'offsetY' ||
+    centered && (key === 'scale' || key === 'rotation')
+}
+
+function supportedCaptionKeys(value: unknown, centered: boolean): boolean {
+  return value === undefined || Array.isArray(value) && value.every(key => captionKey(record(key)?.property, centered))
 }
 
 function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unknown): readonly [WireTextClip, ImportedAnimation?] | undefined {
@@ -72,7 +80,8 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
   const retainKeys = resized && (clip.opacity?.mode === 'keyframes' || !!clip.transform?.concatAnimation ||
     Array.isArray(after.keys) && after.keys.length > 0)
   if (resized && !retainKeys && clip.opacity?.mode !== 'constant') return undefined
-  if (retainKeys && (!supportedCaptionKeys(before.keys) || !supportedCaptionKeys(after.keys))) return undefined
+  const centered = centeredCaption(clip)
+  if (retainKeys && (!supportedCaptionKeys(before.keys, centered) || !supportedCaptionKeys(after.keys, centered))) return undefined
   if (retainKeys && clip.opacity?.mode === 'keyframes' && (!Array.isArray(before.keys) || !before.keys.length)) return undefined
   const offsetX = typeof before.offsetX === 'number' ? before.offsetX : 0
   const offsetY = typeof before.offsetY === 'number' ? before.offsetY : 0
@@ -183,7 +192,7 @@ export function restoreConcatTemplateCaptions(
           return { ...restored, opacity: clip.opacity, transform: { ...restored.transform, concatAnimation: undefined } }
         }
         if (x.mode !== 'constant' || y.mode !== 'constant' ||
-            !Object.keys(animation.keys).every(captionKey)) {
+            !Object.keys(animation.keys).every(key => captionKey(key, centeredCaption(restored)))) {
           throw new Error('Некорректная анимация субтитров')
         }
         const original = restored.transform.concatAnimation

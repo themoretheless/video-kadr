@@ -328,13 +328,29 @@ fn caption_lane_exports_editable_concat_titles_with_bottom_anchor() {
 
     let mut reexport = serde_json::to_value(&project).unwrap();
     let root = reexport["root"].as_str().unwrap().to_owned();
-    let caption = &mut reexport["compositions"][root]["content"]["tracks"][0]["clips"][0];
+    let caption = &mut reexport["compositions"][&root]["content"]["tracks"][0]["clips"][0];
     caption["opacity"] = json!({"mode":"constant","value":1});
     caption["transform"]["concatAnimation"] = json!({
         "durationTicks":1111111,"keys":{"opacity":[{"at":0,"value":0.25},{"at":1,"value":0.9}],"offsetY":[{"at":0,"value":0.45},{"at":1,"value":0.55}]},
         "rest":{"scaleX":1,"scaleY":1,"x":0,"y":0.45,"rotationDegrees":0,"opacity":1},
         "stretch":[1,1],"canvas":[160,120]
     });
+    let mut pivoted = reexport.clone();
+    let pivoted_caption = &mut pivoted["compositions"][&root]["content"]["tracks"][0]["clips"][0];
+    pivoted_caption["transform"]["concatAnimation"]["keys"]["scale"] = json!([{"at":0,"value":1.25}]);
+    pivoted_caption["transform"]["concatAnimation"]["keys"]["rotation"] = json!([{"at":1,"value":30}]);
+    assert!(export(&serde_json::from_value(pivoted.clone()).unwrap()).is_err());
+    pivoted["compositions"][&root]["content"]["tracks"][0]["clips"][0]["textAnchor"] = json!([0.5,0.5]);
+    let pivoted = convert(export(&serde_json::from_value(pivoted).unwrap()).unwrap());
+    let pose = pivoted.compositions[&pivoted.root].content.tracks.iter().find_map(|track| match track {
+        video_kadr_backend::domain::composition::CompositionTrack::Text { clips, .. } => {
+            clips.iter().find(|clip| clip.id.as_str() == "words")
+                .and_then(|clip| clip.transform.concat_animation.as_ref())
+        }
+        _ => None,
+    }).unwrap().sample(500_000).unwrap();
+    assert_eq!((pose.scale_x, pose.scale_y, pose.rotation_degrees), (1.25, 1.25, 30.0));
+
     let reexport = export(&serde_json::from_value(reexport).unwrap()).unwrap();
     let title = reexport["timelines"][0]["clips"].as_array().unwrap().iter()
         .find(|clip| clip["id"] == "words").unwrap();

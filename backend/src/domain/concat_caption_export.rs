@@ -22,16 +22,20 @@ fn color(value: Rgba) -> String {
 
 pub(super) fn title(clip: &mut TextClip, width: u32, height: u32) -> Result<()> {
     let transform = &mut clip.transform;
+    let centered = clip.style.align == Some(TextAlignment::Center)
+        && transform.anchor_x == 0.5
+        && transform.anchor_y == 0.5
+        && clip.text_anchor.is_none_or(|anchor| anchor == [0.5, 0.5]);
     ensure!(
         transform.concat_animation.as_ref().is_none_or(|animation| {
-            animation
-                .keys
-                .keys()
-                .all(|key| matches!(key.as_str(), "opacity" | "offsetX" | "offsetY"))
-                && animation.rest.scale_x == 1.0
-                && animation.rest.scale_y == 1.0
-                && animation.rest.rotation_degrees == 0.0
-                && animation.stretch == [1.0, 1.0]
+            animation.keys.keys().all(|key| {
+                matches!(key.as_str(), "opacity" | "offsetX" | "offsetY")
+                    || centered && matches!(key.as_str(), "scale" | "rotation")
+            }) && (centered
+                || (animation.rest.scale_x == 1.0
+                    && animation.rest.scale_y == 1.0
+                    && animation.rest.rotation_degrees == 0.0
+                    && animation.stretch == [1.0, 1.0]))
         }),
         "Retained caption animation requires a Concat anchor mapping"
     );
