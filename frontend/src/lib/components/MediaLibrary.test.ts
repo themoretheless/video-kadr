@@ -3,6 +3,7 @@ import { mount, tick, unmount } from '../../../node_modules/svelte/src/index-cli
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { state } from '$lib/state/store.svelte.js'
+import { authState } from '$lib/state/auth.svelte.js'
 import { proxyController } from '$lib/proxy/state.svelte.js'
 import type { MediaEntry } from '$lib/types.js'
 import MediaLibrary from './MediaLibrary.svelte'
@@ -77,11 +78,13 @@ afterEach(async () => {
   target.remove()
   state.library = []
   state.capabilities = null
+  authState.token = null
   proxyController.resetForTests()
 })
 
 describe('MediaLibrary', () => {
-  it('reviews and measures scenes and compares frames of an unplaced library video', async () => {
+  it('reviews, measures and describes scenes of an unplaced library video and compares frames', async () => {
+    authState.token = 'scene-reviewer'
     const sourceHash = 'a'.repeat(64)
     const scan = {
       version: 1, sourceHash, durationTicks: 2_000_000, floor: 0.05,
@@ -99,6 +102,16 @@ describe('MediaLibrary', () => {
         const ticks = JSON.parse(String(init?.body))
         expect(ticks).toEqual({ leftTick: 123_456, rightTick: 1_999_999 })
         return Response.json({ ...ticks, similarity: 0.75, motion: 0.25 })
+      }
+      if (path === '/api/library/video-two/shots/describe') {
+        expect(new Headers(init?.headers).get('authorization')).toBe('Bearer scene-reviewer')
+        expect(JSON.parse(String(init?.body))).toEqual({
+          span: { startTicks: 0, endTicks: 2_000_000 },
+          expectedSourceHash: sourceHash,
+          focus: 'shot-type',
+          language: 'ru',
+        })
+        return Response.json({ text: 'Панорама города', tags: ['общий план', 'улица'] })
       }
       throw new Error(`Unexpected request: ${path}`)
     })
@@ -120,6 +133,13 @@ describe('MediaLibrary', () => {
     expect(rows()[0]?.textContent).toContain('0.000–2.000 с')
     buttonByText(target, 'Измерить сцены исходника').click()
     await vi.waitFor(() => expect(rows()[0]?.textContent).toContain('Яркость 0.250'))
+    const focus = target.querySelector<HTMLSelectElement>('fieldset label:nth-of-type(2) select')!
+    focus.value = 'shot-type'
+    focus.dispatchEvent(new Event('change', { bubbles: true }))
+    await tick()
+    buttonByText(target, 'Описать сцену').click()
+    await vi.waitFor(() => expect(rows()[0]?.textContent).toContain('Панорама города'))
+    expect(rows()[0]?.textContent).toContain('общий план · улица')
 
     const first = inputByLabel('Первый кадр, с')
     const second = inputByLabel('Второй кадр, с')
@@ -138,6 +158,7 @@ describe('MediaLibrary', () => {
     expect(fetchMock.mock.calls.map(([path]) => path)).toEqual([
       '/api/library/video-two/shots',
       '/api/library/video-two/shots/measure',
+      '/api/library/video-two/shots/describe',
       '/api/library/video-two/compare-frames',
     ])
   })

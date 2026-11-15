@@ -65,6 +65,7 @@ async fn real_source_analysis_cache_metrics_and_frame_endpoints() {
     let (status, scan, _) = send(&app, post("/api/library/scene/shots", json!({}))).await;
     assert_eq!(status, StatusCode::OK, "{scan}");
     assert_eq!(scan["cuts"][0]["tick"], 1_000_000);
+    describe_scene(&state, &scan).await;
     let mut dirs = tokio::fs::read_dir(state.storage.join("shot-analysis"))
         .await
         .unwrap();
@@ -171,6 +172,98 @@ async fn real_source_analysis_cache_metrics_and_frame_endpoints() {
             .0,
         StatusCode::NOT_FOUND
     );
+}
+
+async fn describe_scene(state: &video_kadr_backend::state::AppState, scan: &Value) {
+    use base64::{engine::general_purpose::STANDARD, Engine};
+    use std::sync::{Arc, Mutex};
+    use video_kadr_backend::analysis::scene_description::Config;
+
+    let user = state
+        .db
+        .register_auth_user("scene-reviewer", "synthetic scene password")
+        .await
+        .unwrap()
+        .unwrap();
+    let requests = Arc::new(Mutex::new(Vec::new()));
+    let requests_for_model = requests.clone();
+    let model = axum::Router::new().route("/v1/chat/completions", axum::routing::post(
+        move |headers: axum::http::HeaderMap, axum::Json(body): axum::Json<Value>| {
+            let requests = requests_for_model.clone();
+            async move {
+                assert_eq!(headers["authorization"], "Bearer model-key");
+                requests.lock().unwrap().push(body);
+                axum::Json(json!({"choices":[{"message":{"content": "{\"text\":\"A hard cut\",\"tags\":[\"cut\"]}"}}]}))
+            }
+        },
+    ));
+    let bind = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+        .await
+        .unwrap();
+    let config = Config::new(
+        &format!("http://{}/v1/chat/completions", bind.local_addr().unwrap()),
+        "test-vision".into(),
+        Some("model-key".into()),
+    )
+    .unwrap();
+    let model = tokio::spawn(async move { axum::serve(bind, model).await.unwrap() });
+    let app = router(state.clone().with_scene_description(Some(config)));
+    let request = |token: Option<&str>, language: &str, hash: &Value| {
+        let mut request = post(
+            "/api/library/scene/shots/describe",
+            json!({
+                "span": {"startTicks":0,"endTicks":2_000_000},
+                "expectedSourceHash":hash, "language":language, "focus":"shot-type"
+            }),
+        );
+        if let Some(token) = token {
+            request
+                .headers_mut()
+                .insert("authorization", format!("Bearer {token}").parse().unwrap());
+        }
+        request
+    };
+    let hash = &scan["sourceHash"];
+    assert_eq!(
+        send(&app, request(None, "en", hash)).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        send(&app, request(Some(&user.token), "en", &json!("stale")))
+            .await
+            .0,
+        StatusCode::BAD_REQUEST
+    );
+    for language in ["en", "en", "ru"] {
+        let (status, result, _) = send(&app, request(Some(&user.token), language, hash)).await;
+        assert_eq!(status, StatusCode::OK, "{result}");
+        assert_eq!(result, json!({"text":"A hard cut","tags":["cut"]}));
+    }
+    let requests = requests.lock().unwrap();
+    assert_eq!(requests.len(), 2);
+    assert_eq!(requests[0]["model"], "test-vision");
+    let frames = requests[0]["messages"][0]["content"].as_array().unwrap();
+    assert_eq!(frames.len(), 5);
+    assert_eq!(frames[1]["text"], "Frame at 0.500000s:");
+    assert_eq!(frames[3]["text"], "Frame at 1.500000s:");
+    let sample = |index: usize| {
+        let encoded = frames[index]["image_url"]["url"].as_str().unwrap();
+        let png = STANDARD
+            .decode(encoded.strip_prefix("data:image/png;base64,").unwrap())
+            .unwrap();
+        image::load_from_memory(&png)
+            .unwrap()
+            .to_rgb8()
+            .get_pixel(0, 0)
+            .0
+    };
+    assert_eq!(sample(2), [0; 3]);
+    assert_eq!(sample(4), [255; 3]);
+    assert!(requests[1]["messages"][0]["content"][0]["text"]
+        .as_str()
+        .unwrap()
+        .contains("Russian"));
+    model.abort();
 }
 
 #[tokio::test]

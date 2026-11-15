@@ -82,7 +82,8 @@ async fn main() -> anyhow::Result<()> {
         process_runtime.clone(),
         config.resource_classes,
     )?
-    .with_workload_config(config.workload).with_speech_config(config.speech).with_tts_config(config.tts).with_chatterbox_runtime(config.chatterbox).with_kokoro_runtime(config.kokoro).with_enhance_config(config.enhance).with_cutout_config(config.cutout).with_selfie_config(config.selfie).with_person_config(config.person).with_sam_config(config.sam);
+    .with_workload_config(config.workload).with_speech_config(config.speech).with_tts_config(config.tts).with_chatterbox_runtime(config.chatterbox).with_kokoro_runtime(config.kokoro).with_enhance_config(config.enhance).with_cutout_config(config.cutout).with_selfie_config(config.selfie).with_person_config(config.person).with_sam_config(config.sam)
+    .with_scene_description(config.scene_description);
     if let Some(api_key) = config.pexels_api_key {
         state = state.with_stock_catalog(video_kadr_backend::stock_catalog::PexelsClient::new(
             api_key,

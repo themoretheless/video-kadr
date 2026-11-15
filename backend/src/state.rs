@@ -59,6 +59,7 @@ pub struct AppState {
     pub selfie:Arc<Option<crate::services::local_selfie::Config>>,
     pub person:Arc<Option<crate::services::local_person::Config>>,
     pub(crate) concat_video_cancellations:Arc<crate::services::concat_video_cancel::Registry>,
+    pub scene_description: Arc<Option<crate::analysis::scene_description::Config>>,
     pub sam:Arc<Option<crate::services::local_sam::Config>>,
     pub kokoro:Arc<Option<crate::services::local_kokoro::Runtime>>,
     pub chatterbox: Arc<Option<crate::services::local_chatterbox::Runtime>>,
@@ -249,6 +250,7 @@ impl AppState {
             selfie:Arc::new(None),
             person:Arc::new(None),
             concat_video_cancellations:Arc::new(Default::default()),
+            scene_description: Arc::new(None),
             sam:Arc::new(None),
             kokoro:Arc::new(None),
             chatterbox:Arc::new(None),
@@ -284,6 +286,11 @@ impl AppState {
             youtube_oauth: None,
             youtube_token_cipher: None,
         })
+    }
+
+    pub fn with_scene_description(mut self, config: Option<crate::analysis::scene_description::Config>) -> Self {
+        self.scene_description = Arc::new(config);
+        self
     }
 
     pub fn with_sam_config(mut self,value:Option<crate::services::local_sam::Config>)->Self{self.sam=Arc::new(value);self}

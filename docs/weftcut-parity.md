@@ -17,7 +17,7 @@
 | Audio | Gain/pan automation, fades, denoise, ducking, detach audio; четыре роли, role gain/mute/solo, live meters, audition faders/reset, master mute/peak hold/compressor | Preview animated pan ещё не интерполирует коэффициенты по сетке 10 мс; квалифицировать общий audible clock и полный mixer export, включая master processing |
 | Pauses | Локальный RMS detector и атомарный ripple | Сопоставить padding, source time и retiming; один Undo, preview detected regions |
 | Speech | Ручные субтитры и voiceover recording; ASR/TTS не подтверждены | Опциональные whisper.cpp/FunASR/cloud adapters, extraction, transcription, TTS, word timing; явный выбор backend и ошибка без silent fallback |
-| Footage understanding | Point tracker, beat detection; native shot scan/review, measures и frame comparison реализованы; vision descriptions не перенесены | Shot boundaries, brightness/motion/sharpness, frame comparison, shot review, local/endpoint scene descriptions и source-range cache |
+| Footage understanding | Point tracker, beat detection; native shot scan/review, measures и frame comparison реализованы; описания сцены через настроенный endpoint в медиатеке | Shot boundaries, brightness/motion/sharpness, frame comparison, shot review, local/endpoint scene descriptions и source-range cache |
 | Text/effects/transitions | Text templates, chroma key, masks, blend modes, effect chains, 24 transitions | Сопоставить effect parameters/order, eyedropper из live frame, text bounds/outline и font portability |
 | Поиск | Реализован Ctrl/⌘K поиск commands/media/clips/captions/markers, keyboard navigation и focus restoration | Проверить весь большой corpus, локализацию и parity ranking |
 | Preview | Composition preview/proxies/filmstrip | Сверить zoom/pan, follow playhead, on-canvas gizmo, live edits during playback, accurate clock/colour |
@@ -2608,3 +2608,11 @@ Separated export admission from monitoring state. After a 202 response the panel
 Validation: 118 UI/API tests passed (source panel 41, export controls 19, API 58). New cases queue a changed range while the first status request is unresolved, reject a stale completion after accepting another job, preserve the admission lock against an older finally block and retain progress/cancellation after queue-admission refusal. A real native HTTP integration queues two private-source requests while all Export slots are held, releases admission and verifies two distinct owned artifacts. Each decoded raster equals an independently bound still at its requested source clock; the outputs have different pixels and IDs. This proves independent queued requests/results, not a measured parallel-render throughput claim. Typecheck reports zero errors/warnings; changed controls/tests pass ESLint. Logs: `backend/target/filmcraft-export-multiqueue-{native,ui,typecheck,eslint}.log`.
 
 Queue priority/reordering, richer batch/export settings and full original-app parity remain open. No browser visual qualification or tracked media fixture was added.
+
+### Описания сцен через модель
+
+В медиатеке команда «Сцены» → «Описать сцену» отправляет настроенной модели до восьми кадров выбранного интервала. Доступны русский и английский язык, описание содержания и анализ камеры и плана. Результат содержит текст и теги. Повторный запрос того же интервала использует серверный кэш, привязанный к байтам видео, параметрам и модели.
+
+На сервере задайте `SCENE_DESCRIPTION_ENDPOINT` с полным URL совместимого с Chat Completions сервиса, например `http://127.0.0.1:1234/v1/chat/completions`, и `SCENE_DESCRIPTION_MODEL` с идентификатором модели. Для сервиса с авторизацией предусмотрен `SCENE_DESCRIPTION_TOKEN`. Для удалённого сервиса требуется HTTPS. Поддержка изображений в запросе обязательна. При удалённой конфигурации команда передаёт кадры этому сервису. Функция требует входа в приложение и доступа к исходнику.
+
+Остаются открыты запуск и установка управляемой локальной модели, описания для клипа на таймлайне и вызов через MCP.

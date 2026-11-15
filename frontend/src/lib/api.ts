@@ -1063,6 +1063,28 @@ export async function scanLibraryShots(id: string, token?: string | null, spaceI
 export async function measureLibraryShots(id: string, spans: readonly import('./analysis/shots.js').ShotSpan[], token?: string | null, spaceId?: string | null, expectedSourceHash?: string, signal?: AbortSignal): Promise<import('./analysis/shots.js').ShotMeasurement[]> {
   return requestJson(`/api/library/${encodeURIComponent(id)}/shots/measure`, { method: 'POST', headers: libraryAccessHeaders(token, spaceId, true), body: JSON.stringify({ spans, expectedSourceHash }), signal })
 }
+export interface SceneDescription {
+  text: string
+  tags: string[]
+}
+
+export async function describeLibraryShot(
+  id: string,
+  body: {
+    span: import('./analysis/shots.js').ShotSpan
+    expectedSourceHash: string
+    focus: 'general' | 'shot-type'
+    language: 'ru' | 'en'
+  },
+  token: string,
+  spaceId?: string | null,
+  signal?: AbortSignal,
+): Promise<SceneDescription> {
+  return requestJson(`/api/library/${encodeURIComponent(id)}/shots/describe`, {
+    method: 'POST', headers: libraryAccessHeaders(token, spaceId, true), body: JSON.stringify(body), signal,
+  })
+}
+
 export async function compareLibraryFrames(id: string, leftTick: number, rightTick: number, token?: string | null, spaceId?: string | null, signal?: AbortSignal): Promise<{ leftTick: number; rightTick: number; similarity: number; motion: number }> {
   return requestJson(`/api/library/${encodeURIComponent(id)}/compare-frames`, { method: 'POST', headers: libraryAccessHeaders(token, spaceId, true), body: JSON.stringify({ leftTick, rightTick }), signal })
 }

@@ -6,4 +6,5 @@ pub mod proxy;
 pub mod quality;
 pub mod thumbnail;
 
+pub mod scene_description;
 pub mod shots;

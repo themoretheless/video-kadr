@@ -892,6 +892,10 @@ pub fn build_router_with_mcp(
             post(handlers::library_shot_measure_handler),
         )
         .route(
+            "/library/:id/shots/describe",
+            post(handlers::library_shot_describe_handler),
+        )
+        .route(
             "/library/:id/compare-frames",
             post(handlers::library_compare_frames_handler),
         )

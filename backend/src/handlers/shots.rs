@@ -278,3 +278,88 @@ pub async fn library_analysis_frame_handler(
     )
         .into_response())
 }
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DescribeShotRequest {
+    span: Span,
+    expected_source_hash: String,
+    #[serde(default)]
+    focus: crate::analysis::scene_description::Focus,
+    #[serde(default)]
+    language: crate::analysis::scene_description::Language,
+}
+
+pub async fn library_shot_describe_handler(
+    State(state): State<AppState>,
+    AxPath(id): AxPath<String>,
+    headers: HeaderMap,
+    ApiJson(request): ApiJson<DescribeShotRequest>,
+) -> AppResult<Json<crate::analysis::scene_description::Description>> {
+    use crate::analysis::scene_description::{sample_ticks, Description};
+
+    super::publish::authenticated_actor(&state, &headers).await?;
+    let config = state
+        .scene_description
+        .as_ref()
+        .as_ref()
+        .ok_or_else(|| AppError::service_unavailable("Модель описания сцен не настроена"))?;
+    let _permit = state
+        .acquire_job_slot(ResourceClass::Analysis)
+        .await
+        .map_err(|_| AppError::service_unavailable("Анализ останавливается"))?;
+    let (path, probe) = source(&state, &id, &headers).await?;
+    let duration = (probe.duration * 1_000_000.0).round() as u64;
+    shots::validate_span(&request.span, duration)
+        .map_err(|error| AppError::bad_request(error.to_string()))?;
+    let (hash, directory) = cache_location(&state, &path).await?;
+    if request.expected_source_hash != hash {
+        return Err(AppError::bad_request(
+            "Источник изменился; повторите анализ сцен",
+        ));
+    }
+
+    let Span {
+        start_ticks,
+        end_ticks,
+    } = request.span;
+    let key = config.cache_key(start_ticks, end_ticks, request.focus, request.language);
+    let file = directory.join(format!("description-{key}.json"));
+    let lock = state.render_lock(&file.to_string_lossy()).await;
+    let _guard = lock.lock().await;
+    authorize_source_access(&state, &id, &headers).await?;
+    if let Some(result) = shots::read_cache::<Description>(&file).await {
+        if result.validate().is_ok() {
+            verify_source_hash(&path, &hash).await?;
+            return Ok(Json(result));
+        }
+    }
+
+    let (width, height) = shots::measurement_raster(probe.width, probe.height)
+        .map_err(|error| AppError::bad_request(error.to_string()))?;
+    let mut frames = Vec::new();
+    for tick in sample_ticks(start_ticks, end_ticks) {
+        let image = shots::extract_rgb(&state.process_runtime, &path, tick, width, height)
+            .await
+            .map_err(|error| AppError::bad_request(error.to_string()))?;
+        let mut png = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgb8(image)
+            .write_to(&mut png, image::ImageFormat::Png)
+            .map_err(|error| AppError::internal("encode scene sample", error))?;
+        frames.push((tick - start_ticks, png.into_inner()));
+    }
+    verify_source_hash(&path, &hash).await?;
+    authorize_source_access(&state, &id, &headers).await?;
+    let result = config
+        .describe(frames, request.focus, request.language)
+        .await
+        .map_err(|_| {
+            AppError::service_unavailable("Модель описания сцен не вернула корректный ответ")
+        })?;
+    verify_source_hash(&path, &hash).await?;
+    authorize_source_access(&state, &id, &headers).await?;
+    shots::write_cache(&file, &result)
+        .await
+        .map_err(|error| AppError::internal("write scene description", error))?;
+    Ok(Json(result))
+}

@@ -319,7 +319,7 @@ mod tests {
 mod shots;
 pub use shots::{
     library_analysis_frame_handler, library_compare_frames_handler, library_shot_measure_handler,
-    library_shot_scan_handler,
+    library_shot_describe_handler, library_shot_scan_handler,
 };
 
 mod motion_path;
