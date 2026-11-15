@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { listFilmcraftExportPresets, editFilmcraftExportPresets, type FilmcraftLibraryPreset, type FilmcraftPresetFile, type FilmcraftScaling } from '$lib/api'
+  import { exportMetadataFields, validExportMetadata } from '$lib/filmcraft/export-metadata'
+  import { listFilmcraftExportPresets, editFilmcraftExportPresets, type FilmcraftLibraryPreset, type FilmcraftPresetFile, type FilmcraftScaling, type FilmcraftExportMetadata } from '$lib/api'
   let { token, disabled = false, onapply }: { token: string | null; disabled?: boolean; onapply: (name: string, settings?: Record<string, unknown>) => void } = $props()
   let opened = $state(false)
   let entries = $state<FilmcraftLibraryPreset[]>([])
@@ -28,6 +29,7 @@
   let renderQuality = $state('preset')
   let intraProfile = $state('')
   let jpegQuality = $state('')
+  let metadata = $state<FilmcraftExportMetadata>({})
   const intraProfiles = [
     { format: 'prores', field: 'proresProfile', options: [['proxy', '422 Proxy'], ['lt', '422 LT'], ['standard', '422'], ['hq', '422 HQ']] },
     { format: 'dnxhr', field: 'dnxProfile', options: [['lb', 'LB'], ['sq', 'SQ'], ['hq', 'HQ']] },
@@ -69,6 +71,14 @@
   const profileGroup = $derived(intraProfiles.find(group => group.format === picked?.settings.format))
   const selectedIntraProfile = $derived(profileGroup?.options.some(([value]) => value === intraProfile) ? intraProfile : '')
   const mjpeg = $derived(picked?.settings.format === 'mjpeg')
+  const savedMetadata = $derived(picked?.settings.metadata as Record<string, unknown> | undefined)
+  function metadataValue(key: keyof FilmcraftExportMetadata): string {
+    const inherited = savedMetadata?.[key]
+    return metadata[key] ?? (typeof inherited === 'string' ? inherited : '')
+  }
+  const metadataValid = $derived(validExportMetadata(Object.fromEntries(
+    exportMetadataFields.map(({ key }) => [key, metadataValue(key)]),
+  )))
   const filtered = $derived(entries.filter(p => (!favorites || p.favorite) && [p.name, p.category, p.description].some(v => v.toLowerCase().includes(query.toLowerCase()))))
   $effect(() => { if (opened && !filtered.some(p => p.name === selected)) selected = filtered[0]?.name ?? '' })
   const positive = (value: string) => /^\d+$/.test(value) && Number.isSafeInteger(Number(value)) && Number(value) > 0
@@ -78,6 +88,7 @@
       && (!keyframes || (positive(keyframes) && Number(keyframes) <= 4294967295))
       && (!adaptiveBitrate || (Number.isFinite(Number(adaptiveBitrate)) && Number(adaptiveBitrate) > 0))
     ))
+    && (audioOnly || silent || metadataValid)
     && (audioOnly || aspect !== 'custom' || (
       positive(aspectNum) && positive(aspectDen)
       && Number(aspectNum) <= 2147483647 && Number(aspectDen) <= 2147483647
@@ -91,7 +102,7 @@
   $effect(() => {
     const owner = token
     ++generation; controller?.abort(); controller = null
-    opened = false; entries = []; selected = ''; busy = false; error = ''; query = ''; favorites = false; name = ''; width = ''; height = ''; bitrate = ''; bitrateMode = ''; maxBitrate = ''; adaptiveBitrate = ''; keyframes = ''; profile = ''; multiplexer = ''; matchSource = false; scale = '1'; rateMode = 'preset'; rateNum = '30000'; rateDen = '1001'; scaling = ''; aspect = 'preset'; aspectNum = '1'; aspectDen = '1'; renderQuality = 'preset'; intraProfile = ''; jpegQuality = ''; audio = 'preset'; audioCodec = ''; audioRate = ''; audioChannels = ''; audioBits = ''; audioBitrate = ''; captions = 'preset'; h264Level = 'preset'; sidecar = 'preset'
+    opened = false; entries = []; selected = ''; busy = false; error = ''; query = ''; favorites = false; name = ''; width = ''; height = ''; bitrate = ''; bitrateMode = ''; maxBitrate = ''; adaptiveBitrate = ''; keyframes = ''; profile = ''; multiplexer = ''; matchSource = false; scale = '1'; rateMode = 'preset'; rateNum = '30000'; rateDen = '1001'; scaling = ''; aspect = 'preset'; aspectNum = '1'; aspectDen = '1'; renderQuality = 'preset'; intraProfile = ''; jpegQuality = ''; metadata = {}; audio = 'preset'; audioCodec = ''; audioRate = ''; audioChannels = ''; audioBits = ''; audioBitrate = ''; captions = 'preset'; h264Level = 'preset'; sidecar = 'preset'
     return () => { void owner; ++generation; controller?.abort() }
   })
   async function run(action: (owner: string, signal: AbortSignal) => Promise<void>) {
@@ -127,6 +138,7 @@
       if (mjpeg && jpegQuality) settings.quality = Number(jpegQuality)
     }
     if (!audioOnly && !silent && audio !== 'preset') settings.includeAudio = audio === 'include'
+    if (!audioOnly && !silent && Object.keys(metadata).length) settings.metadata = { ...metadata }
     if (canEditAudio) {
       const audioPatch: Record<string, unknown> = {}
       if (audioCodec && !forcedPcm && !forcedAac) audioPatch.codec = audioCodec
@@ -317,6 +329,28 @@
           {#each levels as level (level)}<option value={String(level)}>{(level / 10).toFixed(1)}</option>{/each}
         </select></label>
         <p>Если выбранный уровень слишком низкий для видео, энкодер повысит его автоматически.</p>
+      {/if}
+      {#if !audioOnly && !silent}
+        <details>
+          <summary>Метаданные пресета</summary>
+          {#each exportMetadataFields as field (field.key)}
+            <label>{field.label}
+              {#if field.multiline}
+                <textarea aria-label={`${field.label} в пресете Filmcraft`} rows="2" maxlength="16384"
+                  value={metadataValue(field.key)} oninput={event => { metadata[field.key] = event.currentTarget.value }}
+                  disabled={busy || disabled}></textarea>
+              {:else}
+                <input aria-label={`${field.label} в пресете Filmcraft`} type="text" maxlength="16384"
+                  value={metadataValue(field.key)} oninput={event => { metadata[field.key] = event.currentTarget.value }}
+                  disabled={busy || disabled} />
+              {/if}
+            </label>
+          {/each}
+          {#if Object.keys(metadata).length}
+            <button type="button" onclick={() => { metadata = {} }} disabled={busy || disabled}>Восстановить метаданные пресета</button>
+          {/if}
+          {#if !metadataValid}<p role="alert">Сократите текст метаданных файла.</p>{/if}
+        </details>
       {/if}
       <button type="button" disabled={busy || disabled || !valid || !Object.keys(draftSettings()).length}
         onclick={() => onapply(selected, draftSettings())}>Применить правки к экспорту</button>

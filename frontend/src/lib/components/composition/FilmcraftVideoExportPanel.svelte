@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { exportMetadataFields as metadataFields, validExportMetadata } from '$lib/filmcraft/export-metadata'
   import { filmcraftDownloadName } from '$lib/filmcraft/export-filename'
   import { exactExportRange as rangeFromSeconds } from '$lib/filmcraft/export-range'
   import { captionExtensions, captionSidecarBlob, readCaptionSidecar } from '$lib/filmcraft/export-captions'
@@ -127,9 +128,7 @@
   let pixelDenominator = $state('1')
   let maxRenderQuality = $state(false)
   let metadata = $state<Required<FilmcraftExportMetadata>>({ title: '', creator: '', copyright: '', description: '', comment: '' })
-  const metadataFields: Array<{ key: keyof FilmcraftExportMetadata; label: string; multiline?: boolean }> = [{ key: 'title', label: 'Название' }, { key: 'creator', label: 'Автор' }, { key: 'copyright', label: 'Авторские права' }, { key: 'description', label: 'Описание', multiline: true }, { key: 'comment', label: 'Комментарий', multiline: true }]
-  const metadataSizes = $derived(Object.values(metadata).map(value => new TextEncoder().encode(value).length))
-  const metadataValid = $derived(metadataSizes.every(size => size <= 16384) && metadataSizes.reduce((sum, size) => sum + size, 0) <= 65536 && Object.values(metadata).every(value => !value.includes('\0')))
+  const metadataValid = $derived(validExportMetadata(metadata))
   const hasMetadata = $derived(Object.values(metadata).some(value => value.trim().length > 0))
   let limiterEnabled = $state(false)
   let limiterMin = $state<number | undefined>(0)

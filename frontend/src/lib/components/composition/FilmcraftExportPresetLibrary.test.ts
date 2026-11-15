@@ -192,3 +192,24 @@ it('applies ProRes profile, pixel aspect and render quality as one draft', async
   button('Применить правки к экспорту').click()
   expect(apply).toHaveBeenCalledWith(preset.name, { proresProfile: 'lt', pixelAspect: [4, 3], maxRenderQuality: true })
 })
+
+it('inherits untouched metadata and allows clearing a saved value for one export', async () => {
+  const preset = { ...builtin, settings: { format: 'h264', metadata: { title: 'Original', creator: 'Editor', comment: 'Old' } } }
+  vi.mocked(listFilmcraftExportPresets).mockResolvedValue({ presets: [preset], default: preset.name })
+  const apply = vi.fn()
+  component = mount(Library, { target: document.body, props: { token: 'alice', onapply: apply } })
+  await tick()
+  button('Библиотека пресетов').click()
+  await vi.waitFor(() => expect(button('Применить пресет')).toBeDefined())
+  const creator = document.querySelector<HTMLInputElement>('[aria-label="Автор в пресете Filmcraft"]')!
+  expect(creator.value).toBe('Editor')
+  await input('Название в пресете Filmcraft', 'Новый монтаж')
+  await input('Комментарий в пресете Filmcraft', '')
+  button('Применить правки к экспорту').click()
+  expect(apply).toHaveBeenCalledWith(preset.name, { metadata: { title: 'Новый монтаж', comment: '' } })
+  expect(editFilmcraftExportPresets).not.toHaveBeenCalled()
+  button('Восстановить метаданные пресета').click()
+  await tick()
+  expect(document.querySelector<HTMLInputElement>('[aria-label="Название в пресете Filmcraft"]')?.value).toBe('Original')
+  expect(button('Применить правки к экспорту').disabled).toBe(true)
+})
