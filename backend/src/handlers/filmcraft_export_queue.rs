@@ -157,7 +157,11 @@ async fn view(state: &AppState, session: &mut Session) -> Value {
         } else {
             None
         };
-        items.push(json!({"id":item.id.to_string(),"sequenceId":item.payload.prepared.request.sequence_id,"sequenceName":item.payload.sequence_name,"preset":item.payload.preset_name,"container":item.payload.prepared.request.extension(),"status":item.status,"jobId":item.job,"error":item.error,"progress":progress.unwrap_or(if item.status == Status::Done { 1.0 } else { 0.0 }),"statusText":job.as_ref().and_then(|job|job.stage.as_ref()),"etaSeconds":eta.map(|eta|eta.as_secs_f64()),"etaText":eta.map(format_eta),"sourceRange":item.payload.prepared.request.source_range}));
+        let caption_sidecar_extension = job.as_ref().filter(|job| item.status == Status::Done && job.status == JobStatus::Done)
+            .and_then(|job| job.result.as_ref())
+            .and_then(|result| result.pointer("/captionSidecar/extension"))
+            .and_then(Value::as_str);
+        items.push(json!({"id":item.id.to_string(),"sequenceId":item.payload.prepared.request.sequence_id,"sequenceName":item.payload.sequence_name,"preset":item.payload.preset_name,"container":item.payload.prepared.request.extension(),"status":item.status,"jobId":item.job,"error":item.error,"progress":progress.unwrap_or(if item.status == Status::Done { 1.0 } else { 0.0 }),"statusText":job.as_ref().and_then(|job|job.stage.as_ref()),"etaSeconds":eta.map(|eta|eta.as_secs_f64()),"etaText":eta.map(format_eta),"sourceRange":item.payload.prepared.request.source_range,"captionSidecarExtension":caption_sidecar_extension}));
     }
     json!({"running":session.queue.running(),"items":items})
 }

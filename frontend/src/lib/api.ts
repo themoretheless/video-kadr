@@ -2465,7 +2465,7 @@ export interface FilmcraftExportQueueItem {
   id: string; sequenceId: string; sequenceName: string; preset: string; container: string
   status: 'ready' | 'encoding' | 'done' | 'failed' | 'cancelled'
   jobId: string | null; error: string | null; progress: number | null
-  statusText: string | null; etaSeconds: number | null; etaText?: string | null; sourceRange: FilmcraftSourceRange | null
+  statusText: string | null; etaSeconds: number | null; etaText?: string | null; sourceRange: FilmcraftSourceRange | null; captionSidecarExtension?: string | null
 }
 export interface FilmcraftExportQueue { running: boolean; items: FilmcraftExportQueueItem[] }
 export type FilmcraftExportQueueCommand =

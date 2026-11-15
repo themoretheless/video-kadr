@@ -50,15 +50,15 @@ it('does not let an older poll erase a newly accepted queue item', async () => {
 
 
 it('downloads a completed queue output and immediately starts a retry', async () => {
-  const done: Queue = { running: false, items: [{ ...initial.items[0]!, status: 'done', progress: 1 }] }
+  const done: Queue = { running: false, items: [{ ...initial.items[0]!, status: 'done', progress: 1, captionSidecarExtension: 'srt' }] }
   const output = '12345678-1234-1234-1234-123456789abc'
   vi.mocked(listFilmcraftExportQueue).mockResolvedValue(done)
   vi.mocked(editFilmcraftExportQueue).mockResolvedValue(done)
-  vi.mocked(getFilmcraftVideoJob).mockResolvedValue({ id: 'worker', status: 'done', result: { id: output } })
+  vi.mocked(getFilmcraftVideoJob).mockResolvedValue({ id: 'worker', status: 'done', result: { id: output, captionSidecar: { extension: 'srt', bytesBase64: btoa('Review caption') } } })
   vi.mocked(downloadFilmcraftVideo).mockResolvedValue(new Blob(['wav']))
   const url = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:queued')
   const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
-    expect(this.download).toBe(`${output}.wav`)
+    expect(this.download).toMatch(new RegExp(`^${output}\\.(wav|srt)$`))
   })
   const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
   try {
@@ -69,6 +69,10 @@ it('downloads a completed queue output and immediately starts a retry', async ()
     await vi.waitFor(() => expect(click).toHaveBeenCalled())
     expect(getFilmcraftVideoJob).toHaveBeenCalledWith('owner', 'worker', expect.any(AbortSignal))
     expect(downloadFilmcraftVideo).toHaveBeenCalledWith('owner', output, expect.any(AbortSignal), 'wav')
+    button('Скачать субтитры SRT')!.click()
+    await vi.waitFor(() => expect(url).toHaveBeenCalledTimes(2))
+    expect(await (url.mock.calls[1]![0] as Blob).text()).toBe('Review caption')
+    expect(downloadFilmcraftVideo).toHaveBeenCalledTimes(1)
     button('Повторить')!.click()
     await vi.waitFor(() => expect(editFilmcraftExportQueue).toHaveBeenCalledWith('owner', { action: 'retry', id: '9', start: true }, expect.any(AbortSignal)))
     await unmount(component); component = undefined

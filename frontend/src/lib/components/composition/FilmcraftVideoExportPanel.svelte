@@ -1,5 +1,6 @@
 <script lang="ts">
   import { exactExportRange as rangeFromSeconds } from '$lib/filmcraft/export-range'
+  import { captionExtensions, captionSidecarBlob, readCaptionSidecar } from '$lib/filmcraft/export-captions'
   import FilmcraftExportQueue from './FilmcraftExportQueue.svelte'
   import FilmcraftExportPresetLibrary from './FilmcraftExportPresetLibrary.svelte'
   import { startFilmcraftQuickExportJob, startFilmcraftVideoJob, getFilmcraftVideoJob, cancelFilmcraftVideoJob, retryFilmcraftVideoJob, downloadFilmcraftVideo, listFilmcraftVideoJobs, type FilmcraftVideoRequest, type FilmcraftVideoHistoryEntry, type FilmcraftExportPreset, type FilmcraftScaling, type FilmcraftExportMetadata, type FilmcraftTextOverlay, type FilmcraftOverlayPlacement, type FilmcraftImageOverlay, type FilmcraftBitrateSettings } from '$lib/api'
@@ -9,6 +10,8 @@
   let mjpegQuality = $state('90')
   let libraryPreset = $state('')
   let quickPresetName = $state('')
+  let burnCaptions = $state(true)
+  let captionFormat = $state('')
   let exportRange = $state<'frames' | 'inOut' | 'entire' | 'workArea' | 'custom'>('frames')
   let exportStart = $state('0')
   let exportEnd = $state('')
@@ -131,14 +134,7 @@
   const valid = $derived(exportRangeValid && (!!libraryPreset || manualValid))
   const progress = $derived(Number.isFinite(job?.progress) ? Math.max(0, Math.min(100, job?.progress ?? 0)) : 0)
   const outputId = $derived(job?.status === 'done' && job.result && typeof job.result === 'object' && 'id' in job.result && typeof job.result.id === 'string' ? job.result.id : '')
-  const captionSidecar = $derived.by(() => {
-    const result = job?.status === 'done' ? job.result : null
-    if (!result || typeof result !== 'object' || !('captionSidecar' in result)) return null
-    const sidecar = result.captionSidecar
-    if (!sidecar || typeof sidecar !== 'object' || !('extension' in sidecar) || !('bytesBase64' in sidecar)) return null
-    if (typeof sidecar.extension !== 'string' || !['srt', 'vtt', 'scc', 'mcc', 'stl', 'ttml', 'dfxp'].includes(sidecar.extension) || typeof sidecar.bytesBase64 !== 'string') return null
-    return { extension: sidecar.extension, bytesBase64: sidecar.bytesBase64 }
-  })
+  const captionSidecar = $derived(readCaptionSidecar(job?.status === 'done' ? job.result : null))
   const outputFormat = $derived.by(() => {
     const result = job?.result
     return result && typeof result === 'object' && 'container' in result && (result.container === 'mp4' || result.container === 'mov' || result.container === 'mxf' || result.container === 'zip' || result.container === 'gif' || result.container === 'wav' || result.container === 'aiff') ? result.container : 'mkv'
@@ -227,7 +223,7 @@
     const bounds = exportRange === 'frames' ? { startFrames, frames: Number(frames) }
       : exportRange === 'custom' ? { sourceRange: exactExportRange }
       : { range: exportRange }
-    return libraryPreset ? { document, sequenceId, ...bounds, sources: Object.fromEntries(Object.entries(sources).filter(([, id]) => id)), libraryPreset } : { document, sequenceId, ...bounds, sources: Object.fromEntries(Object.entries(sources).filter(([, id]) => id)), ...(withAudio ? { withAudio: true } : {}), ...(h264Movie && multiplexer === 'mov' ? { multiplexer } : {}), ...(audioOnly && (movieAudioRate !== 48000 || movieAudioChannels !== 2 || pcmAudioBits !== null) ? { audio: { channels: movieAudioChannels, bits: effectivePcmBits, sampleRate: movieAudioRate } } : {}), ...(withAudio && h264Movie && (movieAudioCodec !== 'auto' || movieAudioBits !== 16 || movieAudioKbps !== '320' || movieAudioRate !== 48000 || movieAudioChannels !== 2) ? { h264Audio: { codec: movieAudioCodec, bits: movieAudioBits, bitrateKbps: moviePcm ? 320 : Number(movieAudioKbps), ...(movieAudioChannels !== 2 ? { channels: movieAudioChannels } : {}), sampleRate: movieAudioRate } } : {}), ...(withAudio && nativeAudio ? { audio: { codec: mxfAudio ? 'pcm' : movieAudioCodec, bits: movieAudioBits, channels: movieAudioChannels, sampleRate: movieAudioRate, bitrateKbps: moviePcm ? 320 : Number(movieAudioKbps) } } : {}), ...(h26x && customBitrate ? { bitrate: { mode: bitrateMode, targetKbps: adaptiveBitrate ? 10000 : Number(bitrateTarget), ...(adaptiveBitrate ? { adaptiveBpp: Number(adaptiveBpp) } : {}), ...(bitrateMode !== 'cbr' && customMaxBitrate ? { maxKbps: Number(bitrateMax) } : {}) } } : {}), ...(h264 && h264Profile !== 'high' ? { h264Profile } : {}), ...(h26x && customKeyframeDistance ? { keyframeDistance: Number(keyframeDistance) } : {}), ...(!audioOnly && customFrameRate ? { frameRate: { numerator: Number(rateNumerator), denominator: Number(rateDenominator) } } : {}), ...(!audioOnly && imageOverlay.enabled ? { imageOverlay: { ...imageOverlay, offset: [...imageOverlay.offset] as [number, number] } } : {}), ...(!audioOnly && overlays.nameOverlay.enabled ? { nameOverlay: { ...overlays.nameOverlay, offset: [...overlays.nameOverlay.offset] as [number, number] } } : {}), ...(!audioOnly && overlays.timecodeOverlay.enabled ? { timecodeOverlay: { ...overlays.timecodeOverlay, offset: [...overlays.timecodeOverlay.offset] as [number, number] } } : {}), ...(withAudio && !silentVisual && loudnessEnabled ? { loudness: { enabled: true, targetLufs: Number(loudnessTarget), truePeakDbtp: Number(loudnessPeak) } } : {}), ...(preset === 'mjpeg' ? { mjpegQuality: Number(mjpegQuality) } : {}), ...(preset !== 'lossless' ? { preset } : {}), ...(!audioOnly && customSize ? { frameSize: [Number(outputWidth), Number(outputHeight)] as [number, number] } : {}), ...(!audioOnly && (fixedPreset || scaling !== 'scaleToFit') ? { scaling } : {}), ...(!audioOnly && customPixelAspect ? { pixelAspect: [Number(pixelNumerator), Number(pixelDenominator)] as [number, number] } : {}), ...(!audioOnly && maxRenderQuality ? { maxRenderQuality: true } : {}), ...(!audioOnly && hasMetadata ? { metadata: { ...metadata } } : {}), ...(!audioOnly && limiterEnabled ? { videoLimiter: { enabled: true, minPercent: Number(limiterMin), maxPercent: Number(limiterMax) } } : {}) }
+    return libraryPreset ? { document, sequenceId, ...bounds, sources: Object.fromEntries(Object.entries(sources).filter(([, id]) => id)), libraryPreset } : { document, sequenceId, ...bounds, sources: Object.fromEntries(Object.entries(sources).filter(([, id]) => id)), ...(!audioOnly && !burnCaptions ? { burnCaptions: false } : {}), ...(captionFormat ? { captionSidecar: captionFormat } : {}), ...(withAudio ? { withAudio: true } : {}), ...(h264Movie && multiplexer === 'mov' ? { multiplexer } : {}), ...(audioOnly && (movieAudioRate !== 48000 || movieAudioChannels !== 2 || pcmAudioBits !== null) ? { audio: { channels: movieAudioChannels, bits: effectivePcmBits, sampleRate: movieAudioRate } } : {}), ...(withAudio && h264Movie && (movieAudioCodec !== 'auto' || movieAudioBits !== 16 || movieAudioKbps !== '320' || movieAudioRate !== 48000 || movieAudioChannels !== 2) ? { h264Audio: { codec: movieAudioCodec, bits: movieAudioBits, bitrateKbps: moviePcm ? 320 : Number(movieAudioKbps), ...(movieAudioChannels !== 2 ? { channels: movieAudioChannels } : {}), sampleRate: movieAudioRate } } : {}), ...(withAudio && nativeAudio ? { audio: { codec: mxfAudio ? 'pcm' : movieAudioCodec, bits: movieAudioBits, channels: movieAudioChannels, sampleRate: movieAudioRate, bitrateKbps: moviePcm ? 320 : Number(movieAudioKbps) } } : {}), ...(h26x && customBitrate ? { bitrate: { mode: bitrateMode, targetKbps: adaptiveBitrate ? 10000 : Number(bitrateTarget), ...(adaptiveBitrate ? { adaptiveBpp: Number(adaptiveBpp) } : {}), ...(bitrateMode !== 'cbr' && customMaxBitrate ? { maxKbps: Number(bitrateMax) } : {}) } } : {}), ...(h264 && h264Profile !== 'high' ? { h264Profile } : {}), ...(h26x && customKeyframeDistance ? { keyframeDistance: Number(keyframeDistance) } : {}), ...(!audioOnly && customFrameRate ? { frameRate: { numerator: Number(rateNumerator), denominator: Number(rateDenominator) } } : {}), ...(!audioOnly && imageOverlay.enabled ? { imageOverlay: { ...imageOverlay, offset: [...imageOverlay.offset] as [number, number] } } : {}), ...(!audioOnly && overlays.nameOverlay.enabled ? { nameOverlay: { ...overlays.nameOverlay, offset: [...overlays.nameOverlay.offset] as [number, number] } } : {}), ...(!audioOnly && overlays.timecodeOverlay.enabled ? { timecodeOverlay: { ...overlays.timecodeOverlay, offset: [...overlays.timecodeOverlay.offset] as [number, number] } } : {}), ...(withAudio && !silentVisual && loudnessEnabled ? { loudness: { enabled: true, targetLufs: Number(loudnessTarget), truePeakDbtp: Number(loudnessPeak) } } : {}), ...(preset === 'mjpeg' ? { mjpegQuality: Number(mjpegQuality) } : {}), ...(preset !== 'lossless' ? { preset } : {}), ...(!audioOnly && customSize ? { frameSize: [Number(outputWidth), Number(outputHeight)] as [number, number] } : {}), ...(!audioOnly && (fixedPreset || scaling !== 'scaleToFit') ? { scaling } : {}), ...(!audioOnly && customPixelAspect ? { pixelAspect: [Number(pixelNumerator), Number(pixelDenominator)] as [number, number] } : {}), ...(!audioOnly && maxRenderQuality ? { maxRenderQuality: true } : {}), ...(!audioOnly && hasMetadata ? { metadata: { ...metadata } } : {}), ...(!audioOnly && limiterEnabled ? { videoLimiter: { enabled: true, minPercent: Number(limiterMin), maxPercent: Number(limiterMax) } } : {}) }
   }
   async function start() {
     const session = active
@@ -286,10 +282,7 @@
   function downloadCaptions() {
     if (!outputId || !captionSidecar) return
     try {
-      const binary = atob(captionSidecar.bytesBase64)
-      const bytes = Uint8Array.from(binary, character => character.charCodeAt(0))
-      const type = captionSidecar.extension === 'stl' ? 'application/octet-stream' : ['ttml', 'dfxp'].includes(captionSidecar.extension) ? 'application/ttml+xml' : captionSidecar.extension === 'vtt' ? 'text/vtt' : 'text/plain'
-      const url = URL.createObjectURL(new Blob([bytes], { type }))
+      const url = URL.createObjectURL(captionSidecarBlob(captionSidecar))
       const anchor = window.document.createElement('a'); anchor.href = url; anchor.download = `${outputId}.${captionSidecar.extension}`
       window.document.body.append(anchor); anchor.click(); anchor.remove()
       saved.push({ url, timer: setTimeout(() => { URL.revokeObjectURL(url); saved = saved.filter(item => item.url !== url) }, 1000) })
@@ -520,6 +513,20 @@
   {:else}
     <p>Сохранённый пресет: {libraryPreset}</p>
     <button type="button" disabled={submitting || retrying || disabled} onclick={() => libraryPreset = ''}>Настроить экспорт вручную</button>
+  {/if}
+  {#if !libraryPreset}
+    {#if !audioOnly}
+      <label><input type="checkbox" bind:checked={burnCaptions} disabled={submitting || retrying || disabled} />Впечатывать субтитры в видео</label>
+    {/if}
+    <label>Отдельный файл субтитров
+      <select aria-label="Отдельный файл субтитров Filmcraft" value={captionFormat} disabled={submitting || retrying || disabled}
+        onchange={event => { captionFormat = event.currentTarget.value }}>
+        <option value="">Без файла</option>
+        {#each captionExtensions as extension (extension)}
+          <option value={extension}>{extension.toUpperCase()}</option>
+        {/each}
+      </select>
+    </label>
   {/if}
   <label>Диапазон экспорта
     <select aria-label="Диапазон обычного экспорта Filmcraft" value={exportRange} disabled={submitting || retrying || disabled}

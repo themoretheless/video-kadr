@@ -1,6 +1,7 @@
 <script lang="ts">
   import { downloadFilmcraftVideo, getFilmcraftVideoJob, listFilmcraftExportQueue, editFilmcraftExportQueue, type FilmcraftExportQueue, type FilmcraftExportQueueCommand, type FilmcraftExportQueueItem, type FilmcraftVideoRequest } from '$lib/api'
   import { exactExportRange } from '$lib/filmcraft/export-range'
+  import { captionSidecarBlob, readCaptionSidecar } from '$lib/filmcraft/export-captions'
   import { SvelteMap } from 'svelte/reactivity'
   let { token, disabled = false, batchDisabled = false, input, sequences = [], activeSequence }: {
     token: string | null; disabled?: boolean; batchDisabled?: boolean; input: () => FilmcraftVideoRequest
@@ -72,12 +73,12 @@
     void command({ action: 'add', input: input(), sequences: picked.map(sequence => sequence.id),
       ...(bounds.length ? { ranges: bounds } : {}) })
   }
-  async function download(item: FilmcraftExportQueueItem) {
+  async function download(item: FilmcraftExportQueueItem, captions = false) {
     const current = controller
     const actor = token
     const format = outputFormats.find(format => format === item.container)
     if (!current || !actor || downloading || item.status !== 'done' || !item.jobId || !format) return
-    downloading = item.id
+    downloading = captions ? `${item.id}:captions` : item.id
     downloadError = ''
     try {
       const job = await getFilmcraftVideoJob(actor, item.jobId, current.signal)
@@ -86,13 +87,15 @@
       if (job.status !== 'done' || !result || typeof result !== 'object' || !('id' in result) || typeof result.id !== 'string') {
         throw new Error('Готовый файл экспорта недоступен')
       }
-      const blob = await downloadFilmcraftVideo(actor, result.id, current.signal, format)
+      const sidecar = captions ? readCaptionSidecar(result) : null
+      if (captions && !sidecar) throw new Error('Файл субтитров недоступен')
+      const blob = sidecar ? captionSidecarBlob(sidecar) : await downloadFilmcraftVideo(actor, result.id, current.signal, format)
       if (current.signal.aborted) return
       const url = URL.createObjectURL(blob)
       outputUrls.set(url, setTimeout(() => { URL.revokeObjectURL(url); outputUrls.delete(url) }, 1000))
       const anchor = document.createElement('a')
       anchor.href = url
-      anchor.download = `${result.id}.${format}`
+      anchor.download = `${result.id}.${sidecar?.extension ?? format}`
       document.body.append(anchor)
       try { anchor.click() } finally { anchor.remove() }
     } catch (failure) {
@@ -172,6 +175,11 @@
         <button type="button" disabled={!!downloading} onclick={() => download(item)}>
           {downloading === item.id ? 'Скачивание…' : `Скачать ${item.container.toUpperCase()}`}
         </button>
+        {#if item.captionSidecarExtension}
+          <button type="button" disabled={!!downloading} onclick={() => download(item, true)}>
+            {downloading === `${item.id}:captions` ? 'Скачивание…' : `Скачать субтитры ${item.captionSidecarExtension.toUpperCase()}`}
+          </button>
+        {/if}
       {/if}
       <button type="button" disabled={busy || item.status === 'encoding'} onclick={() => command({ action: 'remove', id: item.id })}>Убрать</button>
     </article>
