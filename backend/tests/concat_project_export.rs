@@ -248,9 +248,35 @@ fn caption_lane_exports_editable_concat_titles_with_bottom_anchor() {
         assert!((actual - expected).abs() < 1e-10, "cubic opacity at {tick}: {actual} vs {expected}");
     }
 
+    let mut bounce = serde_json::to_value(&project).unwrap();
+    let root = bounce["root"].as_str().unwrap().to_owned();
+    let track = &mut bounce["compositions"][root]["content"]["tracks"][0]["clips"][0]["opacity"]["track"];
+    track["interpolation"] = json!("bounce_in_out");
+    track["keyframes"] = json!([
+        {"tick":0,"value":0.0,"interpolation":"bounce_in"},
+        {"tick":300001,"value":1.0,"interpolation":"bounce_out"},
+        {"tick":600000,"value":0.0},
+        {"tick":1111111,"value":1.0}
+    ]);
+    let native: video_kadr_backend::domain::keyframes::KeyframeTrack<f64> =
+        serde_json::from_value(track.clone()).unwrap();
+    let restored = convert(export(&serde_json::from_value(bounce).unwrap()).unwrap());
+    let animation = restored.compositions[&restored.root].content.tracks.iter().find_map(|track| match track {
+        video_kadr_backend::domain::composition::CompositionTrack::Text { clips, .. } =>
+            clips.iter().find(|clip| clip.id.as_str() == "words")
+                .and_then(|clip| clip.transform.concat_animation.as_ref()),
+        _ => None,
+    }).unwrap();
+    assert_eq!(animation.keys["opacity"].len(), 29);
+    for tick in (0..=1_111_111).step_by(251).chain([300000, 300001, 600000, 855555, 855556, 1111111]) {
+        let expected = native.sample_tick(tick);
+        let actual = animation.sample(tick as u64).unwrap().opacity;
+        assert!((actual - expected).abs() < 1e-10, "bounce opacity at {tick}: {actual} vs {expected}");
+    }
+
     let mut unsupported = serde_json::to_value(project).unwrap();
     let root = unsupported["root"].as_str().unwrap().to_owned();
-    unsupported["compositions"][root]["content"]["tracks"][0]["clips"][0]["opacity"]["track"]["interpolation"] = json!("bounce_in");
+    unsupported["compositions"][root]["content"]["tracks"][0]["clips"][0]["opacity"]["track"]["interpolation"] = json!("hold");
     let error = export(&serde_json::from_value(unsupported).unwrap()).unwrap_err();
     assert!(format!("{error:#}").contains("Caption opacity key requires a Concat mapping"));
 }

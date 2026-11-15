@@ -6,7 +6,7 @@ use super::{
     concat_clip_animation::{Pose, SourceAnimation},
     concat_effect_upgrade::ParamKey,
     concat_title::{self, TitleStyle},
-    keyframes::{Extrapolation, Interpolation},
+    keyframes::{bounce_out, Extrapolation, Interpolation},
 };
 
 fn color(value: Rgba) -> String {
@@ -98,6 +98,40 @@ pub(super) fn title(clip: &mut TextClip, width: u32, height: u32) -> Result<()> 
 const LINEAR: [f64; 4] = [0.0, 0.0, 1.0, 1.0];
 const CUBIC_IN: [f64; 4] = [1.0 / 3.0, 0.0, 2.0 / 3.0, 0.0];
 const CUBIC_OUT: [f64; 4] = [1.0 / 3.0, 1.0, 2.0 / 3.0, 1.0];
+const QUADRATIC_IN: [f64; 4] = [1.0 / 3.0, 0.0, 2.0 / 3.0, 1.0 / 3.0];
+const QUADRATIC_OUT: [f64; 4] = [1.0 / 3.0, 2.0 / 3.0, 2.0 / 3.0, 1.0];
+
+fn bounce_segments(interpolation: Interpolation, mut endpoint: impl FnMut(f64, f64, [f64; 4])) {
+    // Native bounce_out changes quadratic or reverses direction at these points.
+    const BREAKS: [f64; 8] = [0.0, 8.0, 12.0, 16.0, 18.0, 20.0, 21.0, 22.0];
+    let mut half = |offset, scale, reversed| {
+        for index in 1..BREAKS.len() {
+            let (time, value) = if reversed {
+                let t = BREAKS[BREAKS.len() - 1 - index] / 22.0;
+                (1.0 - t, 1.0 - bounce_out(t))
+            } else {
+                let t = BREAKS[index] / 22.0;
+                (t, bounce_out(t))
+            };
+            let ease = if (index % 2 == 1) ^ reversed {
+                QUADRATIC_IN
+            } else {
+                QUADRATIC_OUT
+            };
+            endpoint(offset + scale * time, offset + scale * value, ease);
+        }
+    };
+    match interpolation {
+        Interpolation::BounceIn => half(0.0, 1.0, true),
+        Interpolation::BounceOut => half(0.0, 1.0, false),
+        Interpolation::BounceInOut => {
+            half(0.0, 0.5, true);
+            half(0.5, 0.5, false);
+        }
+        _ => unreachable!("requires bounce interpolation"),
+    }
+}
+
 fn opacity_animation(clip: &mut TextClip, width: u32, height: u32) -> Result<()> {
     let AnimatableValue::Keyframes { track } = &clip.opacity else {
         return Ok(());
@@ -142,6 +176,24 @@ fn opacity_animation(clip: &mut TextClip, width: u32, height: u32) -> Result<()>
                     let value = (previous.value + key.value) / 2.0;
                     keys.push(key_at(tick, value, CUBIC_IN));
                     CUBIC_OUT
+                }
+                mode @ (Interpolation::BounceIn
+                | Interpolation::BounceOut
+                | Interpolation::BounceInOut) => {
+                    bounce_segments(mode, |progress, value, ease| {
+                        let tick = if progress == 1.0 {
+                            key.tick as f64
+                        } else {
+                            previous.tick as f64 + (key.tick - previous.tick) as f64 * progress
+                        };
+                        let opacity = if progress == 1.0 {
+                            key.value
+                        } else {
+                            previous.value + (key.value - previous.value) * value.clamp(0.0, 1.0)
+                        };
+                        keys.push(key_at(tick, opacity, ease));
+                    });
+                    continue;
                 }
                 _ => anyhow::bail!("Caption opacity key requires a Concat mapping"),
             }

@@ -1,4 +1,4 @@
-fn bounce_out(mut t: f64) -> f64 {
+pub(super) fn bounce_out(mut t: f64) -> f64 {
     if t < 1.0 / 2.75 {
         return 7.5625 * t * t;
     }
