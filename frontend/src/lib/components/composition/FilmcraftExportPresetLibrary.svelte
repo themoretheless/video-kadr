@@ -3,7 +3,7 @@
   import { exportOverlayPlacements } from '$lib/filmcraft/export-overlay'
   import { exportMetadataFields, validExportMetadata } from '$lib/filmcraft/export-metadata'
   import { listFilmcraftExportPresets, editFilmcraftExportPresets, type FilmcraftLibraryPreset, type FilmcraftPresetFile, type FilmcraftScaling, type FilmcraftExportMetadata, type FilmcraftOverlayPlacement } from '$lib/api'
-  let { token, imageSources = [], disabled = false, onapply }: { token: string | null; imageSources?: MediaEntry[]; disabled?: boolean; onapply: (name: string, settings?: Record<string, unknown>) => void } = $props()
+  let { token, imageSources = [], disabled = false, onapply, onlibrarychange }: { token: string | null; imageSources?: MediaEntry[]; disabled?: boolean; onapply: (name: string, settings?: Record<string, unknown>) => void; onlibrarychange?: (change: { saved?: string; deleted?: string }) => void } = $props()
   let opened = $state(false)
   let entries = $state<FilmcraftLibraryPreset[]>([])
   let selected = $state('')
@@ -321,6 +321,7 @@
         ...(overwrite ? { category: preset.category, description: preset.description } : {}),
       }, signal)
       if (signal.aborted) return
+      onlibrarychange?.({ saved: overwrite ? result.name : undefined })
       await refresh(owner, signal)
       if (!signal.aborted) {
         query = ''
@@ -330,14 +331,34 @@
       }
     })
   }
-  function favorite() { if (picked) void run(async (owner, signal) => { await editFilmcraftExportPresets(owner, { action: 'favorite', name: selected }, signal); await refresh(owner, signal) }) }
-  function remove() { if (picked && !picked.builtin) void run(async (owner, signal) => { await editFilmcraftExportPresets(owner, { action: 'delete', name: selected }, signal); await refresh(owner, signal) }) }
+  function favorite() {
+    if (!picked) return
+    const name = picked.name
+    void run(async (owner, signal) => {
+      await editFilmcraftExportPresets(owner, { action: 'favorite', name }, signal)
+      if (signal.aborted) return
+      onlibrarychange?.({})
+      await refresh(owner, signal)
+    })
+  }
+  function remove() {
+    if (!picked || picked.builtin) return
+    const name = picked.name
+    void run(async (owner, signal) => {
+      await editFilmcraftExportPresets(owner, { action: 'delete', name }, signal)
+      if (signal.aborted) return
+      onlibrarychange?.({ deleted: name })
+      await refresh(owner, signal)
+    })
+  }
   function importFile(file: File | undefined) {
     if (!file) return
     void run(async (owner, signal) => {
       if (file.size > 1024 * 1024) throw new Error('Файл пресетов должен быть не больше 1 МБ')
       const contents = await file.text(); if (signal.aborted) return
       await editFilmcraftExportPresets(owner, { action: 'import', file: JSON.parse(contents) as FilmcraftPresetFile }, signal)
+      if (signal.aborted) return
+      onlibrarychange?.({})
       await refresh(owner, signal)
     })
   }

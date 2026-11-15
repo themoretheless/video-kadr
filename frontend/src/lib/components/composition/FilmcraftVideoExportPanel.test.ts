@@ -1,7 +1,7 @@
 // @ts-expect-error Tests require the Svelte client entry under Vitest SSR resolution.
 import { mount, tick, unmount } from '../../../../node_modules/svelte/src/index-client.js'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { previewFilmcraftExport, summarizeFilmcraftExport, estimateFilmcraftQuickExport, listFilmcraftExportQueue, startFilmcraftQuickExportJob, startFilmcraftVideoJob, getFilmcraftVideoJob, cancelFilmcraftVideoJob, retryFilmcraftVideoJob, downloadFilmcraftVideo, listFilmcraftVideoJobs, listFilmcraftExportPresets } from '$lib/api'
+import { previewFilmcraftExport, summarizeFilmcraftExport, estimateFilmcraftQuickExport, listFilmcraftExportQueue, startFilmcraftQuickExportJob, startFilmcraftVideoJob, getFilmcraftVideoJob, cancelFilmcraftVideoJob, retryFilmcraftVideoJob, downloadFilmcraftVideo, listFilmcraftVideoJobs, listFilmcraftExportPresets, editFilmcraftExportPresets } from '$lib/api'
 import FilmcraftVideoExportPanel from './FilmcraftVideoExportPanel.svelte'
 vi.mock('$lib/api', () => ({ previewFilmcraftExport: vi.fn(), summarizeFilmcraftExport: vi.fn(), estimateFilmcraftQuickExport: vi.fn(), startFilmcraftQuickExportJob: vi.fn(), startFilmcraftVideoJob: vi.fn(), getFilmcraftVideoJob: vi.fn(), cancelFilmcraftVideoJob: vi.fn(), retryFilmcraftVideoJob: vi.fn(), downloadFilmcraftVideo: vi.fn(), listFilmcraftExportQueue: vi.fn().mockResolvedValue({ running: false, items: [] }), editFilmcraftExportQueue: vi.fn(), listFilmcraftVideoJobs: vi.fn(), listFilmcraftExportPresets: vi.fn(), editFilmcraftExportPresets: vi.fn() }))
 let component: ReturnType<typeof mount> | undefined
@@ -965,6 +965,19 @@ it('submits a saved preset by name without stale manual export overrides', async
   await vi.waitFor(() => expect(startFilmcraftVideoJob).toHaveBeenLastCalledWith('owner',
     expect.objectContaining({ libraryPreset: 'Review 720p', libraryPresetSettings: { bitrateKbps: 8000, adaptiveBitrate: null, frameRate: { num: 30000, den: 1001 }, scaling: 'scaleToFill', includeAudio: false } }),
     expect.any(AbortSignal)))
+  vi.mocked(editFilmcraftExportPresets).mockResolvedValue({ name: 'Review 720p' })
+  await vi.waitFor(() => expect(button('Сохранить изменения пресета').disabled).toBe(false))
+  button('Сохранить изменения пресета').click()
+  await vi.waitFor(() => {
+    expect(draft.value).toBe('')
+    expect(button('Экспортировать с сохранённым пресетом').disabled).toBe(false)
+  })
+  button('Экспортировать с сохранённым пресетом').click()
+  await vi.waitFor(() => expect(startFilmcraftVideoJob).toHaveBeenCalledTimes(3))
+  expect(vi.mocked(startFilmcraftVideoJob).mock.lastCall?.[1]).not.toHaveProperty('libraryPresetSettings')
+  await vi.waitFor(() => expect(button('Удалить пресет').disabled).toBe(false))
+  button('Удалить пресет').click()
+  await vi.waitFor(() => expect(button('Экспортировать видео без звука')).toBeDefined())
 })
 
 it('downloads binary caption bytes from the authorized completed job result', async () => {

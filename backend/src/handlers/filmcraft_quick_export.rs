@@ -59,8 +59,8 @@ pub async fn estimate(
 }
 
 async fn resolve(state: &AppState, owner: &str, request: QuickRequest) -> AppResult<(String, Value)> {
-    let name = match request.preset {
-        Some(name) => name,
+    let name = match request.preset.as_deref() {
+        Some(name) => name.to_owned(),
         None => state
             .filmcraft_quick_presets
             .lock()
@@ -76,6 +76,7 @@ async fn resolve(state: &AppState, owner: &str, request: QuickRequest) -> AppRes
         .map_err(|error| AppError::internal("read quick export presets", error))?;
     let preset = library
         .find(&name)
+        .or_else(|| request.preset.is_none().then(|| library.find(DEFAULT_PRESET)).flatten())
         .ok_or_else(|| AppError::bad_request("unknown quick export preset"))?;
     let name = preset.name;
     let mut settings = preset.settings;

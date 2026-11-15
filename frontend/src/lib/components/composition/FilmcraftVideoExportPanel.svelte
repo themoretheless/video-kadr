@@ -14,6 +14,18 @@
   let preset = $state<FilmcraftExportPreset>('lossless')
   let mjpegQuality = $state('90')
   let libraryPreset = $state('')
+  let libraryRevision = $state(0)
+  function libraryChanged({ saved, deleted }: { saved?: string; deleted?: string }) {
+    libraryRevision++
+    if (deleted === quickSelection) quickSelection = ''
+    if (deleted === quickPresetName) quickPresetName = ''
+    if (deleted === libraryPreset) {
+      libraryPreset = ''
+      libraryPresetSettings = undefined
+    } else if (saved === libraryPreset) {
+      libraryPresetSettings = undefined
+    }
+  }
   let libraryPresetSettings = $state<Record<string, unknown>>()
   let quickPresetName = $state('')
   let outputName = $state('')
@@ -45,6 +57,7 @@
   $effect(() => {
     const owner = token
     if (!owner || !quickOptionsOpen) return
+    void libraryRevision
     const controller = new AbortController()
     quickPresetLoading = true
     quickPresetError = ''
@@ -247,6 +260,7 @@
     if (!token || !quickOptionsOpen || disabled || !quickRangeValid) return
     const owner = token
     void quickPresetName
+    void libraryRevision
     const input = quickInput()
     const controller = new AbortController()
     const timer = setTimeout(() => {
@@ -327,6 +341,7 @@
     exportSummary = undefined
     summaryError = ''
     if (!summaryOpen || !token || disabled || !valid) return
+    if (libraryPreset) void libraryRevision
     const owner = token
     const input = buildRequest()
     const controller = new AbortController()
@@ -408,7 +423,7 @@
   }
 </script>
 <section aria-label="Видеоэкспорт Filmcraft" class="video-export">
-  <FilmcraftExportPresetLibrary {token} {imageSources} disabled={submitting || retrying || disabled} onapply={(name, settings) => { libraryPreset = name; libraryPresetSettings = settings }} />
+  <FilmcraftExportPresetLibrary {token} {imageSources} disabled={submitting || retrying || disabled} onlibrarychange={libraryChanged} onapply={(name, settings) => { libraryPreset = name; libraryPresetSettings = settings }} />
   <details ontoggle={event => { quickOptionsOpen = event.currentTarget.open }}>
     <summary>Настройки быстрого экспорта</summary>
     <label>Имя файла без расширения
