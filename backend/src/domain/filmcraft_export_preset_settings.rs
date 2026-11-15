@@ -70,7 +70,8 @@ impl ExportSettings {
         );
         ensure!(
             !self.effects.image_overlay.enabled
-                || !self.effects.image_overlay.path.trim().is_empty(),
+                || !self.effects.image_overlay.path.trim().is_empty()
+                || !self.effects.image_overlay.source_id.trim().is_empty(),
             "image overlay: no image file chosen"
         );
         ensure!(
@@ -226,6 +227,8 @@ impl Default for AudioSettings {
 pub struct ImageOverlay {
     pub enabled: bool,
     pub path: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub source_id: String,
     pub placement: Placement,
     pub offset: (f32, f32),
     pub size_percent: f32,
@@ -237,6 +240,7 @@ impl Default for ImageOverlay {
         ImageOverlay {
             enabled: false,
             path: String::new(),
+            source_id: String::new(),
             placement: Placement::TopRight,
             offset: (0.0, 0.0),
             size_percent: 15.0,

@@ -773,3 +773,29 @@ async fn quick_export_estimate_resolves_owner_preset_and_exact_range_without_enq
     let history: Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(history["jobs"], json!([]));
 }
+
+#[test]
+fn saved_image_overlay_normalizes_library_source_and_rejects_local_path() {
+    use video_kadr_backend::domain::{
+        filmcraft_export_preset_resolve::request_patch,
+        filmcraft_export_preset_settings::normalize,
+    };
+
+    let mut settings = normalize(json!({
+        "format": "png",
+        "effects": { "image_overlay": {
+            "enabled": true, "source_id": "overlay", "size_percent": 40, "opacity": 70
+        }},
+    }), true).unwrap();
+    let patch = request_patch(&settings).unwrap();
+    assert_eq!(patch["imageOverlay"]["sourceId"], "overlay");
+    assert_eq!(patch["imageOverlay"]["sizePercent"].as_f64(), Some(40.0));
+    assert!(patch["imageOverlay"].get("path").is_none());
+
+    settings["effects"]["image_overlay"]["path"] = json!("/tmp/logo.png");
+    assert!(request_patch(&settings).is_err());
+    settings["effects"]["image_overlay"]["path"] = json!("");
+    settings["effects"]["image_overlay"]["source_id"] = json!("");
+    assert!(request_patch(&settings).is_err());
+    assert!(normalize(settings, true).is_err());
+}

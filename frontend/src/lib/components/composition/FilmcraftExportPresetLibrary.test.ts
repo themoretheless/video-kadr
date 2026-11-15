@@ -262,3 +262,29 @@ it('overrides caption text and disables timecode while retaining inherited place
     timecode_overlay: { enabled: false },
   } })
 })
+
+it('requires a library image and applies image overlay geometry to a preset', async () => {
+  const preset = { ...builtin, settings: { format: 'png' } }
+  vi.mocked(listFilmcraftExportPresets).mockResolvedValue({ presets: [preset], default: preset.name })
+  const apply = vi.fn()
+  component = mount(Library, { target: document.body, props: {
+    token: 'alice', onapply: apply,
+    imageSources: [{ id: 'logo', kind: 'source', filename: 'logo.png', url: '/logo.png', createdAt: 0, mediaType: 'image' }],
+  } })
+  await tick()
+  button('Библиотека пресетов').click()
+  await vi.waitFor(() => expect(button('Применить пресет')).toBeDefined())
+  const change = async (label: string, value: string) => {
+    const control = document.querySelector<HTMLSelectElement>(`[aria-label="${label}"]`)!
+    control.value = value; control.dispatchEvent(new Event('change', { bubbles: true })); await tick()
+  }
+  await change('Изображение в пресете Filmcraft', 'on')
+  expect(button('Применить правки к экспорту').disabled).toBe(true)
+  await change('Источник изображения пресета Filmcraft', 'logo')
+  await change('Изображение: положение в пресете Filmcraft', 'bottomLeft')
+  await input('Изображение: непрозрачность в пресете Filmcraft', '40')
+  button('Применить правки к экспорту').click()
+  expect(apply).toHaveBeenCalledWith(preset.name, { effects: {
+    image_overlay: { enabled: true, source_id: 'logo', path: '', placement: 'bottomLeft', opacity: 40 },
+  } })
+})

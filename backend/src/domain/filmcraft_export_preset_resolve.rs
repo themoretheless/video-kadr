@@ -175,6 +175,10 @@ pub fn request_patch(settings: &Value) -> Result<Value> {
             path.is_null() || path == "",
             "saved image overlay needs an authorized library source, not a filesystem path"
         );
+        ensure!(
+            object.get("sourceId").and_then(Value::as_str).is_some_and(|id| !id.trim().is_empty()),
+            "saved image overlay needs an authorized library source"
+        );
         patch["imageOverlay"] = image;
     }
     Ok(patch)

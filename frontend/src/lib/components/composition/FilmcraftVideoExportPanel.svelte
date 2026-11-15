@@ -408,7 +408,7 @@
   }
 </script>
 <section aria-label="Видеоэкспорт Filmcraft" class="video-export">
-  <FilmcraftExportPresetLibrary {token} disabled={submitting || retrying || disabled} onapply={(name, settings) => { libraryPreset = name; libraryPresetSettings = settings }} />
+  <FilmcraftExportPresetLibrary {token} {imageSources} disabled={submitting || retrying || disabled} onapply={(name, settings) => { libraryPreset = name; libraryPresetSettings = settings }} />
   <details ontoggle={event => { quickOptionsOpen = event.currentTarget.open }}>
     <summary>Настройки быстрого экспорта</summary>
     <label>Имя файла без расширения
