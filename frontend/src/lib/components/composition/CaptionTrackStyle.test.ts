@@ -11,6 +11,12 @@ it('exposes caption style fields and retains RGBA alpha when changing a numeric 
  expect(onchange).toHaveBeenLastCalledWith({...style,size:64})
  const anchor=target.querySelector<HTMLSelectElement>('[aria-label="Положение субтитров"]')!;anchor.value='top';anchor.dispatchEvent(new Event('change',{bubbles:true}));await tick()
  expect(onchange).toHaveBeenLastCalledWith({...style,anchor:'top'})
- expect(target.querySelectorAll('input,select')).toHaveLength(11)
+ const width=target.querySelector<HTMLInputElement>('[aria-label="Ширина переноса субтитров"]')!
+ expect(width.placeholder).toBe('90')
+ width.value='72.5';width.dispatchEvent(new Event('change',{bubbles:true}));await tick()
+ expect(onchange).toHaveBeenLastCalledWith({...style,wrapWidth:0.725})
+ width.value='5';width.dispatchEvent(new Event('change',{bubbles:true}));await tick()
+ expect(onchange).toHaveBeenCalledTimes(3)
+ expect(target.querySelectorAll('input,select')).toHaveLength(12)
  await unmount(component)
 })

@@ -7,6 +7,8 @@
   import {slipNestedLayer,raiseNestedLayers,rippleNestedComposition} from '$lib/state/nestedComposition.svelte'
   import {activityReveal} from '$lib/agent/activityReveal.svelte'
   import NestedCaptionTextEditor from './NestedCaptionTextEditor.svelte'
+  import CaptionWrapWidth from './CaptionWrapWidth.svelte'
+  import { setNestedCaptionWrapWidth } from '$lib/state/nestedComposition.svelte'
   import { untrack,tick } from 'svelte'
   import {SvelteSet} from 'svelte/reactivity'
   import VideoEnhancementPanel from './VideoEnhancementPanel.svelte'
@@ -294,6 +296,9 @@
       {/each}
     {/each}
     {#each captionTracks as track (track.id)}
+      <CaptionWrapWidth value={track.style?.wrapWidth} trackName={track.name}
+        disabled={disabled || nestedHistory.busy || track.locked}
+        onchange={width => void setNestedCaptionWrapWidth(active, track.id, width)} />
       {#each track.clips as cue (cue.id)}
         <label><input type="checkbox" data-caption-id={cue.id} disabled={track.locked} checked={captionSelected.includes(cue.id)} onchange={event=>{captionSelected=event.currentTarget.checked?[...captionSelected,cue.id]:captionSelected.filter(id=>id!==cue.id)}} /> {track.name} · {cue.text.slice(0,40)} · {captionDisplaySeconds(cue.timelineStartTick).toFixed(3)}–{captionDisplaySeconds(cue.timelineEndTick).toFixed(3)} с</label>
       {/each}

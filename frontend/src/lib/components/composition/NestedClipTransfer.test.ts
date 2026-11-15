@@ -11,7 +11,7 @@ import NestedClipTransfer from './NestedClipTransfer.svelte'
 import { closeNestedComposition, nestedComposition, nestedHistory, undoNestedComposition, trimNestedClipEnds, nestedClipboard } from '$lib/state/nestedComposition.svelte'
 import { addClip, addTrack, createComposition, registerSource } from '$lib/composition/commands'
 import { buildCompositionWireDocument } from '$lib/composition/payload'
-vi.mock('$lib/api', () => ({ uploadFile: vi.fn(), moveNativeNestedClips: vi.fn(), evaluateNestedFrame: vi.fn(async () => ({})) }))
+vi.mock('$lib/api', () => ({ uploadFile: vi.fn(), moveNativeNestedClips: vi.fn(), nestedDurations: vi.fn(async () => ({})), evaluateNestedFrame: vi.fn(async () => ({})) }))
 it('selects a clip, sends a native transfer to another timeline, focuses it and restores everything with Undo', async () => {
   closeNestedComposition()
   let source = registerSource(createComposition({ width: 16, height: 16, fps: 10, backgroundColor: '#000000' }), { id: 'source', kind: 'video', durationTicks: 4_000_000, width: 4, height: 4, hasAudio: false })
@@ -528,6 +528,45 @@ it('captures caption-only selection, keeps its saved text after an edit and past
   } finally {await unmount(component);target.remove();closeNestedComposition();nestedClipboard.value=null}
 })
 
+
+it('edits native caption width on one track with undo', async () => {
+  closeNestedComposition()
+  const project = structuredClone(fixture.nativeVersions[0]!.copy) as unknown as api.NativeNestedProject
+  const compositionId = 'new-timeline'
+  const node = project.compositions[compositionId]!
+  node.content = { ...node.content, captionTracks: [
+    { id: 'speech', name: 'Распознанная речь', style: { wrapWidth: 0.84, margin: 0.08 }, clips: [] },
+    { id: 'locked', name: 'Защищённая', locked: true, clips: [] },
+  ] }
+  nestedComposition.document = project
+  nestedComposition.activeCompositionId = compositionId
+  const target = document.createElement('div')
+  document.body.append(target)
+  const component = mount(NestedClipTransfer, { target })
+  try {
+    await tick()
+    const width = target.querySelector<HTMLInputElement>('[aria-label="Ширина переноса субтитров: Распознанная речь"]')!
+    expect(width.value).toBe('84')
+    expect(target.querySelector<HTMLInputElement>('[aria-label="Ширина переноса субтитров: Защищённая"]')!.disabled).toBe(true)
+    width.value = '75'
+    width.dispatchEvent(new Event('change', { bubbles: true }))
+    await vi.waitFor(() => expect(nestedHistory.past).toHaveLength(1))
+    expect(nestedComposition.document?.compositions[compositionId]?.content.captionTracks?.[0]?.style)
+      .toEqual({ wrapWidth: 0.75, margin: 0.08 })
+    width.value = ''
+    width.dispatchEvent(new Event('change', { bubbles: true }))
+    await vi.waitFor(() => expect(nestedHistory.past).toHaveLength(2))
+    expect(nestedComposition.document?.compositions[compositionId]?.content.captionTracks?.[0]?.style)
+      .toEqual({ margin: 0.08 })
+    undoNestedComposition()
+    undoNestedComposition()
+    expect(nestedComposition.document).toEqual(project)
+  } finally {
+    await unmount(component)
+    target.remove()
+    closeNestedComposition()
+  }
+})
 
 it('cuts selected captions into the buffer through the button and restores originals with one Undo',async()=>{
   closeNestedComposition();nestedClipboard.value=null

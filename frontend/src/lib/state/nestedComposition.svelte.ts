@@ -1066,6 +1066,31 @@ export async function updateNestedCaptionText(compositionId:string,clipId:string
   return !nestedHistory.error&&!!expected&&JSON.stringify(nestedComposition.document)===expected
 }
 
+export async function setNestedCaptionWrapWidth(compositionId: string, trackId: string, width: number | undefined): Promise<void> {
+  const guard = () => assertHistoryUnlocked()
+  await editNestedDocument(async project => {
+    guard()
+    if (width !== undefined && (!Number.isFinite(width) || width < 0.1 || width > 1)) {
+      throw new Error('Ширина переноса должна быть от 10% до 100% кадра')
+    }
+    const node = project.compositions[compositionId]
+    const tracks = node?.content.captionTracks ?? []
+    const track = tracks.find(item => item.id === trackId)
+    if (!node || !track) throw new Error('Дорожка субтитров не найдена')
+    if (track.locked) throw new Error('Дорожка субтитров заблокирована')
+    if (track.style?.wrapWidth === width) return project
+    const style = { ...track.style }
+    if (width === undefined) delete style.wrapWidth
+    else style.wrapWidth = width
+    const captionTracks = tracks.map(item => item.id === trackId ? { ...item, style } : item)
+    const next = { ...project, compositions: { ...project.compositions,
+      [compositionId]: { ...node, content: { ...node.content, captionTracks } },
+    } }
+    await nestedDurations(next)
+    return next
+  }, true, undefined, undefined, 0, undefined, guard)
+}
+
 registerHistoryProvider('nested',()=>nestedHistory)
 
 /** Edit retained source title typography through native validation and shared history. */
