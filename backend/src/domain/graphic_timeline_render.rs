@@ -76,33 +76,36 @@ impl GraphicTimelineClip {
             return Ok(Some(frame));
         }
         let preparation = self.transform.concat_preparation.as_ref();
+        let crop = preparation.filter(|p| p.crop.iter().any(|edge| *edge != 0.));
         let flip_h = preparation.is_some_and(|p| p.flip_h);
         let flip_v = preparation.is_some_and(|p| p.flip_v);
-        let scale_x = if flip_h {
+        let scale_x = if flip_h && crop.is_none() {
             -pose.scale_x
         } else {
             pose.scale_x
         };
-        let scale_y = if flip_v {
+        let scale_y = if flip_v && crop.is_none() {
             -pose.scale_y
         } else {
             pose.scale_y
         };
-        let matrix = GroupAffine::new(
-            [output.0 as f64, output.1 as f64],
-            [self.width as f64, self.height as f64],
-            [self.transform.anchor_x, self.transform.anchor_y],
-            [pose.x, pose.y],
-            [scale_x, scale_y],
-            pose.rotation_degrees,
-        )?;
-        // Reflect the completed raster, including glyph coverage and decorations.
-        if self.effects.is_empty() && !flip_h && !flip_v {
+        let matrix = |size, offset: [f64; 2]| {
+            GroupAffine::new(
+                [output.0 as f64, output.1 as f64],
+                size,
+                [self.transform.anchor_x, self.transform.anchor_y],
+                [pose.x + offset[0], pose.y + offset[1]],
+                [scale_x, scale_y],
+                pose.rotation_degrees,
+            )
+        };
+        // Prepare the completed raster, including glyph coverage and decorations.
+        if self.effects.is_empty() && crop.is_none() && !flip_h && !flip_v {
             let mut frame = self.graphic.render_with_roll(
                 (self.width, self.height),
                 output,
                 layer_time,
-                matrix.0,
+                matrix([self.width as f64, self.height as f64], [0.; 2])?.0,
                 roll,
                 checkpoint,
             )?;
@@ -120,6 +123,13 @@ impl GraphicTimelineClip {
             roll,
             checkpoint,
         )?;
+        let offset = if let Some(preparation) = crop {
+            let prepared = preparation.prepare(&child.to_surface(checkpoint)?, checkpoint)?;
+            child = LinearColorFrame::from_surface(&prepared.surface, checkpoint)?;
+            prepared.center_offset
+        } else {
+            [0.; 2]
+        };
         if !self.effects.is_empty() {
             effects(&mut child, &self.effects, local, checkpoint)?;
         }
@@ -127,9 +137,10 @@ impl GraphicTimelineClip {
             &GroupSurface::transparent(output.0 as usize, output.1 as usize)?,
             checkpoint,
         )?;
+        let (width, height) = child.dimensions();
         frame.composite_working(
             &child,
-            matrix,
+            matrix([width as f64, height as f64], offset)?,
             pose.opacity as f32,
             BlendMode::Normal,
             checkpoint,

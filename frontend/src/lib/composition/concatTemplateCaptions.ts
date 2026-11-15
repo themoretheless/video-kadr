@@ -22,19 +22,24 @@ function sameJson(left: unknown, right: unknown): boolean {
     Object.keys(a).every(key => Object.hasOwn(b, key) && sameJson(a[key], b[key]))
 }
 
+const cropEdges = ['left', 'top', 'right', 'bottom']
+
+function normalizedCrop(value: unknown): unknown {
+  const crop = record(value)
+  return crop && Object.entries(crop).every(([edge, amount]) => cropEdges.includes(edge) && amount === 0)
+    ? null : value ?? null
+}
+
 // Concat's writer adds some defaults and omits others when saving a title.
 function normalizedClip(value: unknown): unknown {
   const clip = record(value)
   if (!clip) return value
-  const crop = record(clip.crop)
-  const emptyCrop = crop && Object.entries(crop).every(([edge, value]) =>
-    ['left', 'top', 'right', 'bottom'].includes(edge) && value === 0)
   return {
     mediaId: '', sourceStart: 0, scale: 1, rotation: 0, offsetX: 0, offsetY: 0, opacity: 1, volume: 1, fadeIn: 0, fadeOut: 0, speed: 1,
     preservePitch: true, stretchX: 1, stretchY: 1, flipH: false, flipV: false, keys: [], filters: [], videoEffects: [],
     ...clip,
     blend: clip.blend || 'normal',
-    crop: emptyCrop ? null : clip.crop ?? null,
+    crop: normalizedCrop(clip.crop),
   }
 }
 
@@ -242,20 +247,29 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
     }
   }
 
+  const previousCrop = normalizedCrop(before.crop)
+  const editedCrop = normalizedCrop(after.crop)
   const previousFlipH = before.flipH ?? false
   const previousFlipV = before.flipV ?? false
   const flipH = after.flipH ?? false
   const flipV = after.flipV ?? false
-  if (flipH !== previousFlipH || flipV !== previousFlipV) {
+  if (flipH !== previousFlipH || flipV !== previousFlipV || !sameJson(previousCrop, editedCrop)) {
     const width = canvas?.width
     const height = canvas?.height
     if (clip.concatTitle || !centeredCaption({ ...clip, style }) ||
         typeof flipH !== 'boolean' || typeof flipV !== 'boolean' ||
-        typeof width !== 'number' || typeof height !== 'number' ||
-        transform.concatPreparation?.crop.some(edge => edge !== 0)) return undefined
+        typeof width !== 'number' || typeof height !== 'number') return undefined
+    const edges = record(editedCrop)
+    if (editedCrop !== null && !edges) return undefined
+    if (edges && Object.keys(edges).some(edge => !cropEdges.includes(edge))) return undefined
+    const amounts = cropEdges.map(edge => edges && Object.hasOwn(edges, edge) ? edges[edge] : 0)
+    if (!amounts.every((amount): amount is number => typeof amount === 'number' && Number.isFinite(amount))) return undefined
+    const [left = 0, top = 0, right = 0, bottom = 0] = amounts.map(amount => Math.max(0, Math.min(0.9, amount)))
     transform = {
       ...transform,
-      concatPreparation: flipH || flipV ? { crop: [0, 0, 0, 0], canvas: [width, height], flipH, flipV } : undefined,
+      concatPreparation: flipH || flipV || left || top || right || bottom
+        ? { crop: [left, top, Math.min(right, 0.9 - left), Math.min(bottom, 0.9 - top)],
+          canvas: [width, height], flipH, flipV } : undefined,
     }
   }
 
@@ -326,6 +340,7 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
     rotation: before.rotation ?? 0,
     flipH: previousFlipH,
     flipV: previousFlipV,
+    crop: previousCrop,
     opacity: previousOpacity,
     blend: previousBlend,
     ...(retainKeys ? { keys: before.keys ?? [] } : {}),

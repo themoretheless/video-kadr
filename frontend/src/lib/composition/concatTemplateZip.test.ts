@@ -183,7 +183,14 @@ it('opens an archived template directory without mixing in sibling assets', asyn
     .resolves.toEqual([['TL1', { ...staticClip, text: 'Unreflected' }], clips[1]])
   const cropped = { ...source, timelines: [{ id: 'TL1', video, clips: [{ ...first, crop: { left: 0.25 } }, second] }] }
   await expect(readConcatTemplateCaptions(reflectedSidecar, new File([JSON.stringify(cropped)], 'template.json')))
-    .resolves.toEqual([clips[1]])
+    .resolves.toEqual([['TL1', { ...staticClip, transform: { ...staticClip.transform,
+      concatPreparation: { crop: [0.25, 0, 0, 0], canvas: [320, 180], flipH: false, flipV: false },
+    } }], clips[1]])
+  const excessiveCrop = { ...source, timelines: [{ id: 'TL1', video, clips: [{ ...first, crop: { left: 0.8, right: 0.8 } }, second] }] }
+  await expect(readConcatTemplateCaptions(reflectedSidecar, new File([JSON.stringify(excessiveCrop)], 'template.json')))
+    .resolves.toEqual([['TL1', { ...staticClip, transform: { ...staticClip.transform,
+      concatPreparation: { crop: [0.8, 0, 0.9 - 0.8, 0], canvas: [320, 180], flipH: false, flipV: false },
+    } }], clips[1]])
   const faded = { ...first, opacity: 0.5, text: { ...first.text, opacity: 0.25 } }
   const withOpacity = { ...source, timelines: [{ id: 'TL1', video, clips: [faded, second] }] }
   const fadedFile = new File([JSON.stringify(withOpacity)], 'template.json')

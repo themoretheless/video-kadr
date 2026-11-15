@@ -100,6 +100,34 @@ mod tests {
                 }
             }
         }
+        let source = super::super::group_surface::GroupSurface { width: 64, height: 48, rgba: original };
+        for crop in [[0.125; 4], [0.2, 0., 0., 0.]] {
+            let preparation = super::super::concat_picture::Preparation {
+                crop,
+                canvas: [64, 48],
+                flip_h: true,
+                flip_v: false,
+            };
+            let expected = preparation.prepare(&source, &mut || Ok(())).unwrap().surface;
+            let mut centered = vec![0; 64 * 48 * 4];
+            let left = (64 - expected.width) / 2;
+            let top = (48 - expected.height) / 2;
+            for (row, strip) in expected.rgba.chunks_exact(expected.width * 4).enumerate() {
+                let start = ((top + row) * 64 + left) * 4;
+                centered[start..start + strip.len()].copy_from_slice(strip);
+            }
+            for pixel in centered.chunks_exact_mut(4) {
+                if pixel[3] == 0 {
+                    pixel.fill(0);
+                }
+            }
+            caption.transform.concat_preparation = Some(preparation);
+            for (index, (actual, expected)) in pixels(&caption).chunks_exact(4)
+                .zip(centered.chunks_exact(4)).enumerate()
+            {
+                assert_eq!(actual, expected, "crop {crop:?}, pixel {index}");
+            }
+        }
     }
 }
 
