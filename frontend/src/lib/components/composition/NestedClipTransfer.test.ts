@@ -1290,11 +1290,19 @@ it('closes a gap and ripple-deletes selected clips through actual native control
  let authored=createComposition({width:16,height:16,fps:10,backgroundColor:'#000000'})
  authored=addTrack(authored,{id:'titles',kind:'text',name:'Titles',hidden:false,locked:false,clips:[]})
  for(const [id,start] of [['a',0],['b',2000000]] as const)authored=addClip(authored,'titles',{id,kind:'text',timelineStartTicks:start,durationTicks:1000000,text:id,x:0,y:0,opacity:1,style:{fontSizePx:12,color:'#FFFFFFFF',align:'center'}})
- const original:api.NativeNestedProject={schemaVersion:1,root:'root',compositions:{root:{content:buildCompositionWireDocument(authored),instances:[]}}}
+ const crossing={id:'crossing',cueId:'external',timelineStartTick:'127008000001',timelineEndTick:'635040000003',text:'Crossing'}
+ const track={id:'synced',name:'Synced',vttBlocks:['NOTE retained'],clips:[crossing]}
+ const locked={...track,id:'locked',locked:true,clips:[{...crossing,id:'locked-cue'}]}
+ const optedOut={...track,id:'free',syncLock:false,clips:[{...crossing,id:'free-cue'}]}
+ const consumed={id:'inside',name:'Inside',clips:[{id:'gone',timelineStartTick:1200000,timelineEndTick:1800000,text:'Gone'}]}
+ const content={...buildCompositionWireDocument(authored),captionTracks:[track,locked,optedOut,consumed],metadata:{clipNames:{gone:'Remove with cue',b:'Keep'}}}
+ const original:api.NativeNestedProject={schemaVersion:1,root:'root',compositions:{root:{content,instances:[]}}}
  nestedComposition.document=original;nestedComposition.activeCompositionId='root';nestedComposition.timeUs=1500000
  vi.mocked(api.moveNativeNestedClips).mockImplementation(async(project,moves)=>{
   const output=structuredClone(project)
   for(const move of moves){const clip=output.compositions.root!.content.tracks[0]!.clips.find(clip=>clip.id===move.clipId)!;Object.assign(clip,{timelineStartTick:move.startUs,timelineEndTick:move.startUs+1000000})}
+  const node=output.compositions.root!
+  node.content={...node.content,captionTracks:node.content.captionTracks?.map(track=>({hidden:false,locked:false,style:{font:'Inter'},...track}))}
   return {project:output,changed:true,affectedCompositions:['root'],movedClipIds:moves.map(move=>move.clipId)}
  })
  const target=window.document.createElement('div');window.document.body.append(target)
@@ -1303,11 +1311,18 @@ it('closes a gap and ripple-deletes selected clips through actual native control
  try{
   await tick();expect(button('Закрыть промежуток на курсоре').disabled).toBe(false);button('Закрыть промежуток на курсоре').click()
   await vi.waitFor(()=>expect(nestedComposition.document!.compositions.root!.content.tracks[0]!.clips[1]).toMatchObject({timelineStartTick:1000000}))
+  expect(nestedComposition.document!.compositions.root!.content.captionTracks).toEqual([
+   {...track,clips:[{...crossing,timelineEndTick:'381024000003'}]},locked,optedOut,{...consumed,clips:[]},
+  ])
+  expect(nestedComposition.document!.compositions.root!.content.metadata?.clipNames).toEqual({b:'Keep'})
   expect(nestedHistory.past).toHaveLength(1);undoNestedComposition();await tick();expect(nestedComposition.document).toEqual(original)
   const checkbox=target.querySelector<HTMLInputElement>('[data-clip-id="a"]')!;checkbox.checked=true;checkbox.dispatchEvent(new Event('change',{bubbles:true}));await tick()
   button('Удалить выбранные со сдвигом').click()
   await vi.waitFor(()=>expect(nestedComposition.document!.compositions.root!.content.tracks[0]!.clips).toHaveLength(1))
   expect(nestedComposition.document!.compositions.root!.content.tracks[0]!.clips[0]).toMatchObject({id:'b',timelineStartTick:1000000})
+  expect(nestedComposition.document!.compositions.root!.content.captionTracks?.[0]?.clips).toEqual([
+   {...crossing,timelineStartTick:'0',timelineEndTick:'381024000003'},
+  ])
   undoNestedComposition();await tick();expect(nestedComposition.document).toEqual(original)
   agentSession.lock={owner:'other',reason:'Hold',expiresAt:Date.now()+60000};await tick();expect(button('Закрыть промежуток на курсоре').disabled).toBe(true)
  }finally{await unmount(component);target.remove();agentSession.lock=null;closeNestedComposition()}

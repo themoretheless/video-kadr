@@ -41,6 +41,10 @@ export async function rippleNativeComposition(project:NativeNestedProject,scope:
  raw.sort((a,b)=>a.start-b.start)
  const holes:CompositionGap[]=[]
  for(const hole of raw){const last=holes.at(-1);if(last&&hole.start<=last.end)holes[holes.length-1]={start:last.start,end:Math.max(last.end,hole.end)};else holes.push({...hole})}
+ const captionTracks = node.content.captionTracks && extractCaptionRanges(node.content.captionTracks, holes)
+ const retainedCues = new Set(captionTracks?.flatMap(track => track.clips.map(cue => cue.id)))
+ const removedCues = new Set(node.content.captionTracks?.flatMap(track =>
+  track.clips.filter(cue => !retainedCues.has(cue.id)).map(cue => cue.id)))
  const instances=node.instances.map(instance=>({id:instance.id,start:instance.timing.timelineStartUs}))
  for(const hole of holes)for(const row of [...remaining.map(row=>({id:row.clip.id,start:row.start})),...instances])if(row.start>=hole.start&&row.start<hole.end&&!(hole.start===0&&row.start===0))throw new Error(`Ripple: ${row.id} starts inside the deleted interval`)
  const delta=(start:number)=>holes.reduce((sum,hole)=>sum+(hole.end<=start?hole.end-hole.start:0),0)
@@ -58,5 +62,30 @@ export async function rippleNativeComposition(project:NativeNestedProject,scope:
  })
  if(moves.length){const result=await moveNativeNestedClips(candidate,moves);candidate={...candidate,compositions:{...candidate.compositions,[scope]:result.project.compositions[scope]!}}}
  const after=candidate.compositions[scope]!
- return {...candidate,compositions:{...candidate.compositions,[scope]:{...after,instances:after.instances.map(instance=>{const shift=delta(instance.timing.timelineStartUs);return shift?{...instance,timing:{...instance.timing,timelineStartUs:instance.timing.timelineStartUs-shift}}:instance}),content:{...after.content,tracks:rebindNativeLayerReferences(node.content.tracks,after.content.tracks),...(after.content.captionTracks?{captionTracks:extractCaptionRanges(after.content.captionTracks,holes)}:{})}}}}
+ // The move response reserializes caption defaults even though it only moves media.
+ const content = { ...after.content }
+ if (captionTracks) content.captionTracks = captionTracks
+ else delete content.captionTracks
+ const metadata = content.metadata
+ const clipNames = metadata?.clipNames
+ return {
+  ...candidate,
+  compositions: {
+   ...candidate.compositions,
+   [scope]: {
+    ...after,
+    instances: after.instances.map(instance => {
+     const shift = delta(instance.timing.timelineStartUs)
+     return shift ? { ...instance, timing: { ...instance.timing, timelineStartUs: instance.timing.timelineStartUs - shift } } : instance
+    }),
+    content: {
+     ...content,
+     tracks: rebindNativeLayerReferences(node.content.tracks, content.tracks),
+     ...(clipNames && removedCues.size ? {
+      metadata: { ...metadata, clipNames: Object.fromEntries(Object.entries(clipNames).filter(([id]) => !removedCues.has(id))) },
+     } : {}),
+    },
+   },
+  },
+ }
 }
