@@ -288,3 +288,19 @@ it('requires a library image and applies image overlay geometry to a preset', as
     image_overlay: { enabled: true, source_id: 'logo', path: '', placement: 'bottomLeft', opacity: 40 },
   } })
 })
+
+it('updates a user preset in place and keeps its category and description', async () => {
+  vi.mocked(listFilmcraftExportPresets).mockResolvedValue({ presets: [user], default: user.name })
+  vi.mocked(editFilmcraftExportPresets).mockResolvedValue({ name: user.name })
+  component = mount(Library, { target: document.body, props: { token: 'alice', onapply: vi.fn() } })
+  await tick()
+  button('Библиотека пресетов').click()
+  await vi.waitFor(() => expect(button('Сохранить изменения пресета').disabled).toBe(true))
+  await input('Битрейт нового пресета Filmcraft', '1500')
+  button('Сохранить изменения пресета').click()
+  await vi.waitFor(() => expect(editFilmcraftExportPresets).toHaveBeenCalledWith('alice', {
+    action: 'save', name: user.name, from: user.name, category: user.category,
+    description: user.description, settings: { bitrateKbps: 1500, adaptiveBitrate: null }, overwrite: true,
+  }, expect.any(AbortSignal)))
+  await vi.waitFor(() => expect(button('Применить правки к экспорту').disabled).toBe(true))
+})

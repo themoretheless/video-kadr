@@ -158,9 +158,60 @@
   $effect(() => {
     const owner = token
     ++generation; controller?.abort(); controller = null
-    opened = false; entries = []; selected = ''; busy = false; error = ''; query = ''; favorites = false; name = ''; width = ''; height = ''; bitrate = ''; bitrateMode = ''; maxBitrate = ''; adaptiveBitrate = ''; keyframes = ''; profile = ''; multiplexer = ''; matchSource = false; scale = '1'; rateMode = 'preset'; rateNum = '30000'; rateDen = '1001'; scaling = ''; aspect = 'preset'; aspectNum = '1'; aspectDen = '1'; renderQuality = 'preset'; intraProfile = ''; jpegQuality = ''; metadata = {}; imageMode = 'preset'; imageOverlay = {}; overlayModes = {}; textOverlays = { name_overlay: {}, timecode_overlay: {} }; limiter = 'preset'; limiterMin = undefined; limiterMax = undefined; loudness = 'preset'; loudnessTarget = undefined; loudnessPeak = undefined; audio = 'preset'; audioCodec = ''; audioRate = ''; audioChannels = ''; audioBits = ''; audioBitrate = ''; captions = 'preset'; h264Level = 'preset'; sidecar = 'preset'
+    opened = false
+    entries = []
+    selected = ''
+    busy = false
+    error = ''
+    query = ''
+    favorites = false
+    resetDraft()
     return () => { void owner; ++generation; controller?.abort() }
   })
+  function resetDraft() {
+    name = ''
+    width = ''
+    height = ''
+    bitrate = ''
+    bitrateMode = ''
+    maxBitrate = ''
+    adaptiveBitrate = ''
+    keyframes = ''
+    profile = ''
+    multiplexer = ''
+    matchSource = false
+    scale = '1'
+    rateMode = 'preset'
+    rateNum = '30000'
+    rateDen = '1001'
+    scaling = ''
+    aspect = 'preset'
+    aspectNum = '1'
+    aspectDen = '1'
+    renderQuality = 'preset'
+    intraProfile = ''
+    jpegQuality = ''
+    metadata = {}
+    imageMode = 'preset'
+    imageOverlay = {}
+    overlayModes = {}
+    textOverlays = { name_overlay: {}, timecode_overlay: {} }
+    limiter = 'preset'
+    limiterMin = undefined
+    limiterMax = undefined
+    loudness = 'preset'
+    loudnessTarget = undefined
+    loudnessPeak = undefined
+    audio = 'preset'
+    audioCodec = ''
+    audioRate = ''
+    audioChannels = ''
+    audioBits = ''
+    audioBitrate = ''
+    captions = 'preset'
+    h264Level = 'preset'
+    sidecar = 'preset'
+  }
   async function run(action: (owner: string, signal: AbortSignal) => Promise<void>) {
     if (!token || busy || disabled) return
     const owner = token; const version = ++generation
@@ -238,14 +289,25 @@
     if (h264Level !== 'preset' && (picked?.settings.format === 'h264' || picked?.settings.mxfVideoCodec === 'h264')) settings.h264Level = h264Level === 'auto' ? null : Number(h264Level)
     return settings
   }
-  function save() {
-    if (!valid || !name.trim() || !picked) return
+  function save(overwrite: boolean) {
+    const preset = picked
+    if (!valid || !preset) return
     const settings = draftSettings()
+    if (overwrite ? preset.builtin || !Object.keys(settings).length : !name.trim()) return
+    const target = overwrite ? preset.name : name
     void run(async (owner, signal) => {
-      const result = await editFilmcraftExportPresets<{ name: string }>(owner, { action: 'save', name, from: selected, settings, overwrite: false }, signal)
+      const result = await editFilmcraftExportPresets<{ name: string }>(owner, {
+        action: 'save', name: target, from: preset.name, settings, overwrite,
+        ...(overwrite ? { category: preset.category, description: preset.description } : {}),
+      }, signal)
       if (signal.aborted) return
       await refresh(owner, signal)
-      if (!signal.aborted) { query = ''; favorites = false; selected = result.name }
+      if (!signal.aborted) {
+        query = ''
+        favorites = false
+        selected = result.name
+        resetDraft()
+      }
     })
   }
   function favorite() { if (picked) void run(async (owner, signal) => { await editFilmcraftExportPresets(owner, { action: 'favorite', name: selected }, signal); await refresh(owner, signal) }) }
@@ -530,7 +592,11 @@
       {/if}
       <button type="button" disabled={busy || disabled || !valid || !Object.keys(draftSettings()).length}
         onclick={() => onapply(selected, draftSettings())}>Применить правки к экспорту</button>
-      <button type="button" disabled={busy || disabled || !valid || !name.trim()} onclick={save}>Сохранить копию пресета</button>
+      <button type="button" disabled={busy || disabled || !valid || !name.trim()} onclick={() => save(false)}>Сохранить копию пресета</button>
+      {#if !picked.builtin}
+        <button type="button" disabled={busy || disabled || !valid || !Object.keys(draftSettings()).length}
+          onclick={() => save(true)}>Сохранить изменения пресета</button>
+      {/if}
     {/if}
     <label>Импорт пресетов <input aria-label="Импорт пресетов Filmcraft" type="file" accept="application/json,.json" disabled={busy || disabled} onchange={(event) => { importFile(event.currentTarget.files?.[0]); event.currentTarget.value = '' }} /></label>
     {#if busy}<span role="status">Загрузка пресетов…</span>{/if}
