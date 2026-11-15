@@ -96,9 +96,11 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
     if (Object.hasOwn(previousText, key)) comparisonText[key] = previousText[key]
     else delete comparisonText[key]
   }
-  for (const [source, target] of [['color', 'color'], ['strokeColor', 'stroke'], ['background', 'background']] as const) {
-    const color = editedText[source]
-    if (color === previousText[source]) continue
+  for (const [source, target, fallback] of [
+    ['color', 'color', '#ffffff'], ['strokeColor', 'stroke', '#000000'], ['background', 'background', ''],
+  ] as const) {
+    if (editedText[source] === previousText[source]) continue
+    const color = editedText[source] === undefined ? fallback : editedText[source]
     if (!style || clip.concatTitle || (target === 'color' && clip.colorAnimation) ||
         typeof color !== 'string' || !(/^#(?:[a-f0-9]{6}|[a-f0-9]{8})$/i.test(color) ||
           (target === 'background' && color === ''))) return undefined
@@ -106,9 +108,12 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
     retainOriginalField(source)
   }
   const height = record(video)?.height
-  for (const key of ['fontFamily', 'fontSize', 'fontWeight', 'italic', 'strokeWidth', 'align'] as const) {
-    const value = editedText[key]
-    if (value === previousText[key]) continue
+  for (const [key, fallback] of [
+    ['fontFamily', undefined], ['fontSize', 0.09], ['fontWeight', 700], ['italic', false],
+    ['strokeWidth', 0], ['align', 'center'],
+  ] as const) {
+    if (editedText[key] === previousText[key]) continue
+    const value = editedText[key] === undefined ? fallback : editedText[key]
     if (!style || clip.concatTitle) return undefined
     switch (key) {
       case 'fontFamily':
@@ -157,10 +162,11 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
   let textBoxWidth = clip.textBoxWidth
   if (editedText.maxWidth !== previousText.maxWidth) {
     const width = record(video)?.width
-    if (clip.concatTitle || typeof width !== 'number' || typeof editedText.maxWidth !== 'number') return undefined
-    const pixels = Math.fround(editedText.maxWidth * width)
-    if (!(pixels >= 1 && pixels <= 100000)) return undefined
-    textBoxWidth = pixels
+    const maxWidth = editedText.maxWidth === undefined ? 0 : editedText.maxWidth
+    if (clip.concatTitle || typeof width !== 'number' || typeof maxWidth !== 'number') return undefined
+    const pixels = Math.fround(maxWidth * width)
+    if (maxWidth !== 0 && !(pixels >= 1 && pixels <= 100000)) return undefined
+    textBoxWidth = maxWidth === 0 ? undefined : pixels
     retainOriginalField('maxWidth')
   }
   if (editedText.shadow !== previousText.shadow) {
@@ -314,7 +320,7 @@ function mergeCaptionEdits(clip: WireTextClip, baseline: unknown, current: unkno
     opacity,
     ...(blendMode === undefined ? {} : { blendMode }),
     ...(opacityMultiplier === undefined ? {} : { opacityMultiplier }),
-    ...(textBoxWidth === undefined ? {} : { textBoxWidth }),
+    textBoxWidth,
     timelineStartTick: start,
     timelineEndTick: start + duration,
   }

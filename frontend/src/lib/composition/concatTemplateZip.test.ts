@@ -114,6 +114,18 @@ it('opens an archived template directory without mixing in sibling assets', asyn
   styled.text.fontWeight = 550
   await expect(readConcatTemplateCaptions(sidecar, new File([JSON.stringify(withStyle)], 'template.json')))
     .resolves.toEqual([clips[1]])
+  const resetBaseline = { ...first, text: { ...first.text, fontSize: 0.1, fontWeight: 400, italic: true,
+    color: '#4080ff', strokeWidth: 2 / 180, strokeColor: '#112233', background: '#112233', align: 'right', maxWidth: 0.5 } }
+  const resetSidecar = new File([JSON.stringify({ manifestSha256, clips: [
+    ['TL1', { ...staticClip, textBoxWidth: 160 }, { clip: resetBaseline, video }], captured[1],
+  ] })], 'video-kadr-caption-clips.json')
+  await expect(readConcatTemplateCaptions(resetSidecar, new File([manifest + ' '], 'template.json'))).resolves.toEqual([
+    ['TL1', { ...staticClip, style: { ...staticClip.style, fontSize: 0.09 * 180, bold: true, italic: false, strokeWidth: 0,
+      color: { red: 1, green: 1, blue: 1, alpha: 1 }, stroke: { red: 0, green: 0, blue: 0, alpha: 1 },
+      background: { red: 0, green: 0, blue: 0, alpha: 0 },
+    } }],
+    clips[1],
+  ])
   const pivoted = { ...first, keys: [{ property: 'rotation', at: 0, value: 30 }],
     text: { ...first.text, align: 'center' } }
   const pivotSidecar = new File([JSON.stringify({ manifestSha256, clips: [
@@ -133,7 +145,10 @@ it('opens an archived template directory without mixing in sibling assets', asyn
     ])
   narrowed.text.maxWidth = 0
   await expect(readConcatTemplateCaptions(sidecar, new File([JSON.stringify(withWidth)], 'template.json')))
-    .resolves.toEqual([clips[1]])
+    .resolves.toEqual([
+      ['TL1', { ...staticClip, style: { ...staticClip.style, shadow: { ...staticClip.style.shadow, alpha: 0 } } }],
+      clips[1],
+    ])
   const placed = { ...first, offsetX: 0.25, offsetY: -0.125 }
   const withPlacement = { ...source, timelines: [{ id: 'TL1', video, clips: [placed, second] }] }
   await expect(readConcatTemplateCaptions(sidecar, new File([JSON.stringify(withPlacement)], 'template.json')))
