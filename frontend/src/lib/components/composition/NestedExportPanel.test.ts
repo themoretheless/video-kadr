@@ -1,11 +1,11 @@
 // @ts-expect-error Tests require the Svelte client entry under Vitest SSR resolution.
 import { mount, tick, unmount } from '../../../../node_modules/svelte/src/index-client.js'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { cancelJob, exportNestedVideo, getJob, nestedDurations, type NativeNestedProject } from '$lib/api'
+import { cancelJob, exportNestedVideo, getJob, nestedDurations, writeCaptionFile, type NativeNestedProject } from '$lib/api'
 import { loadLibrary } from '$lib/state/store.svelte'
 import { closeNestedComposition, nestedComposition } from '$lib/state/nestedComposition.svelte'
 import NestedExportPanel from './NestedExportPanel.svelte'
-vi.mock('$lib/api', () => ({ cancelJob: vi.fn(), exportNestedVideo: vi.fn(), getJob: vi.fn(), nestedDurations: vi.fn() }))
+vi.mock('$lib/api', () => ({ cancelJob: vi.fn(), exportNestedVideo: vi.fn(), getJob: vi.fn(), nestedDurations: vi.fn(), writeCaptionFile: vi.fn() }))
 vi.mock('$lib/state/store.svelte', () => ({ loadLibrary: vi.fn() }))
 let component: ReturnType<typeof mount> | undefined
 beforeEach(() => {
@@ -64,4 +64,47 @@ it('exports bound video masks with the saved project revision',async()=>{
  nestedComposition.projectId='saved';nestedComposition.revision=9
  nestedComposition.document={schemaVersion:1,root:'root',compositions:{root:{content:{tracks:[{kind:'video',clips:[{enabled:true,concatCutout:{subject:'person',sourceHash:'a'.repeat(64),modelHash:'88d4531297118f595bf2fd60f6f566aec2e559393802d1f436c380f0cbbd2828',runtimeHash:'b'.repeat(64)}}]}]},instances:[]}}} as unknown as NativeNestedProject
  await ready();button('Экспортировать видео').click();await vi.waitFor(()=>expect(loadLibrary).toHaveBeenCalledOnce());expect(vi.mocked(exportNestedVideo).mock.calls[0]![8]).toEqual({projectId:'saved',expectedRevision:9})
+})
+
+it('exports a chosen subtitle track using both boundaries of the video range', async () => {
+  const node = nestedComposition.document!.compositions.root!
+  node.content = { ...node.content, canvas: { ...node.content.canvas, fpsMilli: 24000 }, captionTracks: [
+    { id: 'one', name: 'First', clips: [] },
+    { id: 'two', name: 'Dialogue', vttBlocks: ['NOTE keep'], clips: [
+      { id: 'cue', text: 'Dialogue', timelineStartTick: '1', timelineEndTick: '254016000000' },
+    ] },
+  ] }
+  const create = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:matched-caption')
+  const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+  vi.mocked(writeCaptionFile).mockResolvedValue({ extension: 'srt', dataBase64: btoa('subtitle') })
+  const change = (field: HTMLInputElement | HTMLSelectElement, value: string, event: string) => {
+    field.value = value
+    field.dispatchEvent(new Event(event, { bubbles: true }))
+  }
+  try {
+    await ready()
+    const start = document.querySelector<HTMLInputElement>('[aria-label="Начало нативного экспорта"]')!
+    const end = document.querySelector<HTMLInputElement>('[aria-label="Конец нативного экспорта"]')!
+    const track = document.querySelector<HTMLSelectElement>('[aria-label="Дорожка для диапазона видео"]')!
+    change(start, '250001', 'input')
+    change(end, '750001', 'input')
+    change(track, 'two', 'change')
+    await tick()
+    button('Экспортировать дорожку субтитров').click()
+    await vi.waitFor(() => expect(create).toHaveBeenCalledOnce())
+    expect(writeCaptionFile).toHaveBeenCalledWith(expect.objectContaining({ blocks: ['NOTE keep'] }), 'srt', {
+      dropFrame: true, rate: { num: 24000, den: 1000 }, offsetTick: '63504254016', endTick: '190512254016',
+    })
+    button('Экспортировать видео').click()
+    await vi.waitFor(() => expect(exportNestedVideo).toHaveBeenCalledOnce())
+    expect(vi.mocked(exportNestedVideo).mock.calls[0]?.slice(1, 4)).toEqual(['root', 250001, 750001])
+    await vi.waitFor(() => expect(button('Экспортировать видео').disabled).toBe(false))
+    change(end, '750002', 'input')
+    await tick()
+    expect(document.querySelector('a[download]')).toBeNull()
+    expect(revoke).toHaveBeenCalledWith('blob:matched-caption')
+  } finally {
+    create.mockRestore()
+    revoke.mockRestore()
+  }
 })

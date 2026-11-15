@@ -2,6 +2,7 @@
   import { cancelJob, exportNestedVideo, getJob, nestedDurations } from '$lib/api'
   import { nestedComposition, nestedHistory } from '$lib/state/nestedComposition.svelte'
   import { loadLibrary } from '$lib/state/store.svelte'
+  import CaptionFileExport from './CaptionFileExport.svelte'
   import type { Job } from '$lib/types'
   let { token, disabled = false }: { token: string; disabled?: boolean } = $props()
   let withAudio = $state(false)
@@ -20,6 +21,10 @@
   let timer: ReturnType<typeof setTimeout> | undefined
   const compositionId = $derived(nestedComposition.activeCompositionId ?? nestedComposition.document?.root ?? '')
   const validRange = $derived(Number.isSafeInteger(startUs) && Number.isSafeInteger(endUs) && startUs >= 0 && startUs < endUs && endUs <= duration)
+  const captionContent = $derived(nestedComposition.document?.compositions[compositionId]?.content)
+  const captionTracks = $derived(captionContent?.captionTracks ?? [])
+  let captionTrackId = $state('')
+  const captionTrack = $derived(captionTracks.find(track => track.id === captionTrackId) ?? captionTracks[0])
   const progress = $derived(Math.min(100, Math.max(0, job?.progress ?? 0)))
   const filename = $derived(job?.status === 'done' && job.result && typeof job.result === 'object' && 'filename' in job.result && typeof job.result.filename === 'string' ? job.result.filename : '')
   $effect(() => {
@@ -98,6 +103,25 @@
   {#if jobId}<span class="job-id">Задача: {jobId}</span>{/if}
   {#if filename}<span role="status">Готово в медиатеке: {filename}</span>{/if}
   {#if job?.status === 'cancelled'}<span role="status">Экспорт отменён</span>{/if}
+  {#if captionContent && captionTrack}
+    <details>
+      <summary>Субтитры для диапазона видео</summary>
+      <label>Дорожка для диапазона видео
+        <select aria-label="Дорожка для диапазона видео" value={captionTrack.id} disabled={disabled}
+          onchange={event => captionTrackId = event.currentTarget.value}>
+          {#each captionTracks as track (track.id)}<option value={track.id}>{track.name}</option>{/each}
+        </select>
+      </label>
+      {#if validRange && !durationBusy}
+        {#key `${compositionId}/${captionTrack.id}`}
+          <CaptionFileExport composition={{ canvas: {
+            fps: captionContent.canvas.fpsMilli / 1000,
+            fpsRate: captionContent.canvas.fpsRate ?? { numerator: captionContent.canvas.fpsMilli, denominator: 1000 },
+          }, captionTracks }} activeId={captionTrack.id} range={{startUs,endUs}} {disabled} />
+        {/key}
+      {/if}
+    </details>
+  {/if}
   {#if durationError || error}<p role="alert">{durationError || error}</p>{/if}
 </section>
 <style>
