@@ -145,6 +145,10 @@ function assStyle(read: (field: string) => string | undefined): AssStyle {
   if (color) style.color = color
   if (family) style.fontFamily = family
   if (align) style.align = align
+  for (const flag of ['bold', 'italic'] as const) {
+    const value = read(flag)
+    if (value === '-1' || value === '1' || value === '0') style[flag] = value !== '0'
+  }
   if (outline !== undefined) {
     style.strokeWidthPx = outline
     style.strokeColor = assColor(read('outlinecolour')) ?? '#000000FF'
@@ -162,6 +166,7 @@ function applyAssOverride(style: AssStyle, tag: string) {
   const color = /^(?:1?c)(&H[0-9a-f]{1,8}&?)$/i.exec(tag)
   const align = /^an([1-9])$/i.exec(tag)
   const font = /^fn(.+)$/i.exec(tag)
+  const face = /^([bi])(-?1|0)$/i.exec(tag)
   if (size) style.fontSizePx = assNumber(size[1], 1, 512) ?? style.fontSizePx
   if (color) style.color = assColor(color[1]) ?? style.color
   if (align) style.align = assAlign(align[1]) ?? style.align
@@ -169,6 +174,7 @@ function applyAssOverride(style: AssStyle, tag: string) {
     const family = assFont(font[1])
     if (family) style.fontFamily = family
   }
+  if (face) style[face[1]!.toLowerCase() === 'b' ? 'bold' : 'italic'] = face[2] !== '0'
 }
 
 function assTimestamp(value: string): number {

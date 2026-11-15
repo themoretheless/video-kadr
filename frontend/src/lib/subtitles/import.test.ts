@@ -10,7 +10,7 @@ describe('subtitle document import', () => {
 
   it('reads ASS and SSA event fields, commas and escaped newlines', () => {
     const cues = parseSubtitleDocument('[Script Info]\nTitle: test\n[Events]\nFormat: Marked, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nComment: 0,0:00:00.00,0:00:01.00,Default,,0,0,0,,ignored\nDialogue: 0,0:00:01.23,0:00:03.45,Default,,0,0,0,,{\\b1}Hello, world\\Nnext\\hline\n')
-    expect(cues).toEqual([{ id: 'subtitle-1', startTicks: 1_230_000, endTicks: 3_450_000, text: 'Hello, world\nnext\u00a0line' }])
+    expect(cues).toEqual([{ id: 'subtitle-1', startTicks: 1_230_000, endTicks: 3_450_000, text: 'Hello, world\nnext\u00a0line', style: { bold: true } }])
   })
 
   it('retains SRT and timecoded TXT support', () => {

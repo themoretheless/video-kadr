@@ -54,3 +54,21 @@ fn explicit_text_anchor_moves_the_glyphs_around_a_fixed_position() {
  assert!((152..=160).contains(&bottom_right[2]), "{bottom_right:?}");
  assert!((80..=90).contains(&bottom_right[3]), "{bottom_right:?}");
 }
+
+#[test]
+fn native_text_raster_uses_bold_and_italic_from_the_document() {
+ let base = clip();
+ let regular = pixels(&base);
+ let mut bold = base.clone();
+ bold.style.bold = true;
+ let mut italic = base.clone();
+ italic.style.italic = true;
+ let mut combined = bold.clone();
+ combined.style.italic = true;
+ assert_ne!(pixels(&bold), regular);
+ assert_ne!(pixels(&italic), regular);
+ assert_ne!(pixels(&combined), pixels(&bold));
+ assert_ne!(pixels(&combined), pixels(&italic));
+ let restored: TextClip = serde_json::from_value(serde_json::to_value(&combined).unwrap()).unwrap();
+ assert_eq!(pixels(&restored), pixels(&combined));
+}

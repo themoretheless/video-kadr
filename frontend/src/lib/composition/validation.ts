@@ -1625,6 +1625,11 @@ function validateTextStyle(
   if (!isFiniteNumber(value.fontSizePx) || value.fontSizePx < 1 || value.fontSizePx > 512) {
     add('font-size', `${path}.fontSizePx`, 'fontSizePx must be from 1 to 512')
   }
+  for (const field of ['bold', 'italic'] as const) {
+    if (value[field] !== undefined && typeof value[field] !== 'boolean') {
+      add('text-style-flag', `${path}.${field}`, `${field} must be boolean`)
+    }
+  }
   validateColor(value.color, `${path}.color`, add)
   if (value.backgroundColor !== undefined) validateColor(value.backgroundColor, `${path}.backgroundColor`, add)
   if (value.align !== 'left' && value.align !== 'center' && value.align !== 'right') {

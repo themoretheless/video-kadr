@@ -282,6 +282,8 @@ export function textClipToWire(composition: Composition, clip: TextClip): WireTe
     ...(clip.colorAnimation ? { colorAnimation: packColorAnimation(clip.colorAnimation) } : {}),
     style: {
       fontFamily: clip.style.fontFamily ?? 'Noto Sans',
+      ...(clip.style.bold ? { bold: true } : {}),
+      ...(clip.style.italic ? { italic: true } : {}),
       fontSize: clip.style.fontSizePx,
       align: clip.style.align,
       color: colorToRgba(clip.style.color),

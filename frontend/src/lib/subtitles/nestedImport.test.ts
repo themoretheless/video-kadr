@@ -58,17 +58,20 @@ it('supports ASS text/time and a safe cursor offset, refusing invalid input/ids/
 
 it('retains ASS cue styling in the authored nested project', () => {
  const result = importNestedSubtitles(project(), 'root', String.raw`[V4+ Styles]
-Format: Name, Fontname, Fontsize, PrimaryColour, Outline, Alignment
-Style: Note,Arial,60,&H00FFFFFF,2,3
+Format: Name, Fontname, Fontsize, PrimaryColour, Outline, Alignment, Bold, Italic
+Style: Note,Arial,60,&H00FFFFFF,2,3,-1,0
 [Events]
 Format: Start, End, Style, Text
-Dialogue: 0:00:00.00,0:00:02.00,Note,{\1c&H0000FF&}Caption
+Dialogue: 0:00:00.00,0:00:02.00,Note,{\1c&H0000FF&\i1}Caption
+Dialogue: 0:00:02.00,0:00:03.00,Note,{\b0}Regular
 `, allocator())
  expect(result.document.compositions.root!.content.tracks[0]!.clips[0]).toMatchObject({
   text: 'Caption',
-  style: { fontFamily: 'Arial', fontSize: 60, align: 'right', strokeWidth: 2,
+  style: { fontFamily: 'Arial', fontSize: 60, align: 'right', strokeWidth: 2, bold: true, italic: true,
    color: { red: 1, green: 0, blue: 0, alpha: 1 } },
  })
+ const track = result.document.compositions.root!.content.tracks[0]!
+ expect(track.clips[1]).not.toHaveProperty('style.bold')
 })
 
 it('maps ASS absolute positions to editable canvas offsets', () => {

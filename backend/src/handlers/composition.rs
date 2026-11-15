@@ -1374,6 +1374,8 @@ source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retim
                 timeline_end_tick: 1_000_000,
                 text: "Привет\n字幕".to_owned(),
                 style: TextStyle {
+                    bold: false,
+                    italic: false,
                     align: None,
                     font_family: "Noto Sans".to_owned(),
                     font_size: 48.0,

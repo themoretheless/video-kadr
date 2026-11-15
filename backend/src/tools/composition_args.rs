@@ -5454,6 +5454,8 @@ timeline: None,
                     timeline_end_tick: 1_500_000,
                     text: "Привет, мир!\n字幕".into(),
                     style: TextStyle {
+                        bold: false,
+                        italic: false,
                         align: None,
                         font_family: "Noto Sans".into(),
                         font_size: 56.0,

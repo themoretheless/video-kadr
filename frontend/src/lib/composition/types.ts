@@ -389,6 +389,8 @@ export interface ImageClip {
 }
 
 export interface TextStyle {
+  readonly bold?: boolean
+  readonly italic?: boolean
   readonly fontSizePx: number
   readonly color: string
   readonly backgroundColor?: string
@@ -911,6 +913,8 @@ export interface WireImageClip {
 }
 
 export interface WireTextStyle {
+  readonly bold?: boolean
+  readonly italic?: boolean
   readonly align?: 'left' | 'center' | 'right'
   readonly fontFamily: string
   readonly fontSize: number

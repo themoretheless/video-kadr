@@ -1519,6 +1519,10 @@ pub enum TextAlignment { Left, Center, Right }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TextStyle {
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub bold: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub italic: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub align: Option<TextAlignment>,
     pub font_family: String,
@@ -3713,6 +3717,8 @@ source_out_tick: 99_000,
                 timeline_end_tick: 1_000_000,
                 text: "safe textfile content".into(),
                 style: TextStyle {
+                    bold: false,
+                    italic: false,
                     align: None,
                     font_family: "../../arbitrary.ttf".into(),
                     font_size: 48.0,

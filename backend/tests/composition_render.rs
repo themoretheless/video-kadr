@@ -4101,6 +4101,8 @@ source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retim
                 timeline_end_tick: 600_000,
                 text: "Привет, мир!\n字幕テスト".to_owned(),
                 style: TextStyle {
+                    bold: false,
+                    italic: false,
                     align: None,
                     font_family: "Noto Sans".to_owned(),
                     font_size: 22.0,

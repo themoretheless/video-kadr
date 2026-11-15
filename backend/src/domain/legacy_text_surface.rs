@@ -15,8 +15,15 @@ pub fn render(clip:&TextClip,canvas:(u32,u32),time:u64,checkpoint:&mut dyn FnMut
         [sampled.r as f32/255.,sampled.g as f32/255.,sampled.b as f32/255.,sampled.a as f32/255.]
     }else{rgba(clip.style.color)};
     let dx=clip.style.shadow_x.round()as f32;let dy=clip.style.shadow_y.round()as f32;
+    let font_style = match (clip.style.bold, clip.style.italic) {
+        (false, false) => "Regular",
+        (true, false) => "Bold",
+        (false, true) => "Italic",
+        (true, true) => "Bold Italic",
+    };
     let mut parameters=GraphicTextParameters{
         text:clip.text.clone(),font:clip.style.font_family.clone(),size:clip.style.font_size as f32,
+        font_style: font_style.into(),
         fill:true,fill_color:color,align:match clip.style.align {None|Some(super::composition::TextAlignment::Left)=>0,Some(super::composition::TextAlignment::Center)=>1,Some(super::composition::TextAlignment::Right)=>2},
         stroke:clip.style.stroke_width.round()>0.,stroke_width:clip.style.stroke_width.round()as f32,stroke_color:rgba(clip.style.stroke),stroke_type:0,
         background:clip.style.background.alpha>0.,background_color:rgba(clip.style.background),background_opacity:100.,background_size:0.,background_radius:0.,
