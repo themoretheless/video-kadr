@@ -26,7 +26,7 @@
   import { nativeClipEnd } from '$lib/composition/nativeClipInsert'
   import { pasteNativeCaptionTracks } from '$lib/composition/nativeCaptionClipboard'
   import { serializeNativeClipboard } from '$lib/composition/nativeClipboardText'
-  import { captionDisplaySeconds } from '$lib/composition/captionTime'
+  import { captionDisplaySeconds, captionFrameDelta, exactCaptionDeltaTicks, parseCaptionEditSeconds } from '$lib/composition/captionTime'
   import { prepareNativeClipboardPaste } from '$lib/composition/nativeClipboard'
   import { prepareNativeClipCopy } from '$lib/composition/nativeClipCopy'
   import { duplicateNativeClips } from '$lib/composition/nativeClipDuplicate'
@@ -86,12 +86,37 @@
   let copyStartSeconds = $state(0)
   let captionSelected = $state<string[]>([])
   const captionTracks = $derived(project?.compositions[active]?.content.captionTracks ?? [])
-  function editFileCaptions(kind: 'split' | 'merge' | 'delete') {
+  let captionDelta = $state('1')
+  let captionDeltaUnit = $state<'seconds' | 'frames'>('seconds')
+
+  function fileCaptionDelta(): string {
+    const value = captionDelta.trim()
+    if (captionDeltaUnit === 'frames') {
+      const canvas = project?.compositions[active]?.content.canvas
+      if (!canvas || !/^[+-]?\d+$/.test(value)) throw new Error('Введите целое число кадров')
+      return captionFrameDelta(Number(value), canvas.fpsRate ?? { numerator: canvas.fpsMilli, denominator: 1000 })
+    }
+    const magnitude = parseCaptionEditSeconds(value.replace(/^[+-]/, ''))
+    return exactCaptionDeltaTicks((value.startsWith('-') ? -magnitude : magnitude).toString()).toString()
+  }
+
+  function editFileCaptions(kind: 'split' | 'merge' | 'delete' | 'move' | 'trim', inEdge = false) {
     const scope = active
     const ids = [...captionSelected]
-    if (!ids.length || (kind === 'split' && ids.length !== 1) || (kind === 'merge' && ids.length < 2)) return
-    const operation = kind === 'split' ? { kind, id: ids[0]!, timeTick: nestedComposition.timeUs } as const
-      : kind === 'merge' ? { kind, ids } as const : { kind, ids, ripple: true } as const
+    if (!ids.length || ((kind === 'split' || kind === 'trim') && ids.length !== 1) || (kind === 'merge' && ids.length < 2)) return
+    let operation: Parameters<typeof editNestedFileCaptions>[1]
+    try {
+      switch (kind) {
+        case 'split': operation = { kind, id: ids[0]!, timeTick: nestedComposition.timeUs }; break
+        case 'merge': operation = { kind, ids }; break
+        case 'delete': operation = { kind, ids, ripple: true }; break
+        case 'move': operation = { kind, ids, deltaTicks: fileCaptionDelta() }; break
+        case 'trim': operation = { kind, id: ids[0]!, inEdge, deltaTicks: fileCaptionDelta() }; break
+      }
+    } catch (error) {
+      nestedHistory.error = error instanceof Error ? error.message : String(error)
+      return
+    }
     void keepKeyboardFocus(() => editNestedFileCaptions(scope, operation, () => {
       if (!alive || disabled || active !== scope || ids.length !== captionSelected.length || ids.some(id => !captionSelected.includes(id))) {
         throw new Error('Выбор реплик изменился')
@@ -335,6 +360,19 @@
         onclick={() => editFileCaptions('merge')}>Объединить реплики дорожки</button>
       <button class="btn ghost sm" type="button" disabled={disabled || nestedHistory.busy}
         onclick={() => editFileCaptions('delete')}>Удалить реплики со сдвигом</button>
+      <label>Единицы сдвига реплик<select value={captionDeltaUnit} disabled={nestedHistory.busy}
+        onchange={event => captionDeltaUnit = event.currentTarget.value === 'frames' ? 'frames' : 'seconds'}>
+        <option value="seconds">Секунды</option>
+        <option value="frames">Кадры</option>
+      </select></label>
+      <label>Сдвиг реплик<input type="text" inputmode={captionDeltaUnit === 'frames' ? 'numeric' : 'decimal'}
+        bind:value={captionDelta} disabled={nestedHistory.busy} /></label>
+      <button class="btn ghost sm" type="button" disabled={disabled || nestedHistory.busy}
+        onclick={() => editFileCaptions('move')}>Сдвинуть реплики</button>
+      <button class="btn ghost sm" type="button" disabled={disabled || nestedHistory.busy || captionSelected.length !== 1}
+        onclick={() => editFileCaptions('trim', true)}>Обрезать начало реплики</button>
+      <button class="btn ghost sm" type="button" disabled={disabled || nestedHistory.busy || captionSelected.length !== 1}
+        onclick={() => editFileCaptions('trim')}>Обрезать конец реплики</button>
     {/if}
     <label>В таймлайн<select aria-label="Таймлайн для переноса клипов" value={destination} onchange={(event) => { destination = event.currentTarget.value; targets = {} }}>
       {#each orderedTimelineIds(project) as id (id)}<option value={id}>{project.compositions[id]?.content.metadata?.sequenceName || id}</option>{/each}

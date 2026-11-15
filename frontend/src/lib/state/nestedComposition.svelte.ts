@@ -1,3 +1,5 @@
+import { captionMicrosecondsCeil } from '$lib/composition/captionTime'
+import { MAX_COMPOSITION_DURATION_TICKS } from '$lib/composition/types'
 import { changeSubtitleDocuments, type SubtitleDocument } from '$lib/subtitles/documents'
 import {takeSourceRunCutTransaction} from '$lib/composition/sourceRunCutTransaction'
 import {authState} from './auth.svelte'
@@ -1174,7 +1176,7 @@ export async function updateNestedCaptionCue(
 }
 
 export async function editNestedFileCaptions(
-  id: string, operation: Extract<CaptionEditOperation, {kind: 'split' | 'merge' | 'delete'}>, admission: () => void,
+  id: string, operation: Extract<CaptionEditOperation, {kind: 'split' | 'merge' | 'delete' | 'move' | 'trim'}>, admission: () => void,
 ): Promise<void> {
   const guard = () => { assertHistoryUnlocked(); admission() }
   await editNestedDocument(async document => {
@@ -1188,8 +1190,17 @@ export async function editNestedFileCaptions(
       throw new Error('Изменился список дорожек субтитров')
     }
     const captionTracks = original.map((track, index) => ({ ...track, clips: updated[index]!.clips }))
+    let durationUs = node.durationUs
+    if (operation.kind === 'move' || operation.kind === 'trim') {
+      const end = updated.reduce((max, track) => {
+        const last = track.clips.at(-1)
+        return last ? Math.max(max, captionMicrosecondsCeil(last.timelineEndTick)) : max
+      }, 0)
+      if (end > MAX_COMPOSITION_DURATION_TICKS) throw new Error('Время субтитров выходит за пределы таймлайна')
+      if (durationUs !== undefined) durationUs = Math.max(durationUs, end)
+    }
     return { ...document, compositions: { ...document.compositions, [id]: {
-      ...node, content: { ...node.content, captionTracks },
+      ...node, ...(durationUs === undefined ? {} : { durationUs }), content: { ...node.content, captionTracks },
     } } }
   }, true, undefined, undefined, 0, undefined, guard)
 }

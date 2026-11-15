@@ -80,22 +80,24 @@ it('edits the selected file caption and keeps its submicrosecond clock through U
   }
 })
 
-it('splits, joins and ripple-deletes imported captions through native edits and shared Undo', async () => {
+it('edits imported captions through native commands and shared Undo', async () => {
   closeNestedComposition()
   const content = buildCompositionWireDocument(createComposition({ width: 320, height: 180, fps: 24, backgroundColor: '#000000' }))
   const first = { id: 'cue', cueId: 'external', timelineStartTick: '254016000001', timelineEndTick: '508032000003', text: 'First' }
   const next = { id: 'next', timelineStartTick: '762048000005', timelineEndTick: '1016064000007', text: 'Next' }
   const track = { id: 'file', name: 'Imported captions', clips: [first, next] }
   const original = { ...content, captionTracks: [track] }
-  nestedComposition.document = { schemaVersion: 1, root: 'root', compositions: { root: { instances: [], content: original } } }
+  nestedComposition.document = { schemaVersion: 1, root: 'root', compositions: { root: { instances: [], content: original, durationUs: 4_100_000 } } }
   nestedComposition.timeUs = 1_500_000
   const left = { ...first, timelineEndTick: 1_500_000 }
   const right = { ...first, id: 'right', cueId: null, timelineStartTick: 1_500_000 }
   const joined = { ...first, text: 'First\nFirst' }
   const shifted = { ...next, timelineStartTick: '508032000003', timelineEndTick: '762048000005' }
+  const moved = { ...shifted, timelineStartTick: '889056000004', timelineEndTick: '1143072000006' }
+  const trimmed = { ...moved, timelineEndTick: '1132488000006' }
   const mock = vi.mocked(api.editCompositionCaptions)
   mock.mockReset()
-  for (const clips of [[left, right, next], [joined, next], [shifted]]) {
+  for (const clips of [[left, right, next], [joined, next], [shifted], [moved], [trimmed]]) {
     mock.mockResolvedValueOnce({ composition: { ...original, captionTracks: [{ ...track, name: 'Server track', clips }] }, appliedDelta: null, deleted: 0 })
   }
   const target = document.createElement('div')
@@ -123,7 +125,30 @@ it('splits, joins and ripple-deletes imported captions through native edits and 
     click('Удалить реплики со сдвигом')
     await vi.waitFor(() => expect(currentTrack()?.clips).toEqual([shifted]))
     expect(mock.mock.calls[2]?.[1]).toEqual({ kind: 'delete', ids: ['cue'], ripple: true })
-    expect(nestedHistory.past).toHaveLength(3)
+    await select('next')
+    const delta = [...target.querySelectorAll('label')].find(label => label.textContent?.trim() === 'Сдвиг реплик')!.querySelector('input')!
+    delta.value = '1,499999999996'
+    delta.dispatchEvent(new Event('input', { bubbles: true }))
+    await tick()
+    click('Сдвинуть реплики')
+    await vi.waitFor(() => expect(currentTrack()?.clips).toEqual([moved]))
+    expect(mock.mock.calls[3]?.[1]).toEqual({ kind: 'move', ids: ['next'], deltaTicks: '381023999999' })
+    expect(nestedComposition.document?.compositions.root?.durationUs).toBe(4_500_001)
+    const unit = [...target.querySelectorAll('select')].find(select => select.options[0]?.value === 'seconds')!
+    unit.value = 'frames'
+    unit.dispatchEvent(new Event('change', { bubbles: true }))
+    delta.value = '-1'
+    delta.dispatchEvent(new Event('input', { bubbles: true }))
+    await tick()
+    click('Обрезать конец реплики')
+    await vi.waitFor(() => expect(currentTrack()?.clips).toEqual([trimmed]))
+    expect(mock.mock.calls[4]?.[1]).toEqual({ kind: 'trim', id: 'next', inEdge: false, deltaTicks: '-10584000000' })
+    expect(nestedHistory.past).toHaveLength(5)
+    undoNestedComposition()
+    expect(currentTrack()?.clips).toEqual([moved])
+    undoNestedComposition()
+    expect(currentTrack()?.clips).toEqual([shifted])
+    expect(nestedComposition.document?.compositions.root?.durationUs).toBe(4_100_000)
     undoNestedComposition()
     expect(currentTrack()?.clips).toEqual([joined, next])
     undoNestedComposition()
