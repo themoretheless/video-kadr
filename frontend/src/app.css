@@ -1000,3 +1000,15 @@
 .composition-keyframe-menu { position: fixed; z-index: 1000; display: grid; min-width: 160px; padding: 4px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel-2); }
 
 .composition-keyframe-curve .composition-keyframe-segment-hit { stroke: transparent; stroke-width: 12; pointer-events: stroke; cursor: context-menu; }
+
+
+[data-subtitle-drop-preview]::after {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  left: clamp(0px, calc(var(--subtitle-drop-position) - 1px), calc(100% - 2px));
+  width: 2px;
+  background: var(--accent);
+  pointer-events: none;
+  z-index: 10;
+}

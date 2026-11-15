@@ -997,7 +997,13 @@ it('uses the drop position on a track lane for a subtitle document', async () =>
     vi.spyOn(lane, 'getBoundingClientRect').mockReturnValue(new DOMRect(120, 0, 480, 32))
     const x = 120 + compositionState.ui.zoomPxPerSecond * 2.5
     expect(lane.dispatchEvent(event('dragover', x))).toBe(false)
+    expect(lane.hasAttribute('data-subtitle-drop-preview')).toBe(true)
+    expect(lane.style.getPropertyValue('--subtitle-drop-position')).toBe(`${x - 120}px`)
+    lane.dispatchEvent(event('dragleave', x))
+    expect(lane.hasAttribute('data-subtitle-drop-preview')).toBe(false)
+    lane.dispatchEvent(event('dragover', x))
     expect(lane.dispatchEvent(event('drop', x))).toBe(false)
+    expect(lane.hasAttribute('data-subtitle-drop-preview')).toBe(false)
     expect(insert).toHaveBeenCalledExactlyOnceWith(2.5 * COMPOSITION_TIME_BASE)
     expect(lane.dispatchEvent(event('drop', x))).toBe(true)
   } finally {

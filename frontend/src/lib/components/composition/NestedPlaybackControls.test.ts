@@ -108,7 +108,20 @@ it('places a dragged subtitle at the fraction of the focused composition duratio
   const endDrag = startSubtitleDrag(event('dragstart'), insert)
   try {
     expect(input.dispatchEvent(event('dragover'))).toBe(false)
-    expect(input.dispatchEvent(event('drop'))).toBe(false)
+    const ruler = input.parentElement!
+    expect(ruler.hasAttribute('data-subtitle-drop-preview')).toBe(true)
+    expect(ruler.style.getPropertyValue('--subtitle-drop-position')).toBe('25%')
+    endDrag()
+    expect(ruler.hasAttribute('data-subtitle-drop-preview')).toBe(false)
+    expect(insert).not.toHaveBeenCalled()
+    const finish = startSubtitleDrag(event('dragstart'), insert)
+    try {
+      input.dispatchEvent(event('dragover'))
+      expect(input.dispatchEvent(event('drop'))).toBe(false)
+      expect(ruler.hasAttribute('data-subtitle-drop-preview')).toBe(false)
+    } finally {
+      finish()
+    }
     expect(insert).toHaveBeenCalledExactlyOnceWith(250000)
     expect(nestedComposition.timeUs).toBe(0)
   } finally {
