@@ -121,6 +121,21 @@ Dialogue: 0:00:02.00,0:00:03.00,{\a8}Legacy edge
     ])
   })
 
+  it('applies relative ASS font sizes in order and restores the active style on reset', () => {
+    const report = parseSubtitleDocumentWithReport(String.raw`[V4+ Styles]
+Format: Name, Fontsize
+Style: Default,40
+Style: Alternate,60
+[Events]
+Format: Start, End, Style, Text
+Dialogue: 0:00:00.00,0:00:01.00,Default,{\fs50\fs+2\fs-5}Adjusted
+Dialogue: 0:00:01.00,0:00:02.00,Default,{\rAlternate\fs+2\fs0}Reset
+Dialogue: 0:00:02.00,0:00:03.00,Default,First{\fs+2} second
+`)
+    expect(report.cues.map(cue => cue.style?.fontSizePx)).toEqual([30, 60, 40])
+    expect(report.simplifiedCueCount).toBe(1)
+  })
+
   it('refuses malformed, inverted, excessive and empty cues before mutation', () => {
     for (const event of [
       'Dialogue: 0:00:02.00,0:00:01.00,text',

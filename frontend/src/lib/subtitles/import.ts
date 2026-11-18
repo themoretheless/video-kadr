@@ -104,6 +104,7 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
       const eventMargins = assMargins(field => values[fields.indexOf(field)]?.trim())
       let styleMargins = namedStyle?.margins
       let style = { ...namedStyle?.style }
+      let baseFontSize = namedStyle?.style.fontSizePx
       let anchor = namedStyle?.anchor
       let hasInlineAlignment = false
       let cueWrapStyle = wrapStyle
@@ -129,6 +130,7 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
               const target = styles.get(reset[1]!.trim()) ?? namedStyle
               const alignment = style.align
               style = { ...target?.style }
+              baseFontSize = target?.style.fontSizePx
               rotationDegrees = target?.rotationDegrees
               scale = { ...target?.scale }
               styleMargins = target?.margins
@@ -145,7 +147,18 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
           const scaling = /^fsc([xy])(\d+(?:\.\d+)?|\.\d+)$/i.exec(tag)
           const alignment = /^(an|a)(\d+)$/i.exec(tag)
           const wrap = /^q([0-3])$/i.exec(tag)
+          const fontSize = /^fs([+-]?(?:\d+(?:\.\d*)?|\.\d+))?$/i.exec(tag)
           if (wrap) cueWrapStyle = Number(wrap[1])
+          else if (fontSize) {
+            const rawSize = fontSize[1]
+            const size = rawSize && /^[+-]/.test(rawSize)
+              ? (style.fontSizePx ?? defaultFontSize / typographyScale) * (1 + Number(rawSize) / 10)
+              : Number(rawSize ?? 0)
+            if (hasText || !Number.isFinite(size) || size > 512) simplified = true
+            else if (size > 0) style.fontSizePx = size
+            else if (baseFontSize !== undefined) style.fontSizePx = baseFontSize
+            else delete style.fontSizePx
+          }
           else if (alignment) {
             if (!hasInlineAlignment) {
               const code = alignment[1]?.toLowerCase() === 'an' ? alignment[2] : legacyAssAlignment(alignment[2], true)
@@ -484,12 +497,9 @@ function applyAssOverride(style: AssStyle, tag: string, hasText: boolean): boole
     if (property !== 'bord') style.shadowColor ??= '#000000FF'
     return true
   }
-  const size = /^fs(\d+(?:\.\d+)?)$/i.exec(tag)
   const color = /^([134]?)c(&H[0-9a-f]{1,8}&?)$/i.exec(tag)
   const font = /^fn(.+)$/i.exec(tag)
   const face = /^([bi])(-?1|0)$/i.exec(tag)
-  const fontSize = assNumber(size?.[1], 1, 512)
-  if (fontSize !== undefined) style.fontSizePx = fontSize
   if (color) {
     if (hasText) return false
     const rgb = assColor(color[2])?.slice(0, 7)
@@ -504,7 +514,7 @@ function applyAssOverride(style: AssStyle, tag: string, hasText: boolean): boole
     return !!family
   }
   if (face) style[face[1]!.toLowerCase() === 'b' ? 'bold' : 'italic'] = face[2] !== '0'
-  return fontSize !== undefined || !!face
+  return !!face
 }
 
 function assTimestamp(value: string): number {
