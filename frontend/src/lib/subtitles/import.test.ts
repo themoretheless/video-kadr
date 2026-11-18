@@ -95,6 +95,7 @@ Dialogue: 0:00:02.00,0:00:03.00,Alternate,Explicit
   })
 
   it.each([
+    ['Title: No explicit resolution', 384, 288],
     ['PlayResX: 1280', 1280, 1024], ['PlayResY: 1024', 1280, 1024],
     ['PlayResX: 642', 642, 481], ['PlayResY: 480', 640, 480],
   ])('infers the missing ASS script dimension from %s', (field, width, height) => {

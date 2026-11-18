@@ -264,13 +264,17 @@ function assMargins(read: (field: string) => string | undefined): AssMargins {
 
 function assScriptInfo(lines: readonly string[]) {
   let scriptInfo = false
+  let hasScriptInfo = false
   let width: number | undefined
   let height: number | undefined
   let scaleBorderAndShadow = false
   let wrapStyle = 0
   for (const line of lines) {
     const trimmed = line.trim()
-    if (/^\[.*\]$/.test(trimmed)) scriptInfo = /^\[script info\]$/i.test(trimmed)
+    if (/^\[.*\]$/.test(trimmed)) {
+      scriptInfo = /^\[script info\]$/i.test(trimmed)
+      hasScriptInfo ||= scriptInfo
+    }
     if (!scriptInfo) continue
     const scaling = /^ScaledBorderAndShadow:\s*(yes|no)$/i.exec(trimmed)
     const wrap = /^WrapStyle:\s*([0-3])$/i.exec(trimmed)
@@ -285,7 +289,8 @@ function assScriptInfo(lines: readonly string[]) {
   } else if (height !== undefined && width === undefined) {
     width = height === 1024 ? 1280 : Math.min(2_147_483_647, Math.floor(height * 4 / 3))
   }
-  const resolution = width !== undefined && height !== undefined ? { width, height } : undefined
+  const resolution = width !== undefined && height !== undefined ? { width, height }
+    : hasScriptInfo ? { width: 384, height: 288 } : undefined
   return { resolution, scaleBorderAndShadow, wrapStyle }
 }
 
