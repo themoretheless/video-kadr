@@ -83,7 +83,6 @@ fn over_sweep(px: &mut [f32], mask: &Mask, primary: [f32; 4], secondary: [f32; 4
         return;
     }
     let (dx, dy) = (m[3] / determinant, -m[2] / determinant);
-    let normal_length = dx.hypot(dy);
     px.par_chunks_mut(4 * mask.w).zip(mask.a.par_chunks(mask.w)).enumerate().for_each(|(y, (row, alphas))| {
         for (x, (pixel, alpha)) in row.chunks_exact_mut(4).zip(alphas).enumerate() {
             if *alpha <= 0. {
@@ -91,8 +90,8 @@ fn over_sweep(px: &mut [f32], mask: &Mask, primary: [f32; 4], secondary: [f32; 4
             }
             let local_x = dx * (x as f32 + origin.0 as f32 + 0.5 - m[4])
                 + dy * (y as f32 + origin.1 as f32 + 0.5 - m[5]);
-            let weight = ((edge - local_x) / normal_length + 0.5).clamp(0., 1.);
-            let color = std::array::from_fn::<_, 4, _>(|i| secondary[i] + (primary[i] - secondary[i]) * weight);
+            // ASS splits the coverage mask at the sweep edge. The glyph stays antialiased.
+            let color = if local_x < edge { primary } else { secondary };
             let remaining = 1. - color[3] * alpha;
             for i in 0..4 {
                 pixel[i] = color[i] * alpha + pixel[i] * remaining;

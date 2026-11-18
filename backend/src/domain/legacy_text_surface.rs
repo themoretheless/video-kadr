@@ -159,6 +159,7 @@ mod tests {
             let surface = render(&caption, (64, 48), time, &mut || Ok(()))
                 .unwrap().unwrap().to_surface(&mut || Ok(())).unwrap();
             surface.rgba.chunks_exact(4).fold([0, 0], |[red, green], pixel| {
+                assert!(pixel[0] == 0 || pixel[1] == 0, "mixed fill at {time}: {pixel:?}");
                 [red + usize::from(pixel[0] > pixel[1]), green + usize::from(pixel[1] > pixel[0])]
             })
         };
@@ -168,6 +169,9 @@ mod tests {
         assert!(before[0] > 0 && before[1] == 0);
         assert!(middle[0] > 0 && middle[1] > 0);
         assert!(after[0] == 0 && after[1] > 0);
+        for time in (1_210_000..1_600_000).step_by(10_000) {
+            counts(time);
+        }
 
         let mut trimmed = caption.clone();
         trimmed.timeline_start_tick += 300_000;
