@@ -28,10 +28,19 @@ try {
     await page.getByLabel('Позиция правки, кадров', { exact: true }).waitFor()
   }
 
-  async function download() {
+  async function download(label = 'Скачать проект') {
     const pending = page.waitForEvent('download')
-    await page.getByRole('button', { name: 'Скачать проект', exact: true }).click()
+    await page.getByRole('button', { name: label, exact: true }).click()
     return readFile(await (await pending).path())
+  }
+
+  async function exportFirstFrame() {
+    await page.getByLabel('Позиция правки, кадров', { exact: true }).fill('0')
+    const exported = page.waitForResponse(response => response.url().endsWith('/api/compositions/filmcraft/export-frame'))
+      .then(async response => { if (!response.ok()) throw new Error(await response.text()) })
+    const [frame] = await Promise.all([download('Экспортировать кадр PNG'), exported])
+    assert.equal(frame.subarray(0, 8).toString('hex'), '89504e470d0a1a0a')
+    return frame
   }
 
   const operations = [
@@ -42,8 +51,13 @@ try {
     await page.goto(new URL('e2e/fixtures/live-filmcraft-program.html', url).href,{waitUntil:'domcontentloaded'})
     await page.getByText('Проект Filmcraft',{exact:true}).click()
     await open(Buffer.from(JSON.stringify(original)))
+    await page.getByLabel('Секвенция Filmcraft', { exact: true }).selectOption('27')
     await page.locator('summary').filter({hasText:/^Точки In\/Out$/}).click()
     await page.getByLabel('Монитор точек Filmcraft',{exact:true}).selectOption('source')
+    await page.getByLabel('Исходник точек Filmcraft', { exact: true }).selectOption('14')
+    await page.getByRole('button', { name: 'Вставить исходник', exact: true }).click()
+    await expect(page.getByText('Исходник вставлен', { exact: true })).toBeVisible()
+    const beforeFrame = await exportFirstFrame()
     await page.getByLabel('Исходник точек Filmcraft',{exact:true}).selectOption('12')
     for (const [time,mark] of [['0','In'],['21168000000','Out']]) {
       await page.getByLabel('Позиция точки Filmcraft',{exact:true}).fill(time)
@@ -55,13 +69,31 @@ try {
     await expect(page.getByText(status,{exact:true})).toBeVisible({timeout:15000})
     const changed=await download()
     assert(!changed.equals(before),label)
+    const afterFrame = await exportFirstFrame()
+    assert(!afterFrame.equals(beforeFrame), label)
     await page.getByRole('button',{name:'Отменить правку',exact:true}).click()
     assert.deepEqual(JSON.parse(await download()),JSON.parse(before))
     await page.getByRole('button',{name:'Повторить правку',exact:true}).click()
     assert.deepEqual(JSON.parse(await download()),JSON.parse(changed))
     await open(changed)
+    await page.getByLabel('Секвенция Filmcraft', { exact: true }).selectOption('27')
     assert.deepEqual(JSON.parse(await download()),JSON.parse(changed))
-    console.log('PASS',label,'undo redo download reopen')
+    assert((await exportFirstFrame()).equals(afterFrame), label)
+    const unsupported = JSON.parse(changed)
+    const sequence = unsupported.project.items['27'].kind.Sequence
+    for (const track of sequence.video_tracks) {
+      for (const clip of track.items) {
+        const remap = clip.effects.find(effect => effect.effect === 'time_remap')
+        if (remap) remap.params.speed.value.Float = 50
+      }
+    }
+    const refused = await page.request.post(new URL('api/compositions/filmcraft/export-frame', url).href, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { document: unsupported, sequenceId: '27', timeFrames: '0', sources: {} },
+    })
+    assert.equal(refused.status(), 400)
+    assert.match((await refused.json()).error, /time remapping supports only constant 100%/)
+    console.log('PASS', label, 'undo redo download reopen and PNG export')
   }
 } finally {
   await browser.close()

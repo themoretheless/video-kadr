@@ -209,7 +209,27 @@ pub(super) fn apply_with_environment(context:&RenderContext,raw:&Value,tick:i64,
     ensure!(bound.is_finite()&&bound<=usize::MAX as f64,"label scratch overflow");extra=extra.checked_add(bound.ceil()as usize).context("label scratch overflow")?;
    }
    let _compile_scratch=context.reserve_scratch(extra);
- let effects=raw.as_array().context("missing source effects")?.iter().filter(|e|e["enabled"]!=false&&!matches!(e["effect"].as_str(),Some("motion"|"opacity"|"graphic_shape"|"graphic_text"))).map(|e|Ok((if e["effect"]=="lumetri"{VideoEffect::Lumetri{parameters:super::filmcraft_source_lumetri::compile(e,tick,project)?}}else{compile(e,tick,[image.w as f64/2./px_scale as f64,image.h as f64/2./px_scale as f64])?},e))).collect::<Result<Vec<_>>>()?;
+ let mut effects = Vec::new();
+ for effect in raw.as_array().context("missing source effects")? {
+  if effect["enabled"] == false || matches!(effect["effect"].as_str(), Some("motion" | "opacity" | "graphic_shape" | "graphic_text")) {
+   continue;
+  }
+  if effect["effect"] == "time_remap" {
+   let speed = &effect["params"]["speed"];
+   ensure!(
+    speed["value"]["Float"].as_f64() == Some(100.0)
+     && speed.get("keyframes").is_none_or(|keys| keys.as_array().is_some_and(Vec::is_empty)),
+    "source time remapping supports only constant 100% speed"
+   );
+   continue;
+  }
+  let compiled = if effect["effect"] == "lumetri" {
+   VideoEffect::Lumetri { parameters: super::filmcraft_source_lumetri::compile(effect, tick, project)? }
+  } else {
+   compile(effect, tick, [image.w as f64 / 2. / px_scale as f64, image.h as f64 / 2. / px_scale as f64])?
+  };
+  effects.push((compiled, effect));
+ }
  if effects.is_empty(){return Ok(image)}
  let(seconds,progress,span)=clock.values()?;
  let scratch_per_pixel=if effects.iter().any(|(e,_)|matches!(e,VideoEffect::WarpStabilizer{..}|VideoEffect::CompoundBlur{..}|VideoEffect::Lumetri{..}|VideoEffect::LightingEffects{..}|VideoEffect::Lightning{..}|VideoEffect::WriteOn{..}|VideoEffect::BrushStrokes{..}|VideoEffect::EchoGlow{..}|VideoEffect::WonderGlow{..}|VideoEffect::VolumetricRays{..}|VideoEffect::UltraKey{..}|VideoEffect::AlphaGlow{..}|VideoEffect::DropShadow{..}|VideoEffect::BevelAlpha{..}|VideoEffect::LongShadow{..}|VideoEffect::Stroke{..}|VideoEffect::Glint{..}|VideoEffect::EdgeGlow{..}|VideoEffect::BokehBlur{..}|VideoEffect::FocusBlur{..})){256}else if effects.iter().any(|(e,_)|matches!(e,VideoEffect::Move{..}|VideoEffect::CameraShake{..})){180}else{80};
