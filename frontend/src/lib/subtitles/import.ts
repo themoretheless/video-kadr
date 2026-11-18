@@ -133,10 +133,11 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
         for (const rawTag of assTags(block)) {
           const tag = rawTag.trim()
           if (!tag) continue
-          const karaoke = /^(kt|kf|ko|k|K)(\+?(?:\d+(?:\.\d*)?|\.\d+))?$/.exec(tag)
-          if (karaoke) {
+          const karaoke = /^(kt|kf|ko|k|K)\s*(?:\(([^()]*)\)|(.*))$/.exec(tag)
+          const karaokeArgument = (karaoke?.[2] ?? karaoke?.[3])?.trim()
+          if (karaoke && (karaokeArgument === '' || /^\+?(?:\d+(?:\.\d*)?|\.\d+)$/.test(karaokeArgument ?? ''))) {
             const command = karaoke[1]
-            const centiseconds = karaoke[2] === undefined ? (command === 'kt' ? 0 : 100) : Number(karaoke[2])
+            const centiseconds = karaokeArgument ? Number(karaokeArgument) : command === 'kt' ? 0 : 100
             const ticks = Math.trunc(centiseconds * 10) * 1_000
             if (Number.isSafeInteger(command === 'kt' ? ticks : karaokeTime + ticks)) {
               if (command === 'kt') karaokeTime = ticks

@@ -232,6 +232,15 @@ Dialogue: 0:00:00.00,0:00:03.00,{\kt12.59\k.99}A{\ko}B{\kf+20.5}C{\kt\K}D
     ])
   })
 
+  it.each([String.raw`\kt15\k50`, String.raw`\kt( 15 )\k(50)`, String.raw`\kt 15\k 50`])(
+    'imports equivalent ASS karaoke arguments %s',
+    tags => {
+      const report = parseSubtitleDocumentWithReport(`[Events]\nFormat: Start, End, Text\nDialogue: 0:00:00.00,0:00:02.00,{${tags}}M`)
+      expect(report.cues[0]?.karaoke).toMatchObject([{ startTicks: 150000, endTicks: 650000, mode: 'step' }])
+      expect(report.simplifiedCueCount).toBe(0)
+    },
+  )
+
   it('refuses malformed, inverted, excessive and empty cues before mutation', () => {
     for (const event of [
       'Dialogue: 0:00:02.00,0:00:01.00,text',
