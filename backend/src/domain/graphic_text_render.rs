@@ -76,6 +76,34 @@ fn over_mask(px: &mut [f32], m: &Mask, c: [f32; 4]) {
         });
 }
 
+fn over_sweep(px: &mut [f32], mask: &Mask, primary: [f32; 4], secondary: [f32; 4], progress: f32) {
+    let (mut left, mut right) = (mask.w, 0);
+    for (index, alpha) in mask.a.iter().enumerate() {
+        if *alpha > 0. {
+            let x = index % mask.w;
+            left = left.min(x);
+            right = right.max(x + 1);
+        }
+    }
+    if right <= left {
+        return;
+    }
+    let edge = left as f32 + (right - left) as f32 * progress.clamp(0., 1.);
+    px.par_chunks_mut(4 * mask.w).zip(mask.a.par_chunks(mask.w)).for_each(|(row, alphas)| {
+        for (x, (pixel, alpha)) in row.chunks_exact_mut(4).zip(alphas).enumerate() {
+            if *alpha <= 0. {
+                continue;
+            }
+            let weight = (edge - x as f32).clamp(0., 1.);
+            let color = std::array::from_fn::<_, 4, _>(|i| secondary[i] + (primary[i] - secondary[i]) * weight);
+            let remaining = 1. - color[3] * alpha;
+            for i in 0..4 {
+                pixel[i] = color[i] * alpha + pixel[i] * remaining;
+            }
+        }
+    });
+}
+
 pub fn raster_layer(spec: &TextLayer, m: &Xform, cw: usize, ch: usize) -> Option<LayerRaster> {
     if !spec.enabled || spec.opacity <= 0.0 {
         return None;
@@ -145,10 +173,23 @@ pub fn raster_layer(spec: &TextLayer, m: &Xform, cw: usize, ch: usize) -> Option
     if let Some(l) = &text {
         render::draw(l, m, &mut cover, (x0, y0));
     }
+    let mut outline_cover = None;
+    if !ap.strokes.is_empty() && spec.text.runs.iter().any(|(_, style)| style.suppress_outline == Some(true)) {
+        if let Some(layout) = &text {
+            let mut eligible = Mask::new(w, h);
+            render::draw_run(layout, m, &mut eligible, (x0, y0), Some(0));
+            for (index, (_, style)) in spec.text.runs.iter().enumerate() {
+                if style.suppress_outline != Some(true) {
+                    render::draw_run(layout, m, &mut eligible, (x0, y0), Some((index + 1) as u16));
+                }
+            }
+            outline_cover = Some(eligible);
+        }
+    }
     let strokes: Vec<(Mask, [f32; 4])> = ap
         .strokes
         .iter()
-        .map(|(c, sw, k)| (mask::stroke(&cover, sw * s, stroke_kind(*k)), *c))
+        .map(|(c, sw, k)| (mask::stroke(outline_cover.as_ref().unwrap_or(&cover), sw * s, stroke_kind(*k)), *c))
         .collect();
     let bg = ap.background.map(|(c, pad, r)| {
         let p =
@@ -165,8 +206,15 @@ pub fn raster_layer(spec: &TextLayer, m: &Xform, cw: usize, ch: usize) -> Option
         } else {
             Mask::new(w, h)
         };
-        for (sm, _) in &strokes {
-            u.max_with(sm);
+        if outline_cover.is_some() {
+            // A suppressed karaoke outline still contributes to the shadow.
+            for (_, width, kind) in &ap.strokes {
+                u.max_with(&mask::stroke(&cover, width * s, stroke_kind(*kind)));
+            }
+        } else {
+            for (sm, _) in &strokes {
+                u.max_with(sm);
+            }
         }
         if let Some((bm, _)) = &bg {
             u.max_with(bm);
@@ -200,6 +248,12 @@ pub fn raster_layer(spec: &TextLayer, m: &Xform, cw: usize, ch: usize) -> Option
                     } else {
                         run_fills[r - 1].unwrap_or(c)
                     };
+                    if let Some(progress) = r.checked_sub(1).and_then(|i| spec.text.runs[i].1.fill_sweep) {
+                        let mut run_mask = Mask::new(w, h);
+                        render::draw_run(l, m, &mut run_mask, (x0, y0), Some(r as u16));
+                        over_sweep(&mut px, &run_mask, premul_linear(c), premul_linear(col), progress);
+                        continue;
+                    }
                     match groups.iter_mut().find(|g| g.0 == col) {
                         Some(g) => g.1.push(r as u16),
                         None => groups.push((col, vec![r as u16])),

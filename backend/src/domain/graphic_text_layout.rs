@@ -10,6 +10,10 @@ pub struct GraphicCharStyle {
     pub font_style: Option<String>,
     pub size: Option<f32>,
     pub fill: Option<[f32; 4]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub suppress_outline: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fill_sweep: Option<f32>,
     pub faux_bold: Option<bool>,
     pub faux_italic: Option<bool>,
     pub underline: Option<bool>,

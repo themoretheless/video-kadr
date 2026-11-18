@@ -144,7 +144,7 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
                 })
                 karaokeTime += ticks
               }
-              if (command !== 'k' && command !== 'kt') simplified = true
+              if (command === 'K' || command === 'kf') simplified = true
             } else simplified = true
             continue
           }

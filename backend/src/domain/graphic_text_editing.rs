@@ -12,6 +12,8 @@ impl GraphicCharStyle {
             font_style: over.font_style.clone().or_else(|| self.font_style.clone()),
             size: over.size.or(self.size),
             fill: over.fill.or(self.fill),
+            suppress_outline: over.suppress_outline.or(self.suppress_outline),
+            fill_sweep: over.fill_sweep.or(self.fill_sweep),
             faux_bold: over.faux_bold.or(self.faux_bold),
             faux_italic: over.faux_italic.or(self.faux_italic),
             underline: over.underline.or(self.underline),

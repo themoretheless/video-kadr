@@ -47,8 +47,11 @@ pub fn render(clip:&TextClip,canvas:(u32,u32),time:u64,checkpoint:&mut dyn FnMut
         shadow:shadow_color[3]>0.,shadow_color,shadow_opacity:100.,shadow_distance:dx.hypot(dy),shadow_angle:dy.atan2(dx).to_degrees()+90.,shadow_size:0.,shadow_blur,
         position:Some([canvas.0 as f64/2.,canvas.1 as f64/2.]),..Default::default()
     };
-    if clip.karaoke.iter().any(|span| span.mode == super::composition::SubtitleKaraokeMode::Step && local < span.start_ticks) {
-        use super::{composition::SubtitleKaraokeMode, graphic_text_layout::GraphicCharStyle, graphic_text_runs::CharacterStyleRun};
+    use super::{composition::SubtitleKaraokeMode, graphic_text_layout::GraphicCharStyle, graphic_text_runs::CharacterStyleRun};
+    let awaiting = |span: &&super::composition::SubtitleKaraokeSpan| {
+        local < span.start_ticks || (span.mode == SubtitleKaraokeMode::Sweep && local < span.end_ticks)
+    };
+    if clip.karaoke.iter().any(|span| awaiting(&span)) {
         let mut offset = 0;
         let mut boundaries = vec![0];
         for character in clip.text.chars() {
@@ -56,12 +59,15 @@ pub fn render(clip:&TextClip,canvas:(u32,u32),time:u64,checkpoint:&mut dyn FnMut
             boundaries.push(offset);
         }
         parameters.runs = clip.karaoke.iter()
-            .filter(|span| span.mode == SubtitleKaraokeMode::Step && local < span.start_ticks)
+            .filter(awaiting)
             .filter_map(|span| Some(CharacterStyleRun {
                 start: boundaries.binary_search(&span.start).ok()?,
                 end: boundaries.binary_search(&span.end).ok()?,
                 style: GraphicCharStyle {
                     fill: Some(span.secondary_color.map(rgba).unwrap_or([0., 1., 1., 1.])),
+                    suppress_outline: (span.mode == SubtitleKaraokeMode::Outline).then_some(true),
+                    fill_sweep: (span.mode == SubtitleKaraokeMode::Sweep && local >= span.start_ticks)
+                        .then(|| (local - span.start_ticks) as f32 / (span.end_ticks - span.start_ticks) as f32),
                     ..Default::default()
                 },
             }))
@@ -98,6 +104,65 @@ mod tests {
         assert_ne!(pixels(&caption, 1_499_999), plain);
         assert_eq!(pixels(&caption, 1_500_000), plain);
         assert_eq!(pixels(&caption, 1_750_000), plain);
+    }
+    #[test]
+    fn karaoke_outline_appears_at_the_syllable_start() {
+        use super::super::composition::{SubtitleKaraokeMode, SubtitleKaraokeSpan};
+        let mut caption = clip();
+        caption.text = "Text".into();
+        caption.style.stroke_width = 2.;
+        caption.style.stroke.alpha = 1.;
+        let pixels = |clip: &TextClip, time| render(clip, (64, 48), time, &mut || Ok(()))
+            .unwrap().unwrap().to_surface(&mut || Ok(())).unwrap();
+        let outlined = pixels(&caption, 1_500_000);
+        let mut plain = caption.clone();
+        plain.style.stroke_width = 0.;
+        caption.karaoke.push(SubtitleKaraokeSpan {
+            start: 0, end: 4, start_ticks: 500_000, end_ticks: 750_000,
+            mode: SubtitleKaraokeMode::Outline, secondary_color: Some(caption.style.color),
+        });
+        assert_eq!(pixels(&caption, 1_499_999), pixels(&plain, 1_499_999));
+        assert_ne!(pixels(&caption, 1_499_999), outlined);
+        assert_eq!(pixels(&caption, 1_500_000), outlined);
+
+        caption.style.shadow.alpha = 1.;
+        caption.style.shadow_x = 40.;
+        let shadow_mask = |time| {
+            let surface = render(&caption, (112, 48), time, &mut || Ok(()))
+                .unwrap().unwrap().to_surface(&mut || Ok(())).unwrap();
+            surface.rgba.chunks_exact(112 * 4)
+                .flat_map(|row| row[80 * 4..].chunks_exact(4).map(|pixel| pixel[2]))
+                .collect::<Vec<_>>()
+        };
+        let before = shadow_mask(1_499_999);
+        assert!(before.iter().any(|value| *value > 0));
+        assert_eq!(before, shadow_mask(1_500_000));
+    }
+
+    #[test]
+    fn karaoke_sweep_cuts_through_a_glyph() {
+        use super::super::composition::{SubtitleKaraokeMode, SubtitleKaraokeSpan};
+        let mut caption = clip();
+        caption.text = "M".into();
+        caption.style.color = Rgba { red: 0., green: 1., blue: 0., alpha: 1. };
+        caption.karaoke.push(SubtitleKaraokeSpan {
+            start: 0, end: 1, start_ticks: 200_000, end_ticks: 600_000,
+            mode: SubtitleKaraokeMode::Sweep,
+            secondary_color: Some(Rgba { red: 1., green: 0., blue: 0., alpha: 1. }),
+        });
+        let counts = |time| {
+            let surface = render(&caption, (64, 48), time, &mut || Ok(()))
+                .unwrap().unwrap().to_surface(&mut || Ok(())).unwrap();
+            surface.rgba.chunks_exact(4).fold([0, 0], |[red, green], pixel| {
+                [red + usize::from(pixel[0] > pixel[1]), green + usize::from(pixel[1] > pixel[0])]
+            })
+        };
+        let before = counts(1_200_000);
+        let middle = counts(1_400_000);
+        let after = counts(1_600_000);
+        assert!(before[0] > 0 && before[1] == 0);
+        assert!(middle[0] > 0 && middle[1] > 0);
+        assert!(after[0] == 0 && after[1] > 0);
     }
     #[test]
     fn ordinary_text_has_visible_style_motion_opacity_and_half_open_admission() {
