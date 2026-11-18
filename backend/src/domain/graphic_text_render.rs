@@ -76,25 +76,22 @@ fn over_mask(px: &mut [f32], m: &Mask, c: [f32; 4]) {
         });
 }
 
-fn over_sweep(px: &mut [f32], mask: &Mask, primary: [f32; 4], secondary: [f32; 4], progress: f32) {
-    let (mut left, mut right) = (mask.w, 0);
-    for (index, alpha) in mask.a.iter().enumerate() {
-        if *alpha > 0. {
-            let x = index % mask.w;
-            left = left.min(x);
-            right = right.max(x + 1);
-        }
-    }
-    if right <= left {
+fn over_sweep(px: &mut [f32], mask: &Mask, primary: [f32; 4], secondary: [f32; 4], edge: f32, m: &Xform, origin: (i32, i32)) {
+    let determinant = m[0] * m[3] - m[1] * m[2];
+    if determinant.abs() <= f32::EPSILON {
+        over_mask(px, mask, secondary);
         return;
     }
-    let edge = left as f32 + (right - left) as f32 * progress.clamp(0., 1.);
-    px.par_chunks_mut(4 * mask.w).zip(mask.a.par_chunks(mask.w)).for_each(|(row, alphas)| {
+    let (dx, dy) = (m[3] / determinant, -m[2] / determinant);
+    let normal_length = dx.hypot(dy);
+    px.par_chunks_mut(4 * mask.w).zip(mask.a.par_chunks(mask.w)).enumerate().for_each(|(y, (row, alphas))| {
         for (x, (pixel, alpha)) in row.chunks_exact_mut(4).zip(alphas).enumerate() {
             if *alpha <= 0. {
                 continue;
             }
-            let weight = (edge - x as f32).clamp(0., 1.);
+            let local_x = dx * (x as f32 + origin.0 as f32 + 0.5 - m[4])
+                + dy * (y as f32 + origin.1 as f32 + 0.5 - m[5]);
+            let weight = ((edge - local_x) / normal_length + 0.5).clamp(0., 1.);
             let color = std::array::from_fn::<_, 4, _>(|i| secondary[i] + (primary[i] - secondary[i]) * weight);
             let remaining = 1. - color[3] * alpha;
             for i in 0..4 {
@@ -251,7 +248,21 @@ pub fn raster_layer(spec: &TextLayer, m: &Xform, cw: usize, ch: usize) -> Option
                     if let Some(progress) = r.checked_sub(1).and_then(|i| spec.text.runs[i].1.fill_sweep) {
                         let mut run_mask = Mask::new(w, h);
                         render::draw_run(l, m, &mut run_mask, (x0, y0), Some(r as u16));
-                        over_sweep(&mut px, &run_mask, premul_linear(c), premul_linear(col), progress);
+                        let mut glyphs = l.glyphs.iter().filter(|glyph| {
+                            glyph.run == r as u16 && spec.text.text.get(glyph.cluster..)
+                                .and_then(|text| text.chars().next()).is_some_and(|character| !character.is_whitespace())
+                        });
+                        if let Some(first) = glyphs.next() {
+                            let last = glyphs.last().unwrap_or(first);
+                            let edge = first.x + (last.x + last.advance_x - first.x) * progress.clamp(0., 1.);
+                            if progress > 0. {
+                                over_sweep(&mut px, &run_mask, premul_linear(c), premul_linear(col), edge, m, (x0, y0));
+                            } else {
+                                over_mask(&mut px, &run_mask, premul_linear(col));
+                            }
+                        } else {
+                            over_mask(&mut px, &run_mask, premul_linear(col));
+                        }
                         continue;
                     }
                     match groups.iter_mut().find(|g| g.0 == col) {

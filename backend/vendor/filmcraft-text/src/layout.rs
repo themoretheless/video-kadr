@@ -130,6 +130,7 @@ pub struct Glyph {
     pub id: u32,
     pub x: f32,
     pub y: f32,
+    pub advance_x: f32,
     pub size: f32,
     /// Byte offset of the cluster in the source text.
     pub cluster: usize,
@@ -514,6 +515,7 @@ fn paragraph(text: &str, base: usize, sty: &Styles, para: &ParagraphStyle) -> Ve
                         id: g.id,
                         x: pen + g.dx,
                         y: -g.dy - st.baseline_shift,
+                        advance_x: g.adv,
                         size: g.size,
                         cluster: base + g.cluster,
                         synth_bold: pr.synth_bold || st.faux_bold,

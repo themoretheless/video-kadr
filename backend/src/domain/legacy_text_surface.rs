@@ -48,10 +48,7 @@ pub fn render(clip:&TextClip,canvas:(u32,u32),time:u64,checkpoint:&mut dyn FnMut
         position:Some([canvas.0 as f64/2.,canvas.1 as f64/2.]),..Default::default()
     };
     use super::{composition::SubtitleKaraokeMode, graphic_text_layout::GraphicCharStyle, graphic_text_runs::CharacterStyleRun};
-    let awaiting = |span: &&super::composition::SubtitleKaraokeSpan| {
-        local < span.start_ticks || (span.mode == SubtitleKaraokeMode::Sweep && local < span.end_ticks)
-    };
-    if clip.karaoke.iter().any(|span| awaiting(&span)) {
+    if !clip.karaoke.is_empty() {
         let mut offset = 0;
         let mut boundaries = vec![0];
         for character in clip.text.chars() {
@@ -59,18 +56,25 @@ pub fn render(clip:&TextClip,canvas:(u32,u32),time:u64,checkpoint:&mut dyn FnMut
             boundaries.push(offset);
         }
         parameters.runs = clip.karaoke.iter()
-            .filter(awaiting)
-            .filter_map(|span| Some(CharacterStyleRun {
-                start: boundaries.binary_search(&span.start).ok()?,
-                end: boundaries.binary_search(&span.end).ok()?,
-                style: GraphicCharStyle {
-                    fill: Some(span.secondary_color.map(rgba).unwrap_or([0., 1., 1., 1.])),
-                    suppress_outline: (span.mode == SubtitleKaraokeMode::Outline).then_some(true),
-                    fill_sweep: (span.mode == SubtitleKaraokeMode::Sweep && local >= span.start_ticks)
-                        .then(|| (local - span.start_ticks) as f32 / (span.end_ticks - span.start_ticks) as f32),
-                    ..Default::default()
-                },
-            }))
+            .filter_map(|span| {
+                let waiting = local < span.start_ticks;
+                let sweeping = span.mode == SubtitleKaraokeMode::Sweep && !waiting && local < span.end_ticks;
+                let fill = if waiting || sweeping {
+                    span.secondary_color.map(rgba).unwrap_or([0., 1., 1., 1.])
+                } else {
+                    color
+                };
+                Some(CharacterStyleRun {
+                    start: boundaries.binary_search(&span.start).ok()?,
+                    end: boundaries.binary_search(&span.end).ok()?,
+                    style: GraphicCharStyle {
+                        fill: Some(fill),
+                        suppress_outline: (waiting && span.mode == SubtitleKaraokeMode::Outline).then_some(true),
+                        fill_sweep: sweeping.then(|| (local - span.start_ticks) as f32 / (span.end_ticks - span.start_ticks) as f32),
+                        ..Default::default()
+                    },
+                })
+            })
             .collect();
     }
     // Anchor against the complete multiline layout before the full-canvas clip transform.
@@ -163,6 +167,24 @@ mod tests {
         assert!(before[0] > 0 && before[1] == 0);
         assert!(middle[0] > 0 && middle[1] > 0);
         assert!(after[0] == 0 && after[1] > 0);
+    }
+
+    #[test]
+    fn karaoke_keeps_glyph_coverage_stable_at_the_end_of_a_syllable() {
+        use super::super::composition::{SubtitleKaraokeMode, SubtitleKaraokeSpan};
+        let mut caption = clip();
+        caption.text = "AV".into();
+        caption.karaoke.push(SubtitleKaraokeSpan {
+            start: 1, end: 2, start_ticks: 200_000, end_ticks: 600_000,
+            mode: SubtitleKaraokeMode::Sweep, secondary_color: None,
+        });
+        let coverage = |time| render(&caption, (64, 48), time, &mut || Ok(()))
+            .unwrap().unwrap().to_surface(&mut || Ok(())).unwrap()
+            .rgba.chunks_exact(4).map(|pixel| pixel[3]).collect::<Vec<_>>();
+        let before = coverage(1_000_000);
+        assert!(before.iter().any(|value| *value > 0));
+        assert_eq!(before, coverage(1_400_000));
+        assert_eq!(before, coverage(1_600_000));
     }
     #[test]
     fn ordinary_text_has_visible_style_motion_opacity_and_half_open_admission() {
