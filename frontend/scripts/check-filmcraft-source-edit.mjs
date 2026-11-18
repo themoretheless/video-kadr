@@ -1,4 +1,5 @@
 import { chromium, expect } from '@playwright/test'
+import { execFileSync } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
 import assert from 'node:assert/strict'
 
@@ -34,13 +35,28 @@ try {
     return readFile(await (await pending).path())
   }
 
-  async function exportFirstFrame() {
-    await page.getByLabel('Позиция правки, кадров', { exact: true }).fill('0')
+  async function exportFrame(index = 0) {
+    await page.getByLabel('Позиция правки, кадров', { exact: true }).fill(String(index))
     const exported = page.waitForResponse(response => response.url().endsWith('/api/compositions/filmcraft/export-frame'))
       .then(async response => { if (!response.ok()) throw new Error(await response.text()) })
     const [frame] = await Promise.all([download('Экспортировать кадр PNG'), exported])
     assert.equal(frame.subarray(0, 8).toString('hex'), '89504e470d0a1a0a')
     return frame
+  }
+
+  function decodeFrames(input) {
+    return execFileSync('ffmpeg', [
+      '-v', 'error', '-i', 'pipe:0', '-map', '0:v:0', '-pix_fmt', 'rgba', '-f', 'rawvideo', 'pipe:1',
+    ], { input, maxBuffer: 32 * 1024 * 1024, timeout: 30_000 })
+  }
+
+  async function exportVideo() {
+    await page.getByLabel('Диапазон обычного экспорта Filmcraft', { exact: true }).selectOption('frames')
+    await page.getByLabel('Начальный кадр видеоэкспорта Filmcraft', { exact: true }).fill('0')
+    await page.getByLabel('Количество кадров видеоэкспорта Filmcraft', { exact: true }).fill('2')
+    await page.getByRole('button', { name: 'Экспортировать видео без звука', exact: true }).click()
+    await expect(page.getByRole('button', { name: 'Скачать видео MKV', exact: true })).toBeVisible({ timeout: 60_000 })
+    return download('Скачать видео MKV')
   }
 
   const operations = [
@@ -57,7 +73,7 @@ try {
     await page.getByLabel('Исходник точек Filmcraft', { exact: true }).selectOption('14')
     await page.getByRole('button', { name: 'Вставить исходник', exact: true }).click()
     await expect(page.getByText('Исходник вставлен', { exact: true })).toBeVisible()
-    const beforeFrame = await exportFirstFrame()
+    const beforeFrame = await exportFrame()
     await page.getByLabel('Исходник точек Filmcraft',{exact:true}).selectOption('12')
     for (const [time,mark] of [['0','In'],['21168000000','Out']]) {
       await page.getByLabel('Позиция точки Filmcraft',{exact:true}).fill(time)
@@ -69,7 +85,7 @@ try {
     await expect(page.getByText(status,{exact:true})).toBeVisible({timeout:15000})
     const changed=await download()
     assert(!changed.equals(before),label)
-    const afterFrame = await exportFirstFrame()
+    const afterFrame = await exportFrame()
     assert(!afterFrame.equals(beforeFrame), label)
     await page.getByRole('button',{name:'Отменить правку',exact:true}).click()
     assert.deepEqual(JSON.parse(await download()),JSON.parse(before))
@@ -78,7 +94,15 @@ try {
     await open(changed)
     await page.getByLabel('Секвенция Filmcraft', { exact: true }).selectOption('27')
     assert.deepEqual(JSON.parse(await download()),JSON.parse(changed))
-    assert((await exportFirstFrame()).equals(afterFrame), label)
+    assert((await exportFrame()).equals(afterFrame), label)
+    const expectedFrames = Buffer.concat([decodeFrames(afterFrame), decodeFrames(await exportFrame(1))])
+    const video = await exportVideo()
+    const codec = execFileSync('ffprobe', [
+      '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=codec_name',
+      '-of', 'default=noprint_wrappers=1:nokey=1', 'pipe:0',
+    ], { input: video, encoding: 'utf8', timeout: 30_000 }).trim()
+    assert.equal(codec, 'ffv1')
+    assert(decodeFrames(video).equals(expectedFrames), `${label}: decoded video frames differ from PNGs`)
     const unsupported = JSON.parse(changed)
     const sequence = unsupported.project.items['27'].kind.Sequence
     for (const track of sequence.video_tracks) {
@@ -93,7 +117,7 @@ try {
     })
     assert.equal(refused.status(), 400)
     assert.match((await refused.json()).error, /time remapping supports only constant 100%/)
-    console.log('PASS', label, 'undo redo download reopen and PNG export')
+    console.log('PASS', label, 'undo redo download reopen, PNG and FFV1 export')
   }
 } finally {
   await browser.close()
