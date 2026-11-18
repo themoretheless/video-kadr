@@ -4,7 +4,18 @@ Snapshot: `5231852443363f001c3f6b396dd9b1e6461ae2be`. Generated from actual `com
 
 [Complete machine-readable ledger](filmcraft-catalog.json) contains every captured command id/menu/shortcut/parameter contract, effect kind/category/default/range/animation flag, export preset settings,47 package manifests and1064 tracked-file hashes. These are inventory and audit prompts;2695 entries are not2695 proven independent product capabilities. Declaration indexing is a lightweight source index, not an exhaustive Rust AST/API qualification.
 
-Status: **1029 partial,9 missing,1657 unreviewed,0 verified by this ledger.** This does not assert that all unreviewed items are absent in video-kadr. Existing host behavior needs operation-specific comparison. Similar names/endpoints and upstream registry presence cannot count as parity. Source FilmCraft itself includes approximations/unsupported paths; compare its actual implemented behavior and limitations, not the aspirational Premiere roadmap.
+The pinned ledger records **1163 partial and 1532 unreviewed requirements**. Zero entries are classified as verified. Unreviewed entries still need comparison against Video Kadr. Qualification should compare the behavior of each supported FilmCraft operation, including its limitations.
+
+| Requirement kind | Partial | Unreviewed |
+|---|---:|---:|
+| Engine commands | 163 | 512 |
+| Effects and transitions | 185 | 118 |
+| Effect and transition parameters | 798 | 628 |
+| Export formats | 14 | 0 |
+| Export presets | 0 | 30 |
+| MCP tools | 3 | 14 |
+| Package build features | 0 | 30 |
+| Documentation sections | 0 | 200 |
 
 | Catalog | Count |
 |---|---:|
