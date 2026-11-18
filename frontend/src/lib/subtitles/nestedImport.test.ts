@@ -59,20 +59,27 @@ it('supports ASS text/time and a safe cursor offset, refusing invalid input/ids/
 
 it('retains ASS cue styling in the authored nested project', () => {
  const result = importNestedSubtitles(project(), 'root', String.raw`[V4+ Styles]
-Format: Name, Fontname, Fontsize, PrimaryColour, Outline, Alignment, Bold, Italic
-Style: Note,Arial,60,&H00FFFFFF,2,3,-1,0
+Format: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BackColour, Outline, Shadow, Alignment, Bold, Italic
+Style: Note,Arial,60,&H00FFFFFF,&H33000000,&H66000000,2,1,3,-1,0
 [Events]
 Format: Start, End, Style, Text
-Dialogue: 0:00:00.00,0:00:02.00,Note,{\1c&H0000FF&\i1}Caption
-Dialogue: 0:00:02.00,0:00:03.00,Note,{\b0}Regular
+Dialogue: 0:00:00.00,0:00:02.00,Note,{\1c&H0000FF&\3c&H00FF00&\4c&HFF0000&\bord3.5\shad2\xshad-1.25\i1}Caption
+Dialogue: 0:00:02.00,0:00:03.00,Note,{\b0}Regular{\3c&HFFFFFF&} text
 `, allocator())
  expect(result.document.compositions.root!.content.tracks[0]!.clips[0]).toMatchObject({
   text: 'Caption',
-  style: { fontFamily: 'Arial', fontSize: 60, align: 'right', strokeWidth: 2, bold: true, italic: true,
+  style: { fontFamily: 'Arial', fontSize: 60, align: 'right', strokeWidth: 3.5, shadowX: -1.25, shadowY: 2, bold: true, italic: true,
+   stroke: { red: 0, green: 1, blue: 0, alpha: 0.8 },
+   shadow: { red: 0, green: 0, blue: 1, alpha: 0.6 },
    color: { red: 1, green: 0, blue: 0, alpha: 1 } },
  })
  const track = result.document.compositions.root!.content.tracks[0]!
  expect(track.clips[1]).not.toHaveProperty('style.bold')
+ expect(track.clips[1]).toMatchObject({
+  text: 'Regular text',
+  style: { stroke: { red: 0, green: 0, blue: 0, alpha: 0.8 } },
+ })
+ expect(result.simplifiedCueCount).toBe(1)
 })
 
 it('maps ASS absolute positions to editable canvas offsets', () => {

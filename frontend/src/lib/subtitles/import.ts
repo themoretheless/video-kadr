@@ -43,6 +43,7 @@ function parseAss(body: string) {
   let section = ''
   let fields: string[] = []
   let styleFields: string[] = []
+  let legacySsa = false
   const styles = new Map<string, { style: AssStyle; anchor?: SubtitleCue['anchor'] }>()
   const cues: SubtitleCue[] = []
   let simplifiedCueCount = 0
@@ -50,13 +51,24 @@ function parseAss(body: string) {
     const trimmed = line.trim()
     if (/^\[.*\]$/.test(trimmed)) {
       section = trimmed.toLowerCase()
+      if (section === '[v4 styles]') {
+        legacySsa = true
+        styleFields = 'name fontname fontsize primarycolour secondarycolour tertiarycolour backcolour bold italic borderstyle outline shadow alignment marginl marginr marginv alphalevel encoding'.split(' ')
+      } else if (section === '[v4+ styles]') {
+        legacySsa = false
+        styleFields = []
+      }
       continue
     }
-    if (section === '[v4+ styles]') {
+    if (section === '[script info]' && /^ScriptType:\s*v4\.00\+?$/i.test(trimmed)) {
+      legacySsa = !trimmed.endsWith('+')
+    }
+    if (section === '[v4+ styles]' || section === '[v4 styles]') {
       if (/^Format:/i.test(trimmed)) styleFields = assFields(trimmed)
       else if (/^Style:/i.test(trimmed)) {
         const values = assFields(trimmed, false)
-        const read = (field: string) => values[styleFields.indexOf(field)]
+        const readField = (field: string) => values[styleFields.indexOf(field)]
+        const read = section === '[v4 styles]' ? (field: string) => ssaStyleField(readField, field) : readField
         const name = read('name')
         if (name) styles.set(name, { style: assStyle(read), anchor: assAnchor(read('alignment')) })
       }
@@ -69,24 +81,49 @@ function parseAss(body: string) {
         throw new SubtitleFormatError('Invalid ASS event format')
       }
     } else if (/^Dialogue:/i.test(trimmed)) {
+      if (!fields.length && legacySsa) {
+        fields = 'marked start end style name marginl marginr marginv effect text'.split(' ')
+      }
       if (!fields.length) throw new SubtitleFormatError('ASS event Format is missing')
       const values = trimmed.slice(trimmed.indexOf(':') + 1).split(',')
       if (values.length < fields.length) throw new SubtitleFormatError('Incomplete ASS dialogue')
-      const namedStyle = styles.get(values[fields.indexOf('style')]?.trim() ?? '')
-      const style = { ...namedStyle?.style }
+      const styleName = values[fields.indexOf('style')]?.trim() ?? ''
+      const namedStyle = styles.get(styleName) ?? styles.get('Default')
+      let style = { ...namedStyle?.style }
       let anchor = namedStyle?.anchor
       let position: SubtitleCue['position']
       let fade: SubtitleCue['fade']
       let simplified = false
-      const text = values.slice(fields.length - 1).join(',').replace(/\{([^}]*)\}/g, (_whole, block: string) => {
+      let previousBlockEnd = 0
+      let hasText = false
+      const dialogue = values.slice(fields.length - 1).join(',')
+      const text = dialogue.replace(/\{([^}]*)\}/g, (whole, block: string, offset: number) => {
+        hasText ||= dialogue.slice(previousBlockEnd, offset).trim().length > 0
+        previousBlockEnd = offset + whole.length
         for (const rawTag of assTags(block)) {
           const tag = rawTag.trim()
           if (!tag) continue
+          const reset = /^r(.*)$/.exec(tag)
+          if (reset) {
+            if (hasText) simplified = true
+            else {
+              const target = styles.get(reset[1]!.trim()) ?? namedStyle
+              const alignment = style.align
+              style = { ...target?.style }
+              delete style.align
+              if (alignment !== undefined) style.align = alignment
+            }
+            continue
+          }
           const coordinates = assPosition(tag)
           const envelope = assFade(tag)
+          const alpha = /^(alpha|[134]a)&H([\da-f]{1,2})&?$/i.exec(tag)
           if (coordinates) position = coordinates
           else if (envelope) fade ??= envelope
-          else if (!applyAssOverride(style, tag)) simplified = true
+          else if (alpha) {
+            if (hasText) simplified = true
+            else applyAssAlpha(style, alpha[1]!.toLowerCase(), alpha[2]!)
+          } else if (!applyAssOverride(style, tag, hasText)) simplified = true
           anchor = assAnchor(/^an([1-9])$/i.exec(tag)?.[1]) ?? anchor
         }
         return ''
@@ -168,10 +205,36 @@ function assNumber(value: string | undefined, min: number, max: number) {
   return Number.isFinite(number) && number >= min && number <= max ? number : undefined
 }
 
+function ssaStyleField(read: (field: string) => string | undefined, field: string): string | undefined {
+  if (field === 'alignment') {
+    const alignment: Record<string, string> = {1:'1', 2:'2', 3:'3', 4:'9', 5:'7', 6:'8', 7:'9', 8:'3', 9:'4', 10:'5', 11:'6'}
+    return alignment[read(field) ?? '']
+  }
+  if (field !== 'primarycolour' && field !== 'outlinecolour' && field !== 'backcolour') return read(field)
+  const color = read(field === 'outlinecolour' ? 'backcolour' : field)
+  if (!color) return undefined
+  const hex = /^&H([\da-f]{1,8})&?$/i.exec(color)
+  const bgr = hex ? Number.parseInt(hex[1]!, 16) : /^-?\d+$/.test(color) ? Number(color) : NaN
+  if (!Number.isSafeInteger(bgr) || bgr < -0x80000000 || bgr > 0xffffffff) return undefined
+  const alpha = field === 'backcolour' ? 128 : Math.max(0, Math.min(255, Math.trunc(Number(read('alphalevel')) || 0)))
+  return `&H${alpha.toString(16).padStart(2, '0')}${(bgr & 0xffffff).toString(16).padStart(6, '0')}`
+}
+
 function assColor(value: string | undefined) {
   const hex = /^&H([\da-f]{1,8})&?$/i.exec(value ?? '')?.[1]?.padStart(8, '0')
   if (!hex) return undefined
-  return `#${hex.slice(6, 8)}${hex.slice(4, 6)}${hex.slice(2, 4)}FF`.toUpperCase()
+  return `#${hex.slice(6, 8)}${hex.slice(4, 6)}${hex.slice(2, 4)}${assOpacity(hex.slice(0, 2))}`.toUpperCase()
+}
+
+function assOpacity(transparency: string): string {
+  return (255 - Number.parseInt(transparency, 16)).toString(16).padStart(2, '0').toUpperCase()
+}
+
+function applyAssAlpha(style: AssStyle, channel: string, transparency: string): void {
+  const opacity = assOpacity(transparency)
+  if (channel === 'alpha' || channel === '1a') style.color = (style.color ?? '#FFFFFFFF').slice(0, 7) + opacity
+  if (channel === 'alpha' || channel === '3a') style.strokeColor = (style.strokeColor ?? '#000000FF').slice(0, 7) + opacity
+  if (channel === 'alpha' || channel === '4a') style.shadowColor = (style.shadowColor ?? '#000000FF').slice(0, 7) + opacity
 }
 
 function assAlign(value: string | undefined) {
@@ -218,15 +281,33 @@ function assStyle(read: (field: string) => string | undefined): AssStyle {
   return style
 }
 
-function applyAssOverride(style: AssStyle, tag: string): boolean {
+function applyAssOverride(style: AssStyle, tag: string, hasText: boolean): boolean {
+  const geometry = /^(bord|shad|[xy]shad)([+-]?(?:\d+(?:\.\d*)?|\.\d+))$/i.exec(tag)
+  if (geometry) {
+    const property = geometry[1]!.toLowerCase()
+    const distance = assNumber(geometry[2], property === 'xshad' || property === 'yshad' ? -100 : 0, 100)
+    if (hasText || distance === undefined) return false
+    if (property === 'bord') style.strokeWidthPx = distance
+    if (property === 'shad' || property === 'xshad') style.shadowX = distance
+    if (property === 'shad' || property === 'yshad') style.shadowY = distance
+    if (property !== 'bord') style.shadowColor ??= '#000000FF'
+    return true
+  }
   const size = /^fs(\d+(?:\.\d+)?)$/i.exec(tag)
-  const color = /^(?:1?c)(&H[0-9a-f]{1,8}&?)$/i.exec(tag)
+  const color = /^([134]?)c(&H[0-9a-f]{1,8}&?)$/i.exec(tag)
   const align = /^an([1-9])$/i.exec(tag)
   const font = /^fn(.+)$/i.exec(tag)
   const face = /^([bi])(-?1|0)$/i.exec(tag)
   const fontSize = assNumber(size?.[1], 1, 512)
   if (fontSize !== undefined) style.fontSizePx = fontSize
-  if (color) style.color = assColor(color[1]) ?? style.color
+  if (color) {
+    if (hasText) return false
+    const rgb = assColor(color[2])?.slice(0, 7)
+    if (!rgb) return false
+    const channel = color[1] === '3' ? 'strokeColor' : color[1] === '4' ? 'shadowColor' : 'color'
+    style[channel] = rgb + (style[channel]?.slice(7) ?? 'FF')
+    return true
+  }
   if (align) style.align = assAlign(align[1]) ?? style.align
   if (font) {
     const family = assFont(font[1])
@@ -234,7 +315,7 @@ function applyAssOverride(style: AssStyle, tag: string): boolean {
     return !!family
   }
   if (face) style[face[1]!.toLowerCase() === 'b' ? 'bold' : 'italic'] = face[2] !== '0'
-  return fontSize !== undefined || !!(color || align || face)
+  return fontSize !== undefined || !!(align || face)
 }
 
 function assTimestamp(value: string): number {
