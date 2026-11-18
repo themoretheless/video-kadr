@@ -107,6 +107,19 @@ Dialogue: 0:00:00.00,0:00:01.00,{\\pos(100,100)}Caption
     expect(cue?.coordinateResolution).toEqual({width, height})
   })
 
+  it('uses the first ASS line alignment when legacy and modern tags are mixed', () => {
+    const report = parseSubtitleDocumentWithReport(String.raw`[Events]
+Format: Start, End, Text
+Dialogue: 0:00:00.00,0:00:01.00,{\a10}Middle{\an3}
+Dialogue: 0:00:01.00,0:00:02.00,{\an9\a5}Top right
+Dialogue: 0:00:02.00,0:00:03.00,{\a8}Legacy edge
+`)
+    expect(report.simplifiedCueCount).toBe(0)
+    expect(report.cues.map(cue => [cue.anchor, cue.style?.align])).toEqual([
+      [[0.5,0.5], 'center'], [[1,0], 'right'], [[0,0], 'left'],
+    ])
+  })
+
   it('refuses malformed, inverted, excessive and empty cues before mutation', () => {
     for (const event of [
       'Dialogue: 0:00:02.00,0:00:01.00,text',

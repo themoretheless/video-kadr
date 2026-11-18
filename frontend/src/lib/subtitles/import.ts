@@ -102,6 +102,7 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
       const namedStyle = styles.get(styleName) ?? styles.get('Default')
       let style = { ...namedStyle?.style }
       let anchor = namedStyle?.anchor
+      let hasInlineAlignment = false
       let rotationDegrees = namedStyle?.rotationDegrees
       let scale = { ...namedStyle?.scale }
       let position: SubtitleCue['position']
@@ -137,7 +138,15 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
           const alpha = /^(alpha|[134]a)&H([\da-f]{1,2})&?$/i.exec(tag)
           const rotation = /^frz?([+-]?(?:\d+(?:\.\d*)?|\.\d+))$/i.exec(tag)
           const scaling = /^fsc([xy])(\d+(?:\.\d+)?|\.\d+)$/i.exec(tag)
-          if (coordinates || motion) {
+          const alignment = /^(an|a)(\d+)$/i.exec(tag)
+          if (alignment) {
+            if (!hasInlineAlignment) {
+              const code = alignment[1]?.toLowerCase() === 'an' ? alignment[2] : legacyAssAlignment(alignment[2], true)
+              anchor = assAnchor(code) ?? anchor
+              style.align = assAlign(code) ?? style.align
+              hasInlineAlignment = true
+            }
+          } else if (coordinates || motion) {
             if (position || movement) simplified = true
             else if (motion) movement = motion
             else position = coordinates
@@ -156,7 +165,6 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
             else if (scaling[1]?.toLowerCase() === 'x') scale.x = factor
             else scale.y = factor
           } else if (!applyAssOverride(style, tag, hasText)) simplified = true
-          anchor = assAnchor(/^an([1-9])$/i.exec(tag)?.[1]) ?? anchor
         }
         return ''
       }).replace(/\\[Nn]/g, '\n').replace(/\\h/g, '\u00a0').trim()
@@ -312,10 +320,7 @@ function assNumber(value: string | undefined, min: number, max: number) {
 }
 
 function ssaStyleField(read: (field: string) => string | undefined, field: string): string | undefined {
-  if (field === 'alignment') {
-    const alignment: Record<string, string> = {1:'1', 2:'2', 3:'3', 4:'9', 5:'7', 6:'8', 7:'9', 8:'3', 9:'4', 10:'5', 11:'6'}
-    return alignment[read(field) ?? '']
-  }
+  if (field === 'alignment') return legacyAssAlignment(read(field))
   if (field !== 'primarycolour' && field !== 'outlinecolour' && field !== 'backcolour') return read(field)
   const color = read(field === 'outlinecolour' ? 'backcolour' : field)
   if (!color) return undefined
@@ -324,6 +329,13 @@ function ssaStyleField(read: (field: string) => string | undefined, field: strin
   if (!Number.isSafeInteger(bgr) || bgr < -0x80000000 || bgr > 0xffffffff) return undefined
   const alpha = field === 'backcolour' ? 128 : Math.max(0, Math.min(255, Math.trunc(Number(read('alphalevel')) || 0)))
   return `&H${alpha.toString(16).padStart(2, '0')}${(bgr & 0xffffff).toString(16).padStart(6, '0')}`
+}
+
+function legacyAssAlignment(value: string | undefined, inline = false): string | undefined {
+  if (!/^(?:[1-9]|10|11)$/.test(value ?? '')) return undefined
+  const code = Number(value)
+  if (inline && (code === 4 || code === 8)) return '7'
+  return ['', '1', '2', '3', '9', '7', '8', '9', '3', '4', '5', '6'][code]
 }
 
 function assColor(value: string | undefined) {
@@ -421,7 +433,6 @@ function applyAssOverride(style: AssStyle, tag: string, hasText: boolean): boole
   }
   const size = /^fs(\d+(?:\.\d+)?)$/i.exec(tag)
   const color = /^([134]?)c(&H[0-9a-f]{1,8}&?)$/i.exec(tag)
-  const align = /^an([1-9])$/i.exec(tag)
   const font = /^fn(.+)$/i.exec(tag)
   const face = /^([bi])(-?1|0)$/i.exec(tag)
   const fontSize = assNumber(size?.[1], 1, 512)
@@ -434,14 +445,13 @@ function applyAssOverride(style: AssStyle, tag: string, hasText: boolean): boole
     style[channel] = rgb + (style[channel]?.slice(7) ?? 'FF')
     return true
   }
-  if (align) style.align = assAlign(align[1]) ?? style.align
   if (font) {
     const family = assFont(font[1])
     if (family) style.fontFamily = family
     return !!family
   }
   if (face) style[face[1]!.toLowerCase() === 'b' ? 'bold' : 'italic'] = face[2] !== '0'
-  return fontSize !== undefined || !!(align || face)
+  return fontSize !== undefined || !!face
 }
 
 function assTimestamp(value: string): number {
