@@ -148,6 +148,22 @@ Dialogue: 0:00:00.00,0:00:01.00,Default,{\rAlternate\alpha&H80&\c&H0000FF&\c\3a\
     expect(cue?.style).toMatchObject({color:'#00FF007F',strokeColor:'#FF0000DF',shadowColor:'#FFFF009F'})
   })
 
+  it('restores the active ASS face style and reports mid-line face changes', () => {
+    const report = parseSubtitleDocumentWithReport(String.raw`[V4+ Styles]
+Format: Name, Bold, Italic, Fontname
+Style: Default,0,0,Arial
+Style: Alternate,-1,0,DejaVu Sans
+[Events]
+Format: Start, End, Style, Text
+Dialogue: 0:00:00.00,0:00:01.00,Default,{\rAlternate\b0\i1\fnArial\fn\b\i}Restored
+Dialogue: 0:00:01.00,0:00:02.00,Default,First{\i1\fnDejaVu Sans} second
+`)
+    expect(report.cues.map(cue => cue.style)).toEqual([
+      {bold:true, italic:false, fontFamily:'DejaVu Sans'}, {bold:false, italic:false, fontFamily:'Arial'},
+    ])
+    expect(report.simplifiedCueCount).toBe(1)
+  })
+
   it('refuses malformed, inverted, excessive and empty cues before mutation', () => {
     for (const event of [
       'Dialogue: 0:00:02.00,0:00:01.00,text',

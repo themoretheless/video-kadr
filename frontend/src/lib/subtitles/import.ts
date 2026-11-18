@@ -503,8 +503,8 @@ function applyAssOverride(style: AssStyle, baseStyle: AssStyle | undefined, tag:
     return true
   }
   const color = /^([134]?)c(&H[0-9a-f]{1,8}&?)?$/i.exec(tag)
-  const font = /^fn(.+)$/i.exec(tag)
-  const face = /^([bi])(-?1|0)$/i.exec(tag)
+  const font = /^fn(.*)$/i.exec(tag)
+  const face = /^([bi])(-?1|0)?$/i.exec(tag)
   if (color) {
     if (hasText) return false
     const channel = ASS_COLOR_CHANNELS[(color[1] || '1') as keyof typeof ASS_COLOR_CHANNELS]
@@ -514,12 +514,24 @@ function applyAssOverride(style: AssStyle, baseStyle: AssStyle | undefined, tag:
     return true
   }
   if (font) {
-    const family = assFont(font[1])
-    if (family) style.fontFamily = family
-    return !!family
+    if (hasText) return false
+    const name = font[1]!.trim()
+    if (!name || name === '0') {
+      if (baseStyle?.fontFamily) style.fontFamily = baseStyle.fontFamily
+      else delete style.fontFamily
+      return true
+    }
+    const family = assFont(name)
+    if (!family) return false
+    style.fontFamily = family
+    return true
   }
-  if (face) style[face[1]!.toLowerCase() === 'b' ? 'bold' : 'italic'] = face[2] !== '0'
-  return !!face
+  if (!face || hasText) return false
+  const property = face[1]!.toLowerCase() === 'b' ? 'bold' : 'italic'
+  const value = face[2] === undefined ? baseStyle?.[property] : face[2] !== '0'
+  if (value === undefined) delete style[property]
+  else style[property] = value
+  return true
 }
 
 function assTimestamp(value: string): number {
