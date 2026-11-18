@@ -94,6 +94,19 @@ Dialogue: 0:00:02.00,0:00:03.00,Alternate,Explicit
     expect(cues[2]).toMatchObject({anchor: [0.5, 1], style: {fontFamily: 'DejaVu Sans', fontSizePx: 24}})
   })
 
+  it.each([
+    ['PlayResX: 1280', 1280, 1024], ['PlayResY: 1024', 1280, 1024],
+    ['PlayResX: 642', 642, 481], ['PlayResY: 480', 640, 480],
+  ])('infers the missing ASS script dimension from %s', (field, width, height) => {
+    const [cue] = parseSubtitleDocument(`[Script Info]
+${field}
+[Events]
+Format: Start, End, Text
+Dialogue: 0:00:00.00,0:00:01.00,{\\pos(100,100)}Caption
+`)
+    expect(cue?.coordinateResolution).toEqual({width, height})
+  })
+
   it('refuses malformed, inverted, excessive and empty cues before mutation', () => {
     for (const event of [
       'Dialogue: 0:00:02.00,0:00:01.00,text',

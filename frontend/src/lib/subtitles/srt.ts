@@ -15,6 +15,7 @@ export interface SubtitleCue {
   readonly text: string
   readonly style?: Partial<TextStyle>
   readonly position?: { x: number; y: number }
+  readonly coordinateResolution?: { width: number; height: number }
   readonly movement?: {
     from: { x: number; y: number }
     to: { x: number; y: number }
@@ -100,14 +101,20 @@ export function cuesToTextClips(
 ): TextClip[] {
   return cues.map((cue, index) => {
     validateCue(cue, index)
+    const resolution = cue.coordinateResolution
+    const toCanvas = (point: {x: number; y: number}) => resolution && canvas ? {
+      x: point.x * canvas.width / resolution.width,
+      y: point.y * canvas.height / resolution.height,
+    } : point
+    const motion = cue.movement && { ...cue.movement, from: toCanvas(cue.movement.from), to: toCanvas(cue.movement.to) }
     const anchor = cue.anchor ?? (canvas || cue.position ? [0.5, 1] as const : undefined)
-    const position = cue.movement?.from ?? cue.position ?? (anchor && canvas ? {
+    const position = motion?.from ?? (cue.position && toCanvas(cue.position)) ?? (anchor && canvas ? {
       x: canvas.width * (CAPTION_SAFE_MARGIN + (1 - 2 * CAPTION_SAFE_MARGIN) * anchor[0]),
       y: canvas.height * (CAPTION_SAFE_MARGIN + (1 - 2 * CAPTION_SAFE_MARGIN) * anchor[1]),
     } : undefined)
     const durationTicks = cue.endTicks - cue.startTicks
     const fade = captionFade(cue.fade, durationTicks)
-    const movement = cue.movement && canvas ? captionMovement(cue.movement, durationTicks, canvas) : undefined
+    const movement = motion && canvas ? captionMovement(motion, durationTicks, canvas) : undefined
     const animation: CompositionVisualAnimation | undefined = fade || movement || cue.scale ? {
       ...fade, ...movement,
       ...(cue.scale?.x !== undefined ? { scaleX: { mode: 'constant', value: cue.scale.x } } : {}),

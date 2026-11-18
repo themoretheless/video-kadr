@@ -8,7 +8,7 @@ export function parseSubtitleDocument(input: string): SubtitleCue[] {
   return parseSubtitleDocumentWithReport(input).cues
 }
 
-export function parseSubtitleDocumentWithReport(input: string, canvasHeight?: number) {
+export function parseSubtitleDocumentWithReport(input: string, canvas?: {width: number; height: number}) {
   if (new TextEncoder().encode(input).byteLength > MAX_SRT_BYTES) {
     throw new SubtitleFormatError('Subtitle file exceeds 2 MiB')
   }
@@ -23,7 +23,7 @@ export function parseSubtitleDocumentWithReport(input: string, canvasHeight?: nu
       text: plainVttText(cue.text),
     }))
   } else if (/^\[Events\]$/im.test(body)) {
-    const parsed = parseAss(body, defaultSubtitleFontSize(canvasHeight))
+    const parsed = parseAss(body, canvas)
     cues = parsed.cues
     simplifiedCueCount = parsed.simplifiedCueCount
   } else {
@@ -39,7 +39,15 @@ function plainVttText(text: string): string {
     ({ amp: '&', lt: '<', gt: '>', nbsp: '\u00a0', lrm: '\u200e', rlm: '\u200f' })[entity]!)
 }
 
-function parseAss(body: string, defaultFontSize: number) {
+function parseAss(body: string, canvas: {width: number; height: number} | undefined) {
+  const lines = body.split('\n')
+  const { resolution, scaleBorderAndShadow } = assScriptInfo(lines)
+  const typographyScale = canvas && resolution ? canvas.height / resolution.height : 1
+  const defaultFontSize = defaultSubtitleFontSize(canvas?.height)
+  const positionFits = ({x, y}: {x: number; y: number}) => !canvas || (
+    Math.abs(x * (resolution ? canvas.width / resolution.width : 1) - canvas.width / 2) <= MAX_VISUAL_POSITION &&
+    Math.abs(y * typographyScale - canvas.height / 2) <= MAX_VISUAL_POSITION
+  )
   let section = ''
   let fields: string[] = []
   let styleFields: string[] = []
@@ -47,7 +55,7 @@ function parseAss(body: string, defaultFontSize: number) {
   const styles = new Map<string, { style: AssStyle; anchor?: SubtitleCue['anchor']; rotationDegrees?: number; scale?: SubtitleCue['scale'] }>()
   const cues: SubtitleCue[] = []
   let simplifiedCueCount = 0
-  for (const line of body.split('\n')) {
+  for (const line of lines) {
     const trimmed = line.trim()
     if (/^\[.*\]$/.test(trimmed)) {
       section = trimmed.toLowerCase()
@@ -152,9 +160,32 @@ function parseAss(body: string, defaultFontSize: number) {
         }
         return ''
       }).replace(/\\[Nn]/g, '\n').replace(/\\h/g, '\u00a0').trim()
+      if (style.fontSizePx !== undefined) {
+        const scaledSize = style.fontSizePx * typographyScale
+        style.fontSizePx = Math.min(512, Math.max(1, scaledSize))
+        if (style.fontSizePx !== scaledSize) simplified = true
+      }
+      if (style.tracking !== undefined) style.tracking *= typographyScale
+      if (scaleBorderAndShadow) {
+        if (style.strokeWidthPx !== undefined) {
+          const width = style.strokeWidthPx * typographyScale
+          style.strokeWidthPx = Math.min(100, width)
+          if (style.strokeWidthPx !== width) simplified = true
+        }
+        if (style.shadowX !== undefined) style.shadowX *= typographyScale
+        if (style.shadowY !== undefined) style.shadowY *= typographyScale
+      }
       const fontSize = style.fontSizePx ?? defaultFontSize
       if (style.tracking !== undefined && (style.tracking < -fontSize || style.tracking > 10 * fontSize)) {
         delete style.tracking
+        simplified = true
+      }
+      if (position && !positionFits(position)) {
+        position = undefined
+        simplified = true
+      }
+      if (movement && (!positionFits(movement.from) || !positionFits(movement.to))) {
+        movement = undefined
         simplified = true
       }
       cues.push({
@@ -165,6 +196,7 @@ function parseAss(body: string, defaultFontSize: number) {
         ...(Object.keys(style).length ? { style } : {}),
         ...(position ? { position } : {}),
         ...(movement ? { movement } : {}),
+        ...(resolution && (position || movement) ? { coordinateResolution: resolution } : {}),
         ...(rotationDegrees !== undefined ? { rotationDegrees } : {}),
         ...(scale.x !== undefined || scale.y !== undefined ? { scale } : {}),
         ...(anchor ? { anchor } : {}),
@@ -175,6 +207,30 @@ function parseAss(body: string, defaultFontSize: number) {
     }
   }
   return { cues, simplifiedCueCount }
+}
+
+function assScriptInfo(lines: readonly string[]) {
+  let scriptInfo = false
+  let width: number | undefined
+  let height: number | undefined
+  let scaleBorderAndShadow = false
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (/^\[.*\]$/.test(trimmed)) scriptInfo = /^\[script info\]$/i.test(trimmed)
+    if (!scriptInfo) continue
+    const scaling = /^ScaledBorderAndShadow:\s*(yes|no)$/i.exec(trimmed)
+    if (scaling) scaleBorderAndShadow = scaling[1]?.toLowerCase() === 'yes'
+    const field = /^PlayRes([XY]):\s*(\d+)$/i.exec(trimmed)
+    if (field?.[1]?.toLowerCase() === 'x') width = assNumber(field[2], 1, 2_147_483_647)
+    if (field?.[1]?.toLowerCase() === 'y') height = assNumber(field[2], 1, 2_147_483_647)
+  }
+  if (width !== undefined && height === undefined) {
+    height = width === 1280 ? 1024 : Math.max(1, Math.ceil((width - 1) * 3 / 4))
+  } else if (height !== undefined && width === undefined) {
+    width = height === 1024 ? 1280 : Math.min(2_147_483_647, Math.floor(height * 4 / 3))
+  }
+  const resolution = width !== undefined && height !== undefined ? { width, height } : undefined
+  return { resolution, scaleBorderAndShadow }
 }
 
 function assFade(tag: string): SubtitleCue['fade'] {

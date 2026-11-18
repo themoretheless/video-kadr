@@ -154,6 +154,43 @@ Dialogue: 0:00:00.00,0:00:01.00,{\\move(${args})}Moving
  })
 })
 
+it.each([['yes', 2, -1, 1.5], ['no', 8, -4, 6]] as const)('maps ASS canvas coordinates with ScaledBorderAndShadow=%s', (flag, strokeWidth, shadowX, shadowY) => {
+ const result = importNestedSubtitles(project(), 'root', String.raw`[Script Info]
+PlayResX: 640
+PlayResY: 720
+ScaledBorderAndShadow: ${flag}
+[V4+ Styles]
+Format: Name, Fontsize, Spacing
+Style: Default,80,4
+[Events]
+Format: Start, End, Text
+Dialogue: 0:00:00.00,0:00:01.00,{\pos(160,360)\bord8\xshad-4\yshad6}Position
+Dialogue: 0:00:01.00,0:00:02.00,{\move(160,360,480,180)}Movement
+`, allocator())
+ const clips = result.document.compositions.root!.content.tracks[0]!.clips
+ expect(clips[0]).toMatchObject({transform:{x:{value:-80},y:{value:0}},style:{fontSize:20,tracking:1,strokeWidth,shadowX,shadowY}})
+ expect(clips[1]).toMatchObject({transform:{
+  x:{track:{keyframes:[{tick:0,value:-80},{tick:1000000,value:80}]}},
+  y:{track:{keyframes:[{tick:0,value:0},{tick:1000000,value:-45}]}},
+ }})
+})
+
+it('keeps captions when script coordinates exceed the editable canvas range after scaling', () => {
+ const result = importNestedSubtitles(project(), 'root', String.raw`[Script Info]
+PlayResX: 1
+PlayResY: 1
+[Events]
+Format: Start, End, Text
+Dialogue: 0:00:00.00,0:00:01.00,{\pos(200,0)}Position
+Dialogue: 0:00:01.00,0:00:02.00,{\move(0,0,200,0)}Motion
+`, allocator())
+ expect(result.simplifiedCueCount).toBe(2)
+ const clips = result.document.compositions.root!.content.tracks[0]!.clips
+ expect(clips).toMatchObject(['Position', 'Motion'].map(text => ({
+  text, transform: {x: {mode: 'constant', value: 0}},
+ })))
+})
+
 it('maps ASS absolute positions to editable canvas offsets', () => {
  const result = importNestedSubtitles(project(), 'root', String.raw`[Events]
 Format: Start, End, Text

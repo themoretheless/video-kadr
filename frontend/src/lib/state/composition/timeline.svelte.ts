@@ -253,7 +253,7 @@ export function addCompositionTrack(kind: TrackKind): string {
 
 export function importSrtToComposition(serialized: string, requestedTrackId?: string, report?: (simplifiedCueCount: number) => void, offsetTicks = 0, source?: Pick<SubtitleDocument, 'id' | 'name'>, activity?: ActivityToken): number {
   if (!Number.isSafeInteger(offsetTicks) || offsetTicks < 0) throw new Error('Некорректное смещение субтитров')
-  const parsed = parseSubtitleDocumentWithReport(serialized, compositionState.document.canvas.height)
+  const parsed = parseSubtitleDocumentWithReport(serialized, compositionState.document.canvas)
   const cues = parsed.cues.map(cue => ({
     ...cue, startTicks: cue.startTicks + offsetTicks, endTicks: cue.endTicks + offsetTicks,
   }))
