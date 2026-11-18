@@ -203,6 +203,22 @@ Dialogue: 0:00:01.00,0:00:02.00,Alternate,{\fscx200\fscy150\fsc}Both axes
     expect(report.simplifiedCueCount).toBe(0)
   })
 
+  it('preserves ASS karaoke modes, explicit timing and normalized text ranges', () => {
+    const report = parseSubtitleDocumentWithReport(String.raw`[Events]
+Format: Start, End, Text
+Dialogue: 0:00:00.00,0:00:02.00, {\k20}One\h{\K30}два{\kt80\ko10}!
+`)
+    expect(report.cues[0]).toMatchObject({
+      text: 'One\u00a0два!',
+      karaoke: [
+        {start:0,end:4,startTicks:0,endTicks:200000,mode:'step'},
+        {start:4,end:7,startTicks:200000,endTicks:500000,mode:'sweep'},
+        {start:7,end:8,startTicks:800000,endTicks:900000,mode:'outline'},
+      ],
+    })
+    expect(report.simplifiedCueCount).toBe(1)
+  })
+
   it('refuses malformed, inverted, excessive and empty cues before mutation', () => {
     for (const event of [
       'Dialogue: 0:00:02.00,0:00:01.00,text',

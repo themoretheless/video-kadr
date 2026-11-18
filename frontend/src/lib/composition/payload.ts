@@ -275,6 +275,9 @@ function copyTrack(track: CompositionTrack, composition: Composition, primary: b
 /** Canonical text placement/style transport, shared by authored clips and subtitle import. */
 export function textClipToWire(composition: Composition, clip: TextClip): WireTextClip {
   return {
+    ...(clip.karaoke?.length ? { karaoke: clip.karaoke.map(span => ({
+      ...span, ...(clip.karaokeSecondaryColor ? { secondaryColor: colorToRgba(clip.karaokeSecondaryColor) } : {}),
+    })) } : {}),
     ...(clip.opacityMultiplier === undefined ? {} : { opacityMultiplier: clip.opacityMultiplier }),
     ...(clip.textAnchor ? { textAnchor: [...clip.textAnchor] as const } : {}),
     ...(clip.textBoxWidth !== undefined ? { textBoxWidth: clip.textBoxWidth } : {}),

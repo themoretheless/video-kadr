@@ -245,6 +245,21 @@ Dialogue: 0:00:02.00,0:00:03.00,{\fs3000\bord500}Limited
  expect(result.simplifiedCueCount).toBe(1)
 })
 
+it('carries imported karaoke spans into the saved nested document', () => {
+ const result = importNestedSubtitles(project(), 'root', String.raw`[Events]
+Format: Start, End, Text
+Dialogue: 0:00:00.00,0:00:01.00,{\k20}😀{\kf30}time
+`, allocator())
+ const serialized = JSON.parse(JSON.stringify(result.document))
+ expect(serialized.compositions.root.content.tracks[0].clips[0]).toMatchObject({
+  text: '😀time',
+  karaoke: [
+   {start:0,end:2,startTicks:0,endTicks:200000,mode:'step'},
+   {start:2,end:6,startTicks:200000,endTicks:500000,mode:'sweep'},
+  ],
+ })
+})
+
 it('maps ASS absolute positions to editable canvas offsets', () => {
  const result = importNestedSubtitles(project(), 'root', String.raw`[Events]
 Format: Start, End, Text

@@ -5465,6 +5465,7 @@ timeline: None,
                 hidden: false,
                 locked: false,
                 clips: vec![TextClip {
+                    karaoke: Vec::new(),
                     opacity_multiplier: None,
                 text_box_width: None,
                 text_box_height: None,

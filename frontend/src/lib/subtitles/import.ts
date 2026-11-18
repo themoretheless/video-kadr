@@ -1,4 +1,4 @@
-import { COMPOSITION_TIME_BASE, type TextStyle } from '../composition/types.js'
+import { COMPOSITION_TIME_BASE, type TextStyle, type SubtitleKaraokeSpan } from '../composition/types.js'
 import { MAX_VISUAL_POSITION } from '../composition/validation.js'
 import { MAX_SRT_BYTES, MAX_SRT_CUES, SubtitleFormatError, defaultSubtitleFontSize, formatSrt, parseTimecodedText, type SubtitleCue } from './srt.js'
 import { parseWebVtt } from './webvtt.js'
@@ -52,7 +52,7 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
   let fields: string[] = []
   let styleFields: string[] = []
   let legacySsa = false
-  const styles = new Map<string, { style: AssStyle; anchor?: SubtitleCue['anchor']; rotationDegrees?: number; scale?: SubtitleCue['scale']; margins: AssMargins }>()
+  const styles = new Map<string, { style: AssStyle; anchor?: SubtitleCue['anchor']; rotationDegrees?: number; scale?: SubtitleCue['scale']; margins: AssMargins; secondaryColor?: string }>()
   const cues: SubtitleCue[] = []
   let simplifiedCueCount = 0
   for (const line of lines) {
@@ -82,6 +82,7 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
           style: assStyle(read), anchor: assAnchor(read('alignment')), rotationDegrees: assRotation(read('angle')),
           scale: { x: assScale(read('scalex')), y: assScale(read('scaley')) },
           margins: assMargins(read),
+          secondaryColor: assColor(read('secondarycolour')),
         })
       }
       continue
@@ -104,6 +105,7 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
       const eventMargins = assMargins(field => values[fields.indexOf(field)]?.trim())
       let styleMargins = namedStyle?.margins
       let baseStyle = namedStyle?.style
+      let secondaryColor = namedStyle?.secondaryColor
       let style = { ...baseStyle }
       let anchor = namedStyle?.anchor
       let hasInlineAlignment = false
@@ -116,14 +118,36 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
       let fade: SubtitleCue['fade']
       let simplified = false
       let previousBlockEnd = 0
+      let textOffset = 0
+      let karaokeTime = 0
+      const karaokeMarkers: Omit<SubtitleKaraokeSpan, 'end'>[] = []
       let hasText = false
       const dialogue = values.slice(fields.length - 1).join(',')
       const unstyled = dialogue.replace(/\{([^}]*)\}/g, (whole, block: string, offset: number) => {
-        hasText ||= dialogue.slice(previousBlockEnd, offset).trim().length > 0
+        const preceding = dialogue.slice(previousBlockEnd, offset)
+        hasText ||= preceding.trim().length > 0
+        textOffset += preceding.length
         previousBlockEnd = offset + whole.length
         for (const rawTag of assTags(block)) {
           const tag = rawTag.trim()
           if (!tag) continue
+          const karaoke = /^(kt|kf|ko|k|K)(\d+)$/.exec(tag)
+          if (karaoke) {
+            const ticks = Number(karaoke[2]) * 10_000
+            const command = karaoke[1]
+            if (Number.isSafeInteger(ticks) && Number.isSafeInteger(karaokeTime + ticks)) {
+              if (command === 'kt') karaokeTime = ticks
+              else {
+                karaokeMarkers.push({
+                  start: textOffset, startTicks: karaokeTime, endTicks: karaokeTime + ticks,
+                  mode: command === 'K' || command === 'kf' ? 'sweep' : command === 'ko' ? 'outline' : 'step',
+                })
+                karaokeTime += ticks
+              }
+              if (command !== 'k' && command !== 'kt') simplified = true
+            } else simplified = true
+            continue
+          }
           const reset = /^r(.*)$/.exec(tag)
           if (reset) {
             if (hasText) simplified = true
@@ -131,6 +155,7 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
               const target = styles.get(reset[1]!.trim()) ?? namedStyle
               const alignment = style.align
               baseStyle = target?.style
+              secondaryColor = target?.secondaryColor
               style = { ...baseStyle }
               rotationDegrees = target?.rotationDegrees
               baseScale = target?.scale
@@ -192,8 +217,22 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
         }
         return ''
       })
-      const text = unstyled.replace(/\\N/g, '\n').replace(/\\n/g, cueWrapStyle === 2 ? '\n' : ' ')
-        .replace(/\\h/g, '\u00a0').trim()
+      const normalizeText = (value: string) => value.replace(/\\N/g, '\n')
+        .replace(/\\n/g, cueWrapStyle === 2 ? '\n' : ' ').replace(/\\h/g, '\u00a0')
+      const normalizedText = normalizeText(unstyled)
+      const text = normalizedText.trim()
+      const trimOffset = normalizedText.length - normalizedText.trimStart().length
+      let rawOffset = 0
+      let normalizedOffset = 0
+      const karaoke = karaokeMarkers.flatMap((marker, index) => {
+        const end = karaokeMarkers[index + 1]?.start ?? unstyled.length
+        normalizedOffset += normalizeText(unstyled.slice(rawOffset, marker.start)).length
+        const start = Math.max(0, normalizedOffset - trimOffset)
+        normalizedOffset += normalizeText(unstyled.slice(marker.start, end)).length
+        rawOffset = end
+        const stop = Math.min(text.length, normalizedOffset - trimOffset)
+        return stop > start ? [{ ...marker, start, end: stop }] : []
+      })
       if (style.fontSizePx !== undefined) {
         const scaledSize = style.fontSizePx * typographyScale
         style.fontSizePx = Math.min(512, Math.max(1, scaledSize))
@@ -251,6 +290,8 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
         startTicks: assTimestamp(values[fields.indexOf('start')]!.trim()),
         endTicks: assTimestamp(values[fields.indexOf('end')]!.trim()),
         text,
+        ...(karaoke.length ? { karaoke } : {}),
+        ...(karaoke.length && secondaryColor ? { karaokeSecondaryColor: secondaryColor } : {}),
         ...(cueWrapStyle === 2 ? { noAutoWrap: true } : {}),
         ...(Object.keys(style).length ? { style } : {}),
         ...(position ? { position } : {}),
@@ -391,7 +432,7 @@ function assNumber(value: string | undefined, min: number, max: number) {
 
 function ssaStyleField(read: (field: string) => string | undefined, field: string): string | undefined {
   if (field === 'alignment') return legacyAssAlignment(read(field))
-  if (field !== 'primarycolour' && field !== 'outlinecolour' && field !== 'backcolour') return read(field)
+  if (field !== 'primarycolour' && field !== 'secondarycolour' && field !== 'outlinecolour' && field !== 'backcolour') return read(field)
   const color = read(field === 'outlinecolour' ? 'backcolour' : field)
   if (!color) return undefined
   const hex = /^&H([\da-f]{1,8})&?$/i.exec(color)

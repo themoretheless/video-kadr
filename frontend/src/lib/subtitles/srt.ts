@@ -1,4 +1,4 @@
-import { COMPOSITION_TIME_BASE, MAX_TEXT_LENGTH, type CompositionKeyframe, type CompositionVisualAnimation, type TextClip, type TextStyle } from '../composition/types'
+import { COMPOSITION_TIME_BASE, MAX_TEXT_LENGTH, type SubtitleKaraokeSpan, type CompositionKeyframe, type CompositionVisualAnimation, type TextClip, type TextStyle } from '../composition/types'
 
 export const MAX_SRT_BYTES = 2 * 1024 * 1024
 export const MAX_SRT_CUES = 10_000
@@ -13,6 +13,8 @@ export interface SubtitleCue {
   readonly startTicks: number
   readonly endTicks: number
   readonly text: string
+  readonly karaoke?: readonly SubtitleKaraokeSpan[]
+  readonly karaokeSecondaryColor?: string
   readonly style?: Partial<TextStyle>
   readonly position?: { x: number; y: number }
   readonly coordinateResolution?: { width: number; height: number }
@@ -129,6 +131,8 @@ export function cuesToTextClips(
       timelineStartTicks: cue.startTicks,
       durationTicks,
       text: cue.text,
+      ...(cue.karaoke?.length ? { karaoke: cue.karaoke } : {}),
+      ...(cue.karaokeSecondaryColor ? { karaokeSecondaryColor: cue.karaokeSecondaryColor } : {}),
       x: position && canvas ? position.x - canvas.width / 2 : 0,
       y: position && canvas ? position.y - canvas.height / 2 : 0,
       ...(cue.rotationDegrees !== undefined ? { rotationDegrees: cue.rotationDegrees } : {}),

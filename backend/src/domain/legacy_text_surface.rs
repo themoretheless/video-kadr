@@ -47,6 +47,26 @@ pub fn render(clip:&TextClip,canvas:(u32,u32),time:u64,checkpoint:&mut dyn FnMut
         shadow:shadow_color[3]>0.,shadow_color,shadow_opacity:100.,shadow_distance:dx.hypot(dy),shadow_angle:dy.atan2(dx).to_degrees()+90.,shadow_size:0.,shadow_blur,
         position:Some([canvas.0 as f64/2.,canvas.1 as f64/2.]),..Default::default()
     };
+    if clip.karaoke.iter().any(|span| span.mode == super::composition::SubtitleKaraokeMode::Step && local < span.start_ticks) {
+        use super::{composition::SubtitleKaraokeMode, graphic_text_layout::GraphicCharStyle, graphic_text_runs::CharacterStyleRun};
+        let mut offset = 0;
+        let mut boundaries = vec![0];
+        for character in clip.text.chars() {
+            offset += character.len_utf16();
+            boundaries.push(offset);
+        }
+        parameters.runs = clip.karaoke.iter()
+            .filter(|span| span.mode == SubtitleKaraokeMode::Step && local < span.start_ticks)
+            .filter_map(|span| Some(CharacterStyleRun {
+                start: boundaries.binary_search(&span.start).ok()?,
+                end: boundaries.binary_search(&span.end).ok()?,
+                style: GraphicCharStyle {
+                    fill: Some(span.secondary_color.map(rgba).unwrap_or([0., 1., 1., 1.])),
+                    ..Default::default()
+                },
+            }))
+            .collect();
+    }
     // Anchor against the complete multiline layout before the full-canvas clip transform.
     let (layer,_)=parameters.evaluate(true,canvas)?;
     let bounds=layer.text.block_bounds(super::graphic_text_layout::text_layout(&layer.text).bounds);
@@ -63,6 +83,21 @@ mod tests {
     use super::super::composition::TransformSpec;
     fn clip()->TextClip {
         serde_json::from_value(serde_json::json!({"id":"text","timelineStartTick":1000000,"timelineEndTick":3000000,"text":"Text\nДва","style":{"fontFamily":"Noto Sans","fontSize":12,"color":{"red":1,"green":1,"blue":1,"alpha":1},"background":{"red":0,"green":0,"blue":0,"alpha":0},"stroke":{"red":1,"green":0,"blue":0,"alpha":0},"strokeWidth":0,"shadow":{"red":0,"green":0,"blue":1,"alpha":0},"shadowX":2,"shadowY":1},"transform":TransformSpec::default(),"opacity":{"mode":"constant","value":1}})).unwrap()
+    }
+    #[test]
+    fn karaoke_step_changes_only_at_the_syllable_start() {
+        use super::super::composition::{SubtitleKaraokeMode, SubtitleKaraokeSpan};
+        let mut caption = clip();
+        caption.karaoke.push(SubtitleKaraokeSpan {
+            start: 0, end: 4, start_ticks: 500_000, end_ticks: 750_000,
+            mode: SubtitleKaraokeMode::Step, secondary_color: None,
+        });
+        let pixels = |clip: &TextClip, time| render(clip, (64, 48), time, &mut || Ok(()))
+            .unwrap().unwrap().to_surface(&mut || Ok(())).unwrap();
+        let plain = pixels(&clip(), 1_500_000);
+        assert_ne!(pixels(&caption, 1_499_999), plain);
+        assert_eq!(pixels(&caption, 1_500_000), plain);
+        assert_eq!(pixels(&caption, 1_750_000), plain);
     }
     #[test]
     fn ordinary_text_has_visible_style_motion_opacity_and_half_open_admission() {

@@ -405,7 +405,19 @@ export interface TextStyle {
   readonly shadowY?: number
 }
 
+export interface SubtitleKaraokeSpan {
+  /** UTF-16 offsets into the normalized cue text. */
+  readonly start: number
+  readonly end: number
+  /** Cue-relative microseconds. */
+  readonly startTicks: number
+  readonly endTicks: number
+  readonly mode: 'step' | 'sweep' | 'outline'
+}
+
 export interface TextClip {
+  readonly karaoke?: readonly SubtitleKaraokeSpan[]
+  readonly karaokeSecondaryColor?: string
   readonly opacityMultiplier?: number
   readonly textBoxWidth?: number
   readonly textAnchor?: readonly [number, number]
@@ -945,6 +957,7 @@ export interface WireConcatTitleStyle {
  readonly lineHeight?:number;readonly tracking?:number;readonly maxWidth?:number;readonly maxHeight?:number
 }
 export interface WireTextClip {
+  readonly karaoke?: readonly (SubtitleKaraokeSpan & { readonly secondaryColor?: WireRgba })[]
   readonly textBoxHeight?: number
   readonly opacityMultiplier?: number
   readonly textBoxWidth?: number

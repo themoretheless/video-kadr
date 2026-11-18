@@ -202,6 +202,7 @@ export function setNativeCaptionText(
     throw new Error('Оформление реплики изменилось; сбросьте черновик и повторите')
   }
   let edited = { ...clip, text }
+  if (text !== clip.text) delete edited.karaoke
   if (appearance && current && !sameCaptionAppearance(current, appearance.value)) {
     if (clip.concatTitle) throw new Error('Для титра Concat используйте редактор титров')
     const { textBoxWidth, textBoxHeight, opacityMultiplier, blendMode, textColor, textAlpha, backgroundColor, backgroundAlpha,

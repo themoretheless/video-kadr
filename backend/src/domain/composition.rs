@@ -1606,9 +1606,31 @@ pub fn is_supported_composition_font_family(value: &str) -> bool {
     )
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SubtitleKaraokeMode {
+    Step,
+    Sweep,
+    Outline,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SubtitleKaraokeSpan {
+    pub start: usize,
+    pub end: usize,
+    pub start_ticks: u64,
+    pub end_ticks: u64,
+    pub mode: SubtitleKaraokeMode,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub secondary_color: Option<Rgba>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TextClip {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub karaoke: Vec<SubtitleKaraokeSpan>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub opacity_multiplier: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1634,6 +1656,30 @@ pub struct TextClip {
     pub opacity: AnimatableValue,
     #[serde(default = "default_true")]
     pub enabled: bool,
+}
+
+fn karaoke_ranges_valid(text: &str, spans: &[SubtitleKaraokeSpan]) -> bool {
+    let mut boundaries = vec![true];
+    for character in text.chars() {
+        if character.len_utf16() == 2 {
+            boundaries.push(false);
+        }
+        boundaries.push(true);
+    }
+    let mut previous_end = 0;
+    for span in spans {
+        if span.start < previous_end || span.start >= span.end
+            || !boundaries.get(span.start).copied().unwrap_or(false)
+            || !boundaries.get(span.end).copied().unwrap_or(false)
+            || span.start_ticks > span.end_ticks
+            || span.end_ticks > 9_007_199_254_740_991
+            || span.secondary_color.is_some_and(|color| color.validate().is_err())
+        {
+            return false;
+        }
+        previous_end = span.end;
+    }
+    true
 }
 
 /// Source-free rectangle; color interpolation remains owned by native RGBA tracks.
@@ -2189,6 +2235,8 @@ impl Composition {
                             || clip.text.trim().is_empty()
                             || clip.text.chars().count() > 512
                             || clip.text.contains('\0')
+                            || (!clip.karaoke.is_empty() && (clip.concat_title.is_some()
+                                || !karaoke_ranges_valid(&clip.text, &clip.karaoke)))
                             || clip.opacity_multiplier.is_some_and(|value| clip.concat_title.is_some() || !(0.0..=1.0).contains(&value))
                             || clip.text_box_width.is_some_and(|width| {
                                 clip.concat_title.is_some() || !(1.0..=100_000.0).contains(&width)
@@ -3795,6 +3843,7 @@ source_out_tick: 99_000,
             hidden: false,
             locked: false,
             clips: vec![TextClip {
+                    karaoke: Vec::new(),
                     opacity_multiplier: None,
                 text_box_width: None,
                 text_box_height: None,
