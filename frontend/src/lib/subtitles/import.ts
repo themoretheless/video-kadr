@@ -1,6 +1,6 @@
 import { COMPOSITION_TIME_BASE, type TextStyle } from '../composition/types.js'
 import { MAX_VISUAL_POSITION } from '../composition/validation.js'
-import { MAX_SRT_BYTES, MAX_SRT_CUES, SubtitleFormatError, formatSrt, parseTimecodedText, type SubtitleCue } from './srt.js'
+import { MAX_SRT_BYTES, MAX_SRT_CUES, SubtitleFormatError, defaultSubtitleFontSize, formatSrt, parseTimecodedText, type SubtitleCue } from './srt.js'
 import { parseWebVtt } from './webvtt.js'
 
 /** Normalize subtitle documents to the composition clock before any mutation. */
@@ -8,7 +8,7 @@ export function parseSubtitleDocument(input: string): SubtitleCue[] {
   return parseSubtitleDocumentWithReport(input).cues
 }
 
-export function parseSubtitleDocumentWithReport(input: string) {
+export function parseSubtitleDocumentWithReport(input: string, canvasHeight?: number) {
   if (new TextEncoder().encode(input).byteLength > MAX_SRT_BYTES) {
     throw new SubtitleFormatError('Subtitle file exceeds 2 MiB')
   }
@@ -23,7 +23,7 @@ export function parseSubtitleDocumentWithReport(input: string) {
       text: plainVttText(cue.text),
     }))
   } else if (/^\[Events\]$/im.test(body)) {
-    const parsed = parseAss(body)
+    const parsed = parseAss(body, defaultSubtitleFontSize(canvasHeight))
     cues = parsed.cues
     simplifiedCueCount = parsed.simplifiedCueCount
   } else {
@@ -39,12 +39,12 @@ function plainVttText(text: string): string {
     ({ amp: '&', lt: '<', gt: '>', nbsp: '\u00a0', lrm: '\u200e', rlm: '\u200f' })[entity]!)
 }
 
-function parseAss(body: string) {
+function parseAss(body: string, defaultFontSize: number) {
   let section = ''
   let fields: string[] = []
   let styleFields: string[] = []
   let legacySsa = false
-  const styles = new Map<string, { style: AssStyle; anchor?: SubtitleCue['anchor'] }>()
+  const styles = new Map<string, { style: AssStyle; anchor?: SubtitleCue['anchor']; rotationDegrees?: number; scale?: SubtitleCue['scale'] }>()
   const cues: SubtitleCue[] = []
   let simplifiedCueCount = 0
   for (const line of body.split('\n')) {
@@ -70,7 +70,10 @@ function parseAss(body: string) {
         const readField = (field: string) => values[styleFields.indexOf(field)]
         const read = section === '[v4 styles]' ? (field: string) => ssaStyleField(readField, field) : readField
         const name = read('name')
-        if (name) styles.set(name, { style: assStyle(read), anchor: assAnchor(read('alignment')) })
+        if (name) styles.set(name, {
+          style: assStyle(read), anchor: assAnchor(read('alignment')), rotationDegrees: assRotation(read('angle')),
+          scale: { x: assScale(read('scalex')), y: assScale(read('scaley')) },
+        })
       }
       continue
     }
@@ -91,7 +94,10 @@ function parseAss(body: string) {
       const namedStyle = styles.get(styleName) ?? styles.get('Default')
       let style = { ...namedStyle?.style }
       let anchor = namedStyle?.anchor
+      let rotationDegrees = namedStyle?.rotationDegrees
+      let scale = { ...namedStyle?.scale }
       let position: SubtitleCue['position']
+      let movement: SubtitleCue['movement']
       let fade: SubtitleCue['fade']
       let simplified = false
       let previousBlockEnd = 0
@@ -110,24 +116,47 @@ function parseAss(body: string) {
               const target = styles.get(reset[1]!.trim()) ?? namedStyle
               const alignment = style.align
               style = { ...target?.style }
+              rotationDegrees = target?.rotationDegrees
+              scale = { ...target?.scale }
               delete style.align
               if (alignment !== undefined) style.align = alignment
             }
             continue
           }
           const coordinates = assPosition(tag)
+          const motion = assMovement(tag)
           const envelope = assFade(tag)
           const alpha = /^(alpha|[134]a)&H([\da-f]{1,2})&?$/i.exec(tag)
-          if (coordinates) position = coordinates
+          const rotation = /^frz?([+-]?(?:\d+(?:\.\d*)?|\.\d+))$/i.exec(tag)
+          const scaling = /^fsc([xy])(\d+(?:\.\d+)?|\.\d+)$/i.exec(tag)
+          if (coordinates || motion) {
+            if (position || movement) simplified = true
+            else if (motion) movement = motion
+            else position = coordinates
+          }
           else if (envelope) fade ??= envelope
           else if (alpha) {
             if (hasText) simplified = true
             else applyAssAlpha(style, alpha[1]!.toLowerCase(), alpha[2]!)
+          } else if (rotation) {
+            const angle = assRotation(rotation[1])
+            if (hasText || angle === undefined) simplified = true
+            else rotationDegrees = angle
+          } else if (scaling) {
+            const factor = assScale(scaling[2])
+            if (hasText || factor === undefined) simplified = true
+            else if (scaling[1]?.toLowerCase() === 'x') scale.x = factor
+            else scale.y = factor
           } else if (!applyAssOverride(style, tag, hasText)) simplified = true
           anchor = assAnchor(/^an([1-9])$/i.exec(tag)?.[1]) ?? anchor
         }
         return ''
       }).replace(/\\[Nn]/g, '\n').replace(/\\h/g, '\u00a0').trim()
+      const fontSize = style.fontSizePx ?? defaultFontSize
+      if (style.tracking !== undefined && (style.tracking < -fontSize || style.tracking > 10 * fontSize)) {
+        delete style.tracking
+        simplified = true
+      }
       cues.push({
         id: `subtitle-${cues.length + 1}`,
         startTicks: assTimestamp(values[fields.indexOf('start')]!.trim()),
@@ -135,6 +164,9 @@ function parseAss(body: string) {
         text,
         ...(Object.keys(style).length ? { style } : {}),
         ...(position ? { position } : {}),
+        ...(movement ? { movement } : {}),
+        ...(rotationDegrees !== undefined ? { rotationDegrees } : {}),
+        ...(scale.x !== undefined || scale.y !== undefined ? { scale } : {}),
         ...(anchor ? { anchor } : {}),
         ...(fade ? { fade } : {}),
       })
@@ -194,6 +226,24 @@ function assPosition(tag: string): SubtitleCue['position'] {
   return x === undefined || y === undefined ? undefined : { x, y }
 }
 
+function assMovement(tag: string): SubtitleCue['movement'] {
+  const match = /^move\(([^()]*)\)$/i.exec(tag)
+  if (!match) return undefined
+  const fields = match[1]!.split(',').map(field => field.trim())
+  if (fields.length !== 4 && fields.length !== 6) return undefined
+  const [x1, y1, x2, y2] = fields.slice(0, 4).map(field =>
+    /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(field) ? assNumber(field, -MAX_VISUAL_POSITION, MAX_VISUAL_POSITION) : undefined)
+  if (x1 === undefined || y1 === undefined || x2 === undefined || y2 === undefined) return undefined
+  const path = { from: { x: x1, y: y1 }, to: { x: x2, y: y2 } }
+  if (fields.length === 4) return path
+  const [first, second] = fields.slice(4).map(field =>
+    /^[+-]?\d+$/.test(field) ? assNumber(field, -2_147_483_648, 2_147_483_647) : undefined)
+  if (first === undefined || second === undefined) return undefined
+  const start = Math.min(first, second)
+  const end = Math.max(first, second)
+  return end <= 0 ? path : { ...path, startTicks: start * 1000, endTicks: end * 1000 }
+}
+
 type AssStyle = { -readonly [Key in keyof TextStyle]?: TextStyle[Key] }
 
 function assFields(line: string, lowercase = true) {
@@ -230,6 +280,17 @@ function assOpacity(transparency: string): string {
   return (255 - Number.parseInt(transparency, 16)).toString(16).padStart(2, '0').toUpperCase()
 }
 
+function assRotation(value: string | undefined): number | undefined {
+  const degrees = assNumber(value, -Number.MAX_VALUE, Number.MAX_VALUE)
+  // ASS uses positive counterclockwise angles in the screen plane.
+  return degrees === undefined ? undefined : (-(degrees % 360) || 0)
+}
+
+function assScale(value: string | undefined): number | undefined {
+  const percent = assNumber(value, 1, 1600)
+  return percent === undefined ? undefined : percent / 100
+}
+
 function applyAssAlpha(style: AssStyle, channel: string, transparency: string): void {
   const opacity = assOpacity(transparency)
   if (channel === 'alpha' || channel === '1a') style.color = (style.color ?? '#FFFFFFFF').slice(0, 7) + opacity
@@ -261,10 +322,12 @@ function assStyle(read: (field: string) => string | undefined): AssStyle {
   const align = assAlign(read('alignment'))
   const outline = assNumber(read('outline'), 0, 100)
   const shadow = assNumber(read('shadow'), 0, 100)
+  const spacing = assNumber(read('spacing'), 0, 5120)
   if (size !== undefined) style.fontSizePx = size
   if (color) style.color = color
   if (family) style.fontFamily = family
   if (align) style.align = align
+  if (spacing !== undefined) style.tracking = spacing
   for (const flag of ['bold', 'italic'] as const) {
     const value = read(flag)
     if (value === '-1' || value === '1' || value === '0') style[flag] = value !== '0'
@@ -282,6 +345,13 @@ function assStyle(read: (field: string) => string | undefined): AssStyle {
 }
 
 function applyAssOverride(style: AssStyle, tag: string, hasText: boolean): boolean {
+  const spacing = /^fsp([+-]?(?:\d+(?:\.\d*)?|\.\d+))$/i.exec(tag)
+  if (spacing) {
+    const tracking = assNumber(spacing[1], -512, 5120)
+    if (hasText || tracking === undefined) return false
+    style.tracking = tracking
+    return true
+  }
   const geometry = /^(bord|shad|[xy]shad)([+-]?(?:\d+(?:\.\d*)?|\.\d+))$/i.exec(tag)
   if (geometry) {
     const property = geometry[1]!.toLowerCase()

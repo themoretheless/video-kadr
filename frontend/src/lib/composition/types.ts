@@ -390,6 +390,7 @@ export interface ImageClip {
 }
 
 export interface TextStyle {
+  readonly tracking?: number
   readonly bold?: boolean
   readonly italic?: boolean
   readonly fontSizePx: number

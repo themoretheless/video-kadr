@@ -1635,6 +1635,10 @@ function validateTextStyle(
   if (!isFiniteNumber(value.fontSizePx) || value.fontSizePx < 1 || value.fontSizePx > 512) {
     add('font-size', `${path}.fontSizePx`, 'fontSizePx must be from 1 to 512')
   }
+  if (value.tracking !== undefined && (!isFiniteNumber(value.tracking) ||
+      (isFiniteNumber(value.fontSizePx) && (value.tracking < -value.fontSizePx || value.tracking > 10 * value.fontSizePx)))) {
+    add('text-tracking', `${path}.tracking`, 'Tracking is outside the supported font-relative range')
+  }
   for (const field of ['bold', 'italic'] as const) {
     if (value[field] !== undefined && typeof value[field] !== 'boolean') {
       add('text-style-flag', `${path}.${field}`, `${field} must be boolean`)

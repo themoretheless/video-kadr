@@ -11,7 +11,7 @@ export function importNestedSubtitles(project:NativeNestedProject, compositionId
   const node=Object.hasOwn(project.compositions,compositionId)?project.compositions[compositionId]:undefined
   if(!node)throw new Error('Композиция не найдена')
   if(!Number.isSafeInteger(offsetUs)||offsetUs<0)throw new Error('Некорректное смещение субтитров')
-  const parsed = parseSubtitleDocumentWithReport(serialized)
+  const parsed = parseSubtitleDocumentWithReport(serialized, node.content.canvas.height)
   const cues=parsed.cues.map(cue=>({...cue,startTicks:cue.startTicks+offsetUs,endTicks:cue.endTicks+offsetUs})).sort((a,b)=>a.startTicks-b.startTicks)
   if(!cues.length)throw new Error('Файл не содержит субтитров')
   if(cues.some(cue=>!Number.isSafeInteger(cue.endTicks)||cue.endTicks>MAX_COMPOSITION_DURATION_TICKS))throw new Error('Субтитры выходят за пределы композиции')

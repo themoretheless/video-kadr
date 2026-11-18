@@ -82,6 +82,78 @@ Dialogue: 0:00:02.00,0:00:03.00,Note,{\b0}Regular{\3c&HFFFFFF&} text
  expect(result.simplifiedCueCount).toBe(1)
 })
 
+it('imports ASS rotation as an editable screen-plane transform', () => {
+ const result = importNestedSubtitles(project(), 'root', String.raw`[V4+ Styles]
+Format: Name, Angle, ScaleX, ScaleY, Spacing
+Style: Default,15,125,80,2.5
+[Events]
+Format: Start, End, Style, Text
+Dialogue: 0:00:00.00,0:00:01.00,Default,Styled
+Dialogue: 0:00:01.00,0:00:02.00,Default,{\fr-45\fscx87.5\fsp-1.25}Rotated
+Dialogue: 0:00:02.00,0:00:03.00,Default,{\frz90\fscy150\fsp0\r}Reset
+Dialogue: 0:00:03.00,0:00:04.00,Default,First{\frz90\fscy150} second
+`, allocator())
+ const clips = result.document.compositions.root!.content.tracks[0]!.clips
+ expect(clips.map(clip => 'transform' in clip && clip.transform.rotationDegrees)).toEqual(
+  [-15, 45, -15, -15].map(value => ({mode: 'constant', value})),
+ )
+ expect(clips.map(clip => 'transform' in clip && [clip.transform.scaleX, clip.transform.scaleY])).toEqual(
+  [[1.25,0.8],[0.875,0.8],[1.25,0.8],[1.25,0.8]].map(pair => pair.map(value => ({mode:'constant', value}))),
+ )
+ expect(result.simplifiedCueCount).toBe(1)
+ expect(clips.map(clip => 'style' in clip && clip.style.tracking)).toEqual([2.5, -1.25, 2.5, 2.5])
+})
+
+it('keeps captions with spacing outside the canvas font range and reports each cue once', () => {
+ const result = importNestedSubtitles(project(), 'root', String.raw`[Events]
+Format: Start, End, Text
+Dialogue: 0:00:00.00,0:00:01.00,{\fsp-10\blur2}Outside
+Dialogue: 0:00:01.00,0:00:02.00,{\fsp-9}Boundary
+`, allocator())
+ const clips = result.document.compositions.root!.content.tracks[0]!.clips
+ expect(clips[0]).toMatchObject({text: 'Outside'})
+ expect(clips[0]).not.toHaveProperty('style.tracking')
+ expect(clips[1]).toMatchObject({text: 'Boundary', style: {tracking: -9}})
+ expect(result.simplifiedCueCount).toBe(1)
+})
+
+it('imports timed ASS movement and fade as independent editable channels', () => {
+ const result = importNestedSubtitles(project(), 'root', String.raw`[Events]
+Format: Start, End, Text
+Dialogue: 0:00:01.00,0:00:02.00,{\move(60,40,260,80,200,1200)\fad(100,100)}Moving
+`, allocator())
+ expect(result.simplifiedCueCount).toBe(0)
+ expect(result.document.compositions.root!.content.tracks[0]!.clips[0]).toMatchObject({
+  timelineStartTick: 1_000_000,
+  transform: {
+   x: { mode: 'keyframes', track: { interpolation: 'linear', keyframes: [
+    {tick: 0, value: -100}, {tick: 200_000, value: -100}, {tick: 1_000_000, value: 60},
+   ] } },
+   y: { mode: 'keyframes', track: { keyframes: [
+    {tick: 0, value: -50}, {tick: 200_000, value: -50}, {tick: 1_000_000, value: -18},
+   ] } },
+  },
+  opacity: {mode: 'keyframes'},
+ })
+})
+
+it.each([
+ ['60,40,260,80', 'linear', [[0,-100],[1000000,100]]],
+ ['60,40,260,80,800,-200', 'linear', [[0,-60],[800000,100],[1000000,100]]],
+ ['60,40,260,80,200,200', 'hold', [[0,-100],[200000,-100],[201000,100],[1000000,100]]],
+] as const)('preserves ASS movement boundaries for %s', (args, interpolation, keys) => {
+ const result = importNestedSubtitles(project(), 'root', `[Events]
+Format: Start, End, Text
+Dialogue: 0:00:00.00,0:00:01.00,{\\move(${args})}Moving
+`, allocator())
+ expect(result.simplifiedCueCount).toBe(0)
+ expect(result.document.compositions.root!.content.tracks[0]!.clips[0]).toMatchObject({
+  transform: {x: {mode: 'keyframes', track: {
+   interpolation, keyframes: keys.map(([tick, value]) => ({tick, value})),
+  }}},
+ })
+})
+
 it('maps ASS absolute positions to editable canvas offsets', () => {
  const result = importNestedSubtitles(project(), 'root', String.raw`[Events]
 Format: Start, End, Text

@@ -4,6 +4,10 @@ export const MAX_SRT_BYTES = 2 * 1024 * 1024
 export const MAX_SRT_CUES = 10_000
 const CAPTION_SAFE_MARGIN = 0.08
 
+export function defaultSubtitleFontSize(canvasHeight?: number): number {
+  return canvasHeight === undefined ? 48 : Math.max(1, Math.round(canvasHeight * 0.05))
+}
+
 export interface SubtitleCue {
   readonly id: string
   readonly startTicks: number
@@ -11,7 +15,15 @@ export interface SubtitleCue {
   readonly text: string
   readonly style?: Partial<TextStyle>
   readonly position?: { x: number; y: number }
+  readonly movement?: {
+    from: { x: number; y: number }
+    to: { x: number; y: number }
+    startTicks?: number
+    endTicks?: number
+  }
   readonly anchor?: readonly [number, number]
+  readonly rotationDegrees?: number
+  readonly scale?: { x?: number; y?: number }
   readonly fade?: { inTicks: number; outTicks: number } | {
     times: readonly [number, number, number, number]
     opacities: readonly [number, number, number]
@@ -89,13 +101,19 @@ export function cuesToTextClips(
   return cues.map((cue, index) => {
     validateCue(cue, index)
     const anchor = cue.anchor ?? (canvas || cue.position ? [0.5, 1] as const : undefined)
-    const position = cue.position ?? (anchor && canvas ? {
+    const position = cue.movement?.from ?? cue.position ?? (anchor && canvas ? {
       x: canvas.width * (CAPTION_SAFE_MARGIN + (1 - 2 * CAPTION_SAFE_MARGIN) * anchor[0]),
       y: canvas.height * (CAPTION_SAFE_MARGIN + (1 - 2 * CAPTION_SAFE_MARGIN) * anchor[1]),
     } : undefined)
     const durationTicks = cue.endTicks - cue.startTicks
-    const animation = captionFade(cue.fade, durationTicks)
-    const fontSizePx = cue.style?.fontSizePx ?? (canvas ? Math.max(1, Math.round(canvas.height * 0.05)) : 48)
+    const fade = captionFade(cue.fade, durationTicks)
+    const movement = cue.movement && canvas ? captionMovement(cue.movement, durationTicks, canvas) : undefined
+    const animation: CompositionVisualAnimation | undefined = fade || movement || cue.scale ? {
+      ...fade, ...movement,
+      ...(cue.scale?.x !== undefined ? { scaleX: { mode: 'constant', value: cue.scale.x } } : {}),
+      ...(cue.scale?.y !== undefined ? { scaleY: { mode: 'constant', value: cue.scale.y } } : {}),
+    } : undefined
+    const fontSizePx = cue.style?.fontSizePx ?? defaultSubtitleFontSize(canvas?.height)
     return {
       id: idForCue(cue, index),
       kind: 'text',
@@ -104,6 +122,7 @@ export function cuesToTextClips(
       text: cue.text,
       x: position && canvas ? position.x - canvas.width / 2 : 0,
       y: position && canvas ? position.y - canvas.height / 2 : 0,
+      ...(cue.rotationDegrees !== undefined ? { rotationDegrees: cue.rotationDegrees } : {}),
       ...(anchor ? { textAnchor: anchor } : {}),
       ...(canvas ? { textBoxWidth: Math.max(1, Math.round(canvas.width * (1 - 2 * CAPTION_SAFE_MARGIN))) } : {}),
       ...(animation ? { animation } : {}),
@@ -118,6 +137,26 @@ export function cuesToTextClips(
       },
     }
   })
+}
+
+function captionMovement(move: NonNullable<SubtitleCue['movement']>, duration: number, canvas: {width: number; height: number}): CompositionVisualAnimation {
+  const start = move.startTicks ?? 0
+  const end = move.endTicks ?? duration
+  const jump = start === end
+  const ticks = new Set([0, Math.max(0, Math.min(start, duration)), Math.min(end, duration), duration])
+  if (jump && end + 1000 < duration) ticks.add(end + 1000)
+  const channel = (axis: 'x' | 'y', origin: number) => ({
+    mode: 'keyframes' as const,
+    track: {
+      timeBase: COMPOSITION_TIME_BASE,
+      interpolation: jump ? 'hold' as const : 'linear' as const,
+      keyframes: [...ticks].sort((a, b) => a - b).map(tick => {
+        const progress = jump ? Number(tick >= end + 1000) : tick <= start ? 0 : tick >= end ? 1 : (tick - start) / (end - start)
+        return { tick, value: move.from[axis] + (move.to[axis] - move.from[axis]) * progress - origin }
+      }),
+    },
+  })
+  return { x: channel('x', canvas.width / 2), y: channel('y', canvas.height / 2) }
 }
 
 function captionFade(fade: SubtitleCue['fade'], duration: number): CompositionVisualAnimation | undefined {
