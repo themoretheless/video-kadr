@@ -54,7 +54,8 @@ try {
     await page.getByLabel('Диапазон обычного экспорта Filmcraft', { exact: true }).selectOption('frames')
     await page.getByLabel('Начальный кадр видеоэкспорта Filmcraft', { exact: true }).fill(String(startFrame))
     await page.getByLabel('Количество кадров видеоэкспорта Filmcraft', { exact: true }).fill('2')
-    await page.getByRole('button', { name: 'Экспортировать видео без звука', exact: true }).click()
+    await page.getByLabel('Добавить звук в видеоэкспорт Filmcraft', { exact: true }).check()
+    await page.getByRole('button', { name: 'Экспортировать видео со звуком', exact: true }).click()
     await expect(page.getByRole('button', { name: 'Скачать видео MKV', exact: true })).toBeVisible({ timeout: 60_000 })
     return download('Скачать видео MKV')
   }
@@ -122,12 +123,23 @@ try {
     assert((await exportFrame(boundary)).equals(postTrimFrame), label)
     const expectedFrames = Buffer.concat([decodeFrames(await exportFrame(boundary - 1)), decodeFrames(postTrimFrame)])
     const video = await exportVideo(boundary - 1)
-    const codec = execFileSync('ffprobe', [
-      '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=codec_name',
-      '-of', 'default=noprint_wrappers=1:nokey=1', 'pipe:0',
-    ], { input: video, encoding: 'utf8', timeout: 30_000 }).trim()
-    assert.equal(codec, 'ffv1')
+    const { streams } = JSON.parse(execFileSync('ffprobe', [
+      '-v', 'error', '-show_entries', 'stream=codec_type,codec_name,channels,sample_rate',
+      '-of', 'json', 'pipe:0',
+    ], { input: video, encoding: 'utf8', timeout: 30_000 }))
+    assert.equal(streams.find(stream => stream.codec_type === 'video')?.codec_name, 'ffv1')
+    const audioStream = streams.find(stream => stream.codec_type === 'audio')
+    assert.equal(audioStream?.sample_rate, '48000')
+    assert.equal(audioStream?.channels, 2)
     assert(decodeFrames(video).equals(expectedFrames), `${label}: decoded video frames differ from PNGs`)
+    const audio = execFileSync('ffmpeg', [
+      '-v', 'error', '-i', 'pipe:0', '-map', '0:a:0', '-f', 'f32le', 'pipe:1',
+    ], { input: video, timeout: 30_000 })
+    const samplesPerFrame = frameTicks * 48000 / 254016000000
+    const frameAudioBytes = samplesPerFrame * 2 * Float32Array.BYTES_PER_ELEMENT
+    assert.equal(audio.length, 2 * frameAudioBytes)
+    assert(audio.subarray(0, frameAudioBytes).some(byte => byte !== 0), `${label}: missing Bars and Tone audio`)
+    assert(audio.subarray(frameAudioBytes).every(byte => byte === 0), `${label}: sound continued beyond trim`)
     const unsupported = JSON.parse(changed)
     const sequence = unsupported.project.items['27'].kind.Sequence
     for (const track of sequence.video_tracks) {
@@ -142,7 +154,7 @@ try {
     })
     assert.equal(refused.status(), 400)
     assert.match((await refused.json()).error, /time remapping supports only constant 100%/)
-    console.log('PASS', label, 'trim, undo redo download reopen, PNG and FFV1 export')
+    console.log('PASS', label, 'trim, undo redo download reopen, PNG and FFV1 with sample-aligned audio')
   }
 } finally {
   await browser.close()

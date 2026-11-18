@@ -11906,6 +11906,10 @@ point by exactly one sequence frame at 24000/1001. The first frame
 stayed identical and the newly excluded frame changed. Undo and Redo
 restored the full project snapshots. After reopening the trimmed project,
 the decoded FFV1 frames on either side of the new edge matched the PNGs.
+The same export with sound has stereo audio at 48 kHz. Its two frames
+contain 4004 samples per channel. Bars and Tone is audible in the first
+2002 samples and the remaining 2002 are zero after the linked trim.
+Both video frames still match the PNG exports.
 
 Validation: `/tmp/kadr-source-edit-native-final.log` — 50 tests passed: two source-edit/oracle/exact-ID/allocator/import tests, all 47 existing project API regressions and authenticated MCP discovery/execution including actual Insert/Overwrite. Near-u64::MAX clip/source identities, imported track metadata and envelope extensions are covered separately. `/tmp/kadr-source-edit-ui-final.log` — 228 tests passed across typed APIs, controls, parent history/source-clock/selection/bindings and agent routing; `/tmp/kadr-source-edit-types-final.log` — zero errors/warnings; scoped API/control/agent lint and catalog check passed.
 
