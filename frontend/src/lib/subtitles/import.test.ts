@@ -136,6 +136,18 @@ Dialogue: 0:00:02.00,0:00:03.00,Default,First{\fs+2} second
     expect(report.simplifiedCueCount).toBe(1)
   })
 
+  it('resets ASS RGB and opacity independently to the active style', () => {
+    const [cue] = parseSubtitleDocument(String.raw`[V4+ Styles]
+Format: Name, PrimaryColour, OutlineColour, BackColour, Outline, Shadow
+Style: Default,&H00FFFFFF,&H00000000,&H80000000,2,1
+Style: Alternate,&H4000FF00,&H200000FF,&H60FF0000,2,1
+[Events]
+Format: Start, End, Style, Text
+Dialogue: 0:00:00.00,0:00:01.00,Default,{\rAlternate\alpha&H80&\c&H0000FF&\c\3a\4c&H00FFFF&\4a}Reset
+`)
+    expect(cue?.style).toMatchObject({color:'#00FF007F',strokeColor:'#FF0000DF',shadowColor:'#FFFF009F'})
+  })
+
   it('refuses malformed, inverted, excessive and empty cues before mutation', () => {
     for (const event of [
       'Dialogue: 0:00:02.00,0:00:01.00,text',

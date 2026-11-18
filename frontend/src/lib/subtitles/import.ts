@@ -103,8 +103,8 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
       const namedStyle = styles.get(styleName) ?? styles.get('Default')
       const eventMargins = assMargins(field => values[fields.indexOf(field)]?.trim())
       let styleMargins = namedStyle?.margins
-      let style = { ...namedStyle?.style }
-      let baseFontSize = namedStyle?.style.fontSizePx
+      let baseStyle = namedStyle?.style
+      let style = { ...baseStyle }
       let anchor = namedStyle?.anchor
       let hasInlineAlignment = false
       let cueWrapStyle = wrapStyle
@@ -129,8 +129,8 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
             else {
               const target = styles.get(reset[1]!.trim()) ?? namedStyle
               const alignment = style.align
-              style = { ...target?.style }
-              baseFontSize = target?.style.fontSizePx
+              baseStyle = target?.style
+              style = { ...baseStyle }
               rotationDegrees = target?.rotationDegrees
               scale = { ...target?.scale }
               styleMargins = target?.margins
@@ -142,7 +142,7 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
           const coordinates = assPosition(tag)
           const motion = assMovement(tag)
           const envelope = assFade(tag)
-          const alpha = /^(alpha|[134]a)&H([\da-f]{1,2})&?$/i.exec(tag)
+          const alpha = /^(alpha|[134]a)(?:&H([\da-f]{1,2})&?)?$/i.exec(tag)
           const rotation = /^frz?([+-]?(?:\d+(?:\.\d*)?|\.\d+))$/i.exec(tag)
           const scaling = /^fsc([xy])(\d+(?:\.\d+)?|\.\d+)$/i.exec(tag)
           const alignment = /^(an|a)(\d+)$/i.exec(tag)
@@ -156,7 +156,7 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
               : Number(rawSize ?? 0)
             if (hasText || !Number.isFinite(size) || size > 512) simplified = true
             else if (size > 0) style.fontSizePx = size
-            else if (baseFontSize !== undefined) style.fontSizePx = baseFontSize
+            else if (baseStyle?.fontSizePx !== undefined) style.fontSizePx = baseStyle.fontSizePx
             else delete style.fontSizePx
           }
           else if (alignment) {
@@ -174,7 +174,7 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
           else if (envelope) fade ??= envelope
           else if (alpha) {
             if (hasText) simplified = true
-            else applyAssAlpha(style, alpha[1]!.toLowerCase(), alpha[2]!)
+            else applyAssAlpha(style, baseStyle, alpha[1]!.toLowerCase(), alpha[2])
           } else if (rotation) {
             const angle = assRotation(rotation[1])
             if (hasText || angle === undefined) simplified = true
@@ -184,7 +184,7 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
             if (hasText || factor === undefined) simplified = true
             else if (scaling[1]?.toLowerCase() === 'x') scale.x = factor
             else scale.y = factor
-          } else if (!applyAssOverride(style, tag, hasText)) simplified = true
+          } else if (!applyAssOverride(style, baseStyle, tag, hasText)) simplified = true
         }
         return ''
       })
@@ -425,11 +425,16 @@ function assScale(value: string | undefined): number | undefined {
   return percent === undefined ? undefined : percent / 100
 }
 
-function applyAssAlpha(style: AssStyle, channel: string, transparency: string): void {
-  const opacity = assOpacity(transparency)
-  if (channel === 'alpha' || channel === '1a') style.color = (style.color ?? '#FFFFFFFF').slice(0, 7) + opacity
-  if (channel === 'alpha' || channel === '3a') style.strokeColor = (style.strokeColor ?? '#000000FF').slice(0, 7) + opacity
-  if (channel === 'alpha' || channel === '4a') style.shadowColor = (style.shadowColor ?? '#000000FF').slice(0, 7) + opacity
+const ASS_COLOR_CHANNELS = { '1': 'color', '3': 'strokeColor', '4': 'shadowColor' } as const
+const ASS_DEFAULT_COLORS = { color: '#FFFFFFFF', strokeColor: '#000000FF', shadowColor: '#00000000' }
+
+function applyAssAlpha(style: AssStyle, baseStyle: AssStyle | undefined, channel: string, transparency?: string): void {
+  for (const [number, field] of Object.entries(ASS_COLOR_CHANNELS)) {
+    if (channel !== 'alpha' && channel !== number + 'a') continue
+    const baseColor = baseStyle?.[field] ?? ASS_DEFAULT_COLORS[field]
+    const opacity = transparency === undefined ? baseColor.slice(7) : assOpacity(transparency)
+    style[field] = (style[field] ?? baseColor).slice(0, 7) + opacity
+  }
 }
 
 function assAlign(value: string | undefined) {
@@ -478,7 +483,7 @@ function assStyle(read: (field: string) => string | undefined): AssStyle {
   return style
 }
 
-function applyAssOverride(style: AssStyle, tag: string, hasText: boolean): boolean {
+function applyAssOverride(style: AssStyle, baseStyle: AssStyle | undefined, tag: string, hasText: boolean): boolean {
   const spacing = /^fsp([+-]?(?:\d+(?:\.\d*)?|\.\d+))$/i.exec(tag)
   if (spacing) {
     const tracking = assNumber(spacing[1], -512, 5120)
@@ -497,15 +502,15 @@ function applyAssOverride(style: AssStyle, tag: string, hasText: boolean): boole
     if (property !== 'bord') style.shadowColor ??= '#000000FF'
     return true
   }
-  const color = /^([134]?)c(&H[0-9a-f]{1,8}&?)$/i.exec(tag)
+  const color = /^([134]?)c(&H[0-9a-f]{1,8}&?)?$/i.exec(tag)
   const font = /^fn(.+)$/i.exec(tag)
   const face = /^([bi])(-?1|0)$/i.exec(tag)
   if (color) {
     if (hasText) return false
-    const rgb = assColor(color[2])?.slice(0, 7)
-    if (!rgb) return false
-    const channel = color[1] === '3' ? 'strokeColor' : color[1] === '4' ? 'shadowColor' : 'color'
-    style[channel] = rgb + (style[channel]?.slice(7) ?? 'FF')
+    const channel = ASS_COLOR_CHANNELS[(color[1] || '1') as keyof typeof ASS_COLOR_CHANNELS]
+    const baseColor = baseStyle?.[channel] ?? ASS_DEFAULT_COLORS[channel]
+    const rgb = (assColor(color[2]) ?? baseColor).slice(0, 7)
+    style[channel] = rgb + (style[channel]?.slice(7) ?? baseStyle?.[channel]?.slice(7) ?? (color[2] ? 'FF' : baseColor.slice(7)))
     return true
   }
   if (font) {
