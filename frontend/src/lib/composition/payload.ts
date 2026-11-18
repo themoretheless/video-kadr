@@ -292,6 +292,7 @@ export function textClipToWire(composition: Composition, clip: TextClip): WireTe
       ...(clip.style.bold ? { bold: true } : {}),
       ...(clip.style.italic ? { italic: true } : {}),
       fontSize: clip.style.fontSizePx,
+      ...(clip.style.assFontMetrics ? { assFontMetrics: true } : {}),
       ...(clip.style.tracking === undefined ? {} : { tracking: clip.style.tracking }),
       align: clip.style.align,
       color: colorToRgba(clip.style.color),

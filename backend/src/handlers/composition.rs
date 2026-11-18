@@ -1380,6 +1380,7 @@ source_timeline_offset_tick: None, source_head_timeline_tick: None, concat_retim
                 style: TextStyle {
                     font_weight: None,
                     concat_shadow: false,
+                    ass_font_metrics: false,
                     background_padding: None,
                     background_radius: None,
                     line_height: None,

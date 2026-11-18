@@ -15,7 +15,12 @@ pub fn render(clip:&TextClip,canvas:(u32,u32),time:u64,checkpoint:&mut dyn FnMut
         [sampled.r as f32/255.,sampled.g as f32/255.,sampled.b as f32/255.,sampled.a as f32/255.]
     }else{rgba(clip.style.color)};
     let font_style = clip.style.face_style();
-    let size = clip.style.font_size as f32;
+    let mut size = clip.style.font_size as f32;
+    if clip.style.ass_font_metrics {
+        use filmcraft_text::fonts::{face, resolve};
+        size = (size * face(resolve(&clip.style.font_family, &font_style).face).ass_em_scale())
+            .clamp(0.1, 1000.0);
+    }
     let (dx, dy, shadow_color, shadow_blur) = if clip.style.concat_shadow {
         // Match the source offset and opacity, using the native mask blur.
         let radius = (size * 0.04).round().max(1.);
@@ -34,7 +39,7 @@ pub fn render(clip:&TextClip,canvas:(u32,u32),time:u64,checkpoint:&mut dyn FnMut
         text:clip.text.clone(),font:clip.style.font_family.clone(),size,
         font_style: font_style.into_owned(),
         leading,
-        tracking: clip.style.tracking.unwrap_or_default() * 1000. / clip.style.font_size as f32,
+        tracking: clip.style.tracking.unwrap_or_default() * 1000. / size,
         box_width: clip.text_box_width.unwrap_or_default(),
         min_box_height: clip.text_box_height,
         block_padding: clip.style.background_padding.filter(|_| clip.style.background.alpha > 0.).map(|[x, y]| [
@@ -95,6 +100,26 @@ mod tests {
     fn clip()->TextClip {
         serde_json::from_value(serde_json::json!({"id":"text","timelineStartTick":1000000,"timelineEndTick":3000000,"text":"Text\nДва","style":{"fontFamily":"Noto Sans","fontSize":12,"color":{"red":1,"green":1,"blue":1,"alpha":1},"background":{"red":0,"green":0,"blue":0,"alpha":0},"stroke":{"red":1,"green":0,"blue":0,"alpha":0},"strokeWidth":0,"shadow":{"red":0,"green":0,"blue":1,"alpha":0},"shadowX":2,"shadowY":1},"transform":TransformSpec::default(),"opacity":{"mode":"constant","value":1}})).unwrap()
     }
+    #[test]
+    fn ass_font_metrics_use_adjusted_em_without_changing_authored_size() {
+        use filmcraft_text::fonts::{face, resolve};
+
+        let mut original = clip();
+        original.style.font_size = 24.;
+        original.style.ass_font_metrics = true;
+        let scale = face(resolve(&original.style.font_family, &original.style.face_style()).face)
+            .ass_em_scale();
+        let mut equivalent = original.clone();
+        equivalent.style.ass_font_metrics = false;
+        equivalent.style.font_size = f64::from(24.0_f32 * scale);
+        let frame = |clip: &TextClip| {
+            render(clip, (128, 96), 1_000_000, &mut || Ok(()))
+                .unwrap().unwrap().to_surface(&mut || Ok(())).unwrap()
+        };
+        assert_eq!(frame(&original), frame(&equivalent));
+        assert_eq!(original.style.font_size, 24.);
+    }
+
     #[test]
     fn karaoke_step_changes_only_at_the_syllable_start() {
         use super::super::composition::{SubtitleKaraokeMode, SubtitleKaraokeSpan};

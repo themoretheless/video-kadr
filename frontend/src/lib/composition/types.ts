@@ -390,6 +390,7 @@ export interface ImageClip {
 }
 
 export interface TextStyle {
+  readonly assFontMetrics?: boolean
   readonly tracking?: number
   readonly bold?: boolean
   readonly italic?: boolean
@@ -932,6 +933,7 @@ export interface WireImageClip {
 }
 
 export interface WireTextStyle {
+  readonly assFontMetrics?: boolean
   readonly fontWeight?: number
   readonly concatShadow?: boolean
   readonly backgroundPadding?: readonly [number, number]

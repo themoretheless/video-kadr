@@ -208,6 +208,18 @@ impl Face {
     pub fn units_per_em(&self) -> f32 {
         self.font().map(|f| f.metrics(Size::unscaled(), LocationRef::default()).units_per_em as f32).filter(|u| *u > 0.0).unwrap_or(1000.0)
     }
+    /// Convert ASS's ascender-to-descender size to the em size used in layout.
+    pub fn ass_em_scale(&self) -> f32 {
+        use skrifa::raw::TableProvider;
+        let Some(font) = self.font() else { return 1.0 };
+        let windows_height = font.os2().ok().map(|table| {
+            i32::from(table.us_win_ascent() as i16) + i32::from(table.us_win_descent() as i16)
+        }).filter(|height| *height > 0);
+        let height = windows_height.or_else(|| font.hhea().ok().map(|table| {
+            i32::from(table.ascender().to_i16()) - i32::from(table.descender().to_i16())
+        })).filter(|height| *height > 0);
+        height.map_or(1.0, |height| self.units_per_em() / height as f32)
+    }
     /// Glyph for a character (None when the face does not cover it).
     pub fn glyph(&self, c: char) -> Option<u32> {
         self.font()?.charmap().map(c).map(|g| g.to_u32()).filter(|g| *g != 0)

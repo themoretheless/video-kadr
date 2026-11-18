@@ -1520,6 +1520,8 @@ pub enum TextAlignment { Left, Center, Right }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TextStyle {
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub ass_font_metrics: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub font_weight: Option<f64>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -3860,6 +3862,7 @@ source_out_tick: 99_000,
                 style: TextStyle {
                     font_weight: None,
                     concat_shadow: false,
+                    ass_font_metrics: false,
                     background_padding: None,
                     background_radius: None,
                     line_height: None,

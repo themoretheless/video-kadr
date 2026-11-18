@@ -170,7 +170,7 @@ Dialogue: 0:00:00.00,0:00:01.00,{\pos(160,360)\bord8\xshad-4\yshad6}Position
 Dialogue: 0:00:01.00,0:00:02.00,{\move(160,360,480,180)}Movement
 `, allocator())
  const clips = result.document.compositions.root!.content.tracks[0]!.clips
- expect(clips[0]).toMatchObject({transform:{x:{value:-80},y:{value:0}},style:{fontSize:20,tracking:1,strokeWidth,shadowX,shadowY}})
+ expect(clips[0]).toMatchObject({transform:{x:{value:-80},y:{value:0}},style:{fontSize:20,assFontMetrics:true,tracking:1,strokeWidth,shadowX,shadowY}})
  expect(clips[1]).toMatchObject({transform:{
   x:{track:{keyframes:[{tick:0,value:-80},{tick:1000000,value:80}]}},
   y:{track:{keyframes:[{tick:0,value:0},{tick:1000000,value:-45}]}},

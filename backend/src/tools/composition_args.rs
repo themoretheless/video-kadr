@@ -5481,6 +5481,7 @@ timeline: None,
                     style: TextStyle {
                         font_weight: None,
                         concat_shadow: false,
+                        ass_font_metrics: false,
                         background_padding: None,
                         background_radius: None,
                         line_height: None,

@@ -258,6 +258,7 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
       if (style.fontSizePx !== undefined) {
         const scaledSize = style.fontSizePx * typographyScale
         style.fontSizePx = Math.min(512, Math.max(1, scaledSize))
+        style.assFontMetrics = true
         if (style.fontSizePx !== scaledSize) simplified = true
       }
       if (style.tracking !== undefined) style.tracking *= typographyScale
