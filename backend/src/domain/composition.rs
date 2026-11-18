@@ -1619,8 +1619,8 @@ pub enum SubtitleKaraokeMode {
 pub struct SubtitleKaraokeSpan {
     pub start: usize,
     pub end: usize,
-    pub start_ticks: u64,
-    pub end_ticks: u64,
+    pub start_ticks: i64,
+    pub end_ticks: i64,
     pub mode: SubtitleKaraokeMode,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub secondary_color: Option<Rgba>,
@@ -1672,6 +1672,7 @@ fn karaoke_ranges_valid(text: &str, spans: &[SubtitleKaraokeSpan]) -> bool {
             || !boundaries.get(span.start).copied().unwrap_or(false)
             || !boundaries.get(span.end).copied().unwrap_or(false)
             || span.start_ticks > span.end_ticks
+            || span.start_ticks < -9_007_199_254_740_991
             || span.end_ticks > 9_007_199_254_740_991
             || span.secondary_color.is_some_and(|color| color.validate().is_err())
         {

@@ -1,5 +1,6 @@
 import type { WireAnimatableValue, WireCompositionTrack } from './types'
 import { shiftAnimatableValue } from './keyframes'
+import { rebaseKaraokeTiming } from './karaokeTiming'
 type NativeClip = WireCompositionTrack['clips'][number]
 /** Rebase local presentation curves while retaining off-clip keys and authored source clocks. */
 export function rebaseNativeClipAnimation<T extends NativeClip>(clip: T, deltaUs: number): T {
@@ -13,6 +14,9 @@ export function rebaseNativeClipAnimation<T extends NativeClip>(clip: T, deltaUs
   }
   // Graphic layers sample their own retained clock; shifting their keys too would double the offset.
   const result = copy('graphic' in clip ? { ...clip, graphic: undefined } : clip) as T
+  if ('karaoke' in clip && clip.karaoke) {
+    Object.assign(result, { karaoke: rebaseKaraokeTiming(clip.karaoke, deltaUs) })
+  }
   if ('colorAnimation' in clip && clip.colorAnimation) {
     const keys = clip.colorAnimation.keys.map(key => {
       const time = key.t_us + deltaUs

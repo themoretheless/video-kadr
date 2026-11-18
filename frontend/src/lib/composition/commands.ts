@@ -6,6 +6,7 @@ import { rebaseDspEffects } from './dsp'
 import { AUDIO_TIME_GRID, canvasTimeGrid, shiftTimeGridMembers, shiftTimeGridSpan, snapTimeGridTicks } from './timeGrid'
 import { assertCompositionLocksPreserved } from './locks'
 import { rebaseColorAnimation } from './colorAnimation'
+import { rebaseKaraokeTiming } from './karaokeTiming'
 import { createCompositionLink, linkedClipIds, pruneCompositionLinks } from './links.js'
 import {
   COMPOSITION_SCHEMA_VERSION,
@@ -1316,6 +1317,7 @@ export function freezeSourceRange(
 function splitClipAutomation<T extends CompositionClip>(clip: T, cut: number, right: boolean): T {
   if (clip.kind === 'graphic') clip = { ...clip, animationOffsetUs: (clip.animationOffsetUs ?? 0) + (right ? cut : 0) }
   if ((clip.kind === 'text' || clip.kind === 'color') && clip.colorAnimation) clip = { ...clip,colorAnimation: rebaseColorAnimation(clip.colorAnimation,right ? -cut : 0) }
+  if (clip.kind === 'text' && clip.karaoke) clip = { ...clip, karaoke: rebaseKaraokeTiming(clip.karaoke, right ? -cut : 0) }
   const duration = clipDurationTicks(clip)
   if (clip.kind === 'audio') return { ...clip, dspEffects: rebaseDspEffects(clip.dspEffects, right ? -cut : 0), audioAnimation: splitAudioAnimation(clip.audioAnimation, cut, right), fadeInTicks: right ? 0 : clip.fadeInTicks ?? 0, fadeOutTicks: right ? clip.fadeOutTicks ?? 0 : 0 } as T
   return { ...clip, ...((clip.kind === 'image' || clip.kind === 'video') && clip.effects ? {effects:rebaseNativeEffects(clip.effects,right ? -cut : 0)} : {}), ...(clip.position ? { position: rebasePosition(clip.position,right ? -cut : 0) } : {}), ...(clip.animation ? { animation: splitVisualAnimation(clip.animation, cut, right) } : {}), ...(clip.kind === 'video' ? { ...(clip.dspEffects?{dspEffects:rebaseDspEffects(clip.dspEffects,right ? -cut : 0)}:{}),audioFadeInTicks:right?0:clip.audioFadeInTicks??0,audioFadeOutTicks:right?clip.audioFadeOutTicks??0:0, ...(clip.audioAnimation ? { audioAnimation: splitAudioAnimation(clip.audioAnimation, cut, right) } : {}), ...(clip.masks ? { masks: splitVideoMasks(clip.masks, cut, right) } : {}) } : {}) } as T
@@ -1324,6 +1326,7 @@ function splitClipAutomation<T extends CompositionClip>(clip: T, cut: number, ri
 export function shiftClipAutomation<T extends CompositionClip>(clip: T, delta: number): T {
   if (clip.kind === 'graphic') clip = { ...clip, animationOffsetUs: (clip.animationOffsetUs ?? 0) - delta }
   if ((clip.kind === 'text' || clip.kind === 'color') && clip.colorAnimation) clip = { ...clip,colorAnimation: rebaseColorAnimation(clip.colorAnimation,delta) }
+  if (clip.kind === 'text' && clip.karaoke) clip = { ...clip, karaoke: rebaseKaraokeTiming(clip.karaoke, delta) }
   const duration = clipDurationTicks(clip)
   if (clip.kind === 'audio') return { ...clip, dspEffects: rebaseDspEffects(clip.dspEffects, delta), audioAnimation: shiftAudioAnimation(clip.audioAnimation, delta) } as T
   return { ...clip, ...((clip.kind === 'image' || clip.kind === 'video') && clip.effects ? {effects:rebaseNativeEffects(clip.effects,delta)} : {}), ...(clip.position ? { position: rebasePosition(clip.position,delta) } : {}), ...(clip.animation ? { animation: shiftVisualAnimation(clip.animation, delta) } : {}), ...(clip.kind === 'video' ? { ...(clip.dspEffects?{dspEffects:rebaseDspEffects(clip.dspEffects,delta)}:{}), ...(clip.audioAnimation ? { audioAnimation: shiftAudioAnimation(clip.audioAnimation, delta) } : {}), ...(clip.masks ? { masks: shiftVideoMasks(clip.masks, delta) } : {}) } : {}) } as T

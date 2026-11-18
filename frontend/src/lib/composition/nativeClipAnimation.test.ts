@@ -1,8 +1,23 @@
 import { expect, it } from 'vitest'
 import fixture from '../../../../backend/tests/fixtures/concat-merge-preview.json'
-import type { WireVideoClip } from './types'
+import type { WireTextClip, WireVideoClip } from './types'
 import { rebaseNativeClipAnimation } from './nativeClipAnimation'
 import { sampleAnimatableValue } from './keyframes'
+
+it('retains completed and partially elapsed karaoke timing across a head cut', () => {
+  const input = {
+    karaoke: [
+      { start: 0, end: 1, startTicks: 0, endTicks: 200000, mode: 'step' },
+      { start: 1, end: 2, startTicks: 200000, endTicks: 600000, mode: 'sweep' },
+    ],
+  } as WireTextClip
+  expect(rebaseNativeClipAnimation(input, -300000).karaoke).toEqual([
+    { start: 0, end: 1, startTicks: -300000, endTicks: -100000, mode: 'step' },
+    { start: 1, end: 2, startTicks: -100000, endTicks: 300000, mode: 'sweep' },
+  ])
+  expect(input.karaoke?.[1]?.startTicks).toBe(200000)
+  expect(() => rebaseNativeClipAnimation(input, Number.MAX_SAFE_INTEGER)).toThrow('караоке')
+})
 it('preserves the sampled phase of native opacity, motion and effect curves across a cut', () => {
   const curve = { mode: 'keyframes' as const, track: { timeBase: 1000000, interpolation: 'ease_in_out' as const, keyframes: [{ tick: 0, value: 0.2 }, { tick: 3000000, value: 0.9 }] } }
   const video = structuredClone(fixture.nativeFirstFree[0]!.after.compositions['new-timeline'].content.tracks[1]!.clips[0]) as unknown as WireVideoClip

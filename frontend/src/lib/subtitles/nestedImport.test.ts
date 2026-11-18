@@ -1,7 +1,9 @@
 import {expect,it} from 'vitest'
-import {createComposition} from '../composition/commands'
+import {addTrack, createComposition, splitClip, trimClip} from '../composition/commands'
 import {buildCompositionWireDocument,textClipToWire} from '../composition/payload'
 import {MAX_COMPOSITION_TRACKS} from '../composition/types'
+import {splitNativeClips} from '../composition/nativeClipSplit'
+import {trimNativeClipStarts} from '../composition/nativeClipTrim'
 import {importNestedSubtitles} from './nestedImport'
 import {cuesToTextClips} from './srt'
 import {parseSubtitleDocument} from './import'
@@ -245,7 +247,7 @@ Dialogue: 0:00:02.00,0:00:03.00,{\fs3000\bord500}Limited
  expect(result.simplifiedCueCount).toBe(1)
 })
 
-it('carries imported karaoke spans into the saved nested document', () => {
+it('carries imported karaoke spans into the saved nested document and through timeline edits', () => {
  const result = importNestedSubtitles(project(), 'root', String.raw`[Events]
 Format: Start, End, Text
 Dialogue: 0:00:00.00,0:00:01.00,{\k20}😀{\kf30}time
@@ -258,6 +260,26 @@ Dialogue: 0:00:00.00,0:00:01.00,{\k20}😀{\kf30}time
    {start:2,end:6,startTicks:200000,endTicks:500000,mode:'sweep'},
   ],
  })
+ const cut = splitNativeClips(result.document, 'root', [result.firstClipId], 300000, () => 'karaoke-tail')
+ const trimmed = trimNativeClipStarts(result.document, 'root', [result.firstClipId], 300000)
+ const expected = {
+  timelineStartTick: 300000,
+  karaoke: [
+   {startTicks:-300000, endTicks:-100000},
+   {startTicks:-100000, endTicks:200000},
+  ],
+ }
+ expect(cut.compositions.root!.content.tracks[0]!.clips[1]).toMatchObject(expected)
+ expect(trimmed.compositions.root!.content.tracks[0]!.clips[0]).toMatchObject(expected)
+ const source = cuesToTextClips(parseSubtitleDocument(String.raw`[Events]
+Format: Start, End, Text
+Dialogue: 0:00:00.00,0:00:01.00,{\k20}😀{\kf30}time
+`), () => 'ordinary-karaoke', base.canvas)[0]!
+ const ordinary = addTrack(base, {id:'ordinary-captions',kind:'text',name:'Captions',hidden:false,locked:false,clips:[source]})
+ const ordinaryCut = splitClip(ordinary, source.id, 300000, 'ordinary-tail')
+ const ordinaryTrim = trimClip(ordinary, source.id, 300000, 1000000)
+ expect(ordinaryCut.tracks[0]?.clips[1]).toMatchObject({timelineStartTicks:300000,karaoke:expected.karaoke})
+ expect(ordinaryTrim.tracks[0]?.clips[0]).toMatchObject({timelineStartTicks:300000,karaoke:expected.karaoke})
 })
 
 it('maps ASS absolute positions to editable canvas offsets', () => {

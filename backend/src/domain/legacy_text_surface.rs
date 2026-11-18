@@ -49,6 +49,7 @@ pub fn render(clip:&TextClip,canvas:(u32,u32),time:u64,checkpoint:&mut dyn FnMut
     };
     use super::{composition::SubtitleKaraokeMode, graphic_text_layout::GraphicCharStyle, graphic_text_runs::CharacterStyleRun};
     if !clip.karaoke.is_empty() {
+        let local = local as i64;
         let mut offset = 0;
         let mut boundaries = vec![0];
         for character in clip.text.chars() {
@@ -167,6 +168,16 @@ mod tests {
         assert!(before[0] > 0 && before[1] == 0);
         assert!(middle[0] > 0 && middle[1] > 0);
         assert!(after[0] == 0 && after[1] > 0);
+
+        let mut trimmed = caption.clone();
+        trimmed.timeline_start_tick += 300_000;
+        trimmed.karaoke[0].start_ticks -= 300_000;
+        trimmed.karaoke[0].end_ticks -= 300_000;
+        let pixels = |clip: &TextClip, time| render(clip, (64, 48), time, &mut || Ok(()))
+            .unwrap().unwrap().to_surface(&mut || Ok(())).unwrap();
+        for time in [1_300_000, 1_400_000, 1_599_999, 1_600_000] {
+            assert_eq!(pixels(&trimmed, time), pixels(&caption, time), "frame at {time}");
+        }
     }
 
     #[test]
