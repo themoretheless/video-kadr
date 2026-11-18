@@ -41,7 +41,7 @@ function plainVttText(text: string): string {
 
 function parseAss(body: string, canvas: {width: number; height: number} | undefined) {
   const lines = body.split('\n')
-  const { resolution, scaleBorderAndShadow } = assScriptInfo(lines)
+  const { resolution, scaleBorderAndShadow, wrapStyle } = assScriptInfo(lines)
   const typographyScale = canvas && resolution ? canvas.height / resolution.height : 1
   const defaultFontSize = defaultSubtitleFontSize(canvas?.height)
   const positionFits = ({x, y}: {x: number; y: number}) => !canvas || (
@@ -106,6 +106,7 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
       let style = { ...namedStyle?.style }
       let anchor = namedStyle?.anchor
       let hasInlineAlignment = false
+      let cueWrapStyle = wrapStyle
       let rotationDegrees = namedStyle?.rotationDegrees
       let scale = { ...namedStyle?.scale }
       let position: SubtitleCue['position']
@@ -115,7 +116,7 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
       let previousBlockEnd = 0
       let hasText = false
       const dialogue = values.slice(fields.length - 1).join(',')
-      const text = dialogue.replace(/\{([^}]*)\}/g, (whole, block: string, offset: number) => {
+      const unstyled = dialogue.replace(/\{([^}]*)\}/g, (whole, block: string, offset: number) => {
         hasText ||= dialogue.slice(previousBlockEnd, offset).trim().length > 0
         previousBlockEnd = offset + whole.length
         for (const rawTag of assTags(block)) {
@@ -143,7 +144,9 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
           const rotation = /^frz?([+-]?(?:\d+(?:\.\d*)?|\.\d+))$/i.exec(tag)
           const scaling = /^fsc([xy])(\d+(?:\.\d+)?|\.\d+)$/i.exec(tag)
           const alignment = /^(an|a)(\d+)$/i.exec(tag)
-          if (alignment) {
+          const wrap = /^q([0-3])$/i.exec(tag)
+          if (wrap) cueWrapStyle = Number(wrap[1])
+          else if (alignment) {
             if (!hasInlineAlignment) {
               const code = alignment[1]?.toLowerCase() === 'an' ? alignment[2] : legacyAssAlignment(alignment[2], true)
               anchor = assAnchor(code) ?? anchor
@@ -171,7 +174,9 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
           } else if (!applyAssOverride(style, tag, hasText)) simplified = true
         }
         return ''
-      }).replace(/\\[Nn]/g, '\n').replace(/\\h/g, '\u00a0').trim()
+      })
+      const text = unstyled.replace(/\\N/g, '\n').replace(/\\n/g, cueWrapStyle === 2 ? '\n' : ' ')
+        .replace(/\\h/g, '\u00a0').trim()
       if (style.fontSizePx !== undefined) {
         const scaledSize = style.fontSizePx * typographyScale
         style.fontSizePx = Math.min(512, Math.max(1, scaledSize))
@@ -229,6 +234,7 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
         startTicks: assTimestamp(values[fields.indexOf('start')]!.trim()),
         endTicks: assTimestamp(values[fields.indexOf('end')]!.trim()),
         text,
+        ...(cueWrapStyle === 2 ? { noAutoWrap: true } : {}),
         ...(Object.keys(style).length ? { style } : {}),
         ...(position ? { position } : {}),
         ...(textWidth !== undefined ? { textWidth } : {}),
@@ -261,11 +267,14 @@ function assScriptInfo(lines: readonly string[]) {
   let width: number | undefined
   let height: number | undefined
   let scaleBorderAndShadow = false
+  let wrapStyle = 0
   for (const line of lines) {
     const trimmed = line.trim()
     if (/^\[.*\]$/.test(trimmed)) scriptInfo = /^\[script info\]$/i.test(trimmed)
     if (!scriptInfo) continue
     const scaling = /^ScaledBorderAndShadow:\s*(yes|no)$/i.exec(trimmed)
+    const wrap = /^WrapStyle:\s*([0-3])$/i.exec(trimmed)
+    if (wrap) wrapStyle = Number(wrap[1])
     if (scaling) scaleBorderAndShadow = scaling[1]?.toLowerCase() === 'yes'
     const field = /^PlayRes([XY]):\s*(\d+)$/i.exec(trimmed)
     if (field?.[1]?.toLowerCase() === 'x') width = assNumber(field[2], 1, 2_147_483_647)
@@ -277,7 +286,7 @@ function assScriptInfo(lines: readonly string[]) {
     width = height === 1024 ? 1280 : Math.min(2_147_483_647, Math.floor(height * 4 / 3))
   }
   const resolution = width !== undefined && height !== undefined ? { width, height } : undefined
-  return { resolution, scaleBorderAndShadow }
+  return { resolution, scaleBorderAndShadow, wrapStyle }
 }
 
 function assFade(tag: string): SubtitleCue['fade'] {

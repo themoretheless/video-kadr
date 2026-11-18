@@ -212,6 +212,20 @@ Dialogue: 0:00:02.00,0:00:03.00,Default,120,0,40,{\move(200,100,400,200)}Moving
  }})
 })
 
+it('respects ASS soft breaks and the no-wrap override on the authored text block', () => {
+ const result = importNestedSubtitles(project(), 'root', String.raw`[Script Info]
+WrapStyle: 2
+[Events]
+Format: Start, End, Text
+Dialogue: 0:00:00.00,0:00:01.00,First\nSecond\NThird
+Dialogue: 0:00:01.00,0:00:02.00,{\q0}First\nSecond\NThird
+`, allocator())
+ const clips = result.document.compositions.root!.content.tracks[0]!.clips
+ expect(clips[0]).toMatchObject({text: 'First\nSecond\nThird'})
+ expect(clips[0]).not.toHaveProperty('textBoxWidth')
+ expect(clips[1]).toMatchObject({text: 'First Second\nThird', textBoxWidth:269})
+})
+
 it('maps ASS absolute positions to editable canvas offsets', () => {
  const result = importNestedSubtitles(project(), 'root', String.raw`[Events]
 Format: Start, End, Text

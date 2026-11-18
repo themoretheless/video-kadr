@@ -17,6 +17,7 @@ export interface SubtitleCue {
   readonly position?: { x: number; y: number }
   readonly coordinateResolution?: { width: number; height: number }
   readonly textWidth?: number
+  readonly noAutoWrap?: boolean
   readonly movement?: {
     from: { x: number; y: number }
     to: { x: number; y: number }
@@ -132,7 +133,7 @@ export function cuesToTextClips(
       y: position && canvas ? position.y - canvas.height / 2 : 0,
       ...(cue.rotationDegrees !== undefined ? { rotationDegrees: cue.rotationDegrees } : {}),
       ...(anchor ? { textAnchor: anchor } : {}),
-      ...(canvas ? { textBoxWidth: Math.max(1, Math.round(resolution && cue.textWidth !== undefined
+      ...(canvas && !cue.noAutoWrap ? { textBoxWidth: Math.max(1, Math.round(resolution && cue.textWidth !== undefined
         ? cue.textWidth * canvas.width / resolution.width : canvas.width * (1 - 2 * CAPTION_SAFE_MARGIN))) } : {}),
       ...(animation ? { animation } : {}),
       opacity: 1,
