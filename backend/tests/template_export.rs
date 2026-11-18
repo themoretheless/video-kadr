@@ -900,3 +900,65 @@ async fn concat_template_exports_image_cutout_without_shipping_old_mask_assets()
     assert_eq!(state.db.get_composition_project_for(&saved.id, &owner.user.username)
         .await.unwrap().unwrap().document, original);
 }
+
+#[tokio::test]
+async fn concat_template_preserves_exact_still_split_boundaries() {
+    use video_kadr_backend::domain::{
+        concat_project_import::{import, ImportRequest},
+        concat_retime_edit::Clock,
+    };
+
+    let (state, _dir) = support::make_state(false, false).await;
+    let owner = state.db.register_auth_user("concat-still-clock", "concat still clock password")
+        .await.unwrap().unwrap();
+    let clock = Clock {
+        start: 0.1250004,
+        duration: 0.5000004,
+        source_start: 0.25,
+        speed: 1.5,
+        speed_curve: None,
+    };
+    let (left, right) = clock.split(0.375).unwrap().unwrap();
+    let clips = [("left", &left), ("right", &right)].map(|(id, part)| json!({
+        "id": id, "kind": "image", "trackId": "video", "mediaId": "slot",
+        "start": part.start, "duration": part.duration, "sourceStart": part.source_start,
+        "speed": part.speed
+    }));
+    let media = json!({"id":"still","kind":"image","width":16,"height":8,"durationTicks":0,"hasAudio":false});
+    let bindings = json!({"slot":media});
+    let import_document = |document| -> ImportRequest {
+        serde_json::from_value(json!({
+            "schemaVersion":1, "preserveMediaIds":true, "document":document, "mediaBindings":bindings,
+        })).unwrap()
+    };
+    let report = import(import_document(json!({
+        "version":1, "media":[{"id":"slot","name":"Replacement","kind":"image","placeholder":true}],
+        "timelines":[{"id":"main","video":{"width":16,"height":8,"rateNum":24,"rateDen":1},
+            "tracks":[{"id":"video"}],"clips":clips}],
+    }))).unwrap();
+    assert_eq!(report.status, "converted", "{:?}", report.diagnostics);
+    let document = serde_json::to_value(report.project.unwrap()).unwrap();
+    let saved = state.db.create_owned_composition_project(
+        "Split still slots", &document, &["still".into()], &owner.user.username,
+    ).await.unwrap();
+    let response = support::router(state).oneshot(Request::get(format!(
+        "/api/composition-projects/{}/concat-template", saved.id,
+    )).header(header::AUTHORIZATION, format!("Bearer {}", owner.token))
+        .body(Body::empty()).unwrap()).await.unwrap();
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), 1 << 20).await.unwrap();
+    assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&bytes));
+    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+    assert_eq!(zip.len(), 1);
+    let template: serde_json::Value = serde_json::from_reader(zip.by_name("template.json").unwrap()).unwrap();
+    let exported = template["timelines"][0]["clips"].as_array().unwrap();
+    assert_eq!(exported.len(), 2);
+    for (clip, part) in exported.iter().zip([&left, &right]) {
+        assert_eq!(clip["start"], json!(part.start));
+        assert_eq!(clip["duration"], json!(part.duration));
+        assert_eq!(clip["sourceStart"], json!(part.source_start));
+    }
+    let reopened = import(import_document(template)).unwrap();
+    assert_eq!(reopened.status, "converted", "{:?}", reopened.diagnostics);
+    assert_eq!(serde_json::to_value(reopened.project.unwrap()).unwrap(), document);
+}

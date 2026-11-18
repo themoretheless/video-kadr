@@ -14345,6 +14345,10 @@ The still split and trim controls now send that retained timing to the
 native planner and store the exact fragment boundaries it returns. If a
 visual edit has already moved a boundary to another tick, the planner
 uses the current tick for that boundary.
+The authenticated ZIP download test splits a fractional still with the
+native Concat clock, opens the actual `template.json` from the response,
+and verifies the exact start, duration, and source in-point of both
+fragments. Reimporting the manifest restores the complete native project.
 
 The current worktree was rechecked across Concat import/export, native
 template packaging, import, library and poster suites. Server tests
