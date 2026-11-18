@@ -175,6 +175,34 @@ Dialogue: 0:00:00.00,0:00:01.00,Default,{\bord8\shad5\xshad-2\3c&H0000FF&\bord\x
     expect(cue?.style).toMatchObject({strokeWidthPx:2, shadowX:3, shadowY:5, strokeColor:'#FF0000FF'})
   })
 
+  it('restores ASS tracking from the active style on a bare spacing tag', () => {
+    const report = parseSubtitleDocumentWithReport(String.raw`[V4+ Styles]
+Format: Name, Fontsize, Spacing
+Style: Default,40,2
+Style: Alternate,40,5
+[Events]
+Format: Start, End, Style, Text
+Dialogue: 0:00:00.00,0:00:01.00,Default,{\rAlternate\fsp-2\fsp}Restored
+Dialogue: 0:00:01.00,0:00:02.00,Default,{\fsp0}Zero
+`)
+    expect(report.cues.map(cue => cue.style?.tracking)).toEqual([5, 0])
+    expect(report.simplifiedCueCount).toBe(0)
+  })
+
+  it('restores one or both ASS scale axes from the active style', () => {
+    const report = parseSubtitleDocumentWithReport(String.raw`[V4+ Styles]
+Format: Name, ScaleX, ScaleY
+Style: Default,100,100
+Style: Alternate,120,80
+[Events]
+Format: Start, End, Style, Text
+Dialogue: 0:00:00.00,0:00:01.00,Default,{\rAlternate\fscx200\fscy150\fscx}One axis
+Dialogue: 0:00:01.00,0:00:02.00,Alternate,{\fscx200\fscy150\fsc}Both axes
+`)
+    expect(report.cues.map(cue => cue.scale)).toEqual([{x:1.2, y:1.5}, {x:1.2, y:0.8}])
+    expect(report.simplifiedCueCount).toBe(0)
+  })
+
   it('refuses malformed, inverted, excessive and empty cues before mutation', () => {
     for (const event of [
       'Dialogue: 0:00:02.00,0:00:01.00,text',

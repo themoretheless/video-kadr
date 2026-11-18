@@ -109,7 +109,8 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
       let hasInlineAlignment = false
       let cueWrapStyle = wrapStyle
       let rotationDegrees = namedStyle?.rotationDegrees
-      let scale = { ...namedStyle?.scale }
+      let baseScale = namedStyle?.scale
+      let scale = { ...baseScale }
       let position: SubtitleCue['position']
       let movement: SubtitleCue['movement']
       let fade: SubtitleCue['fade']
@@ -132,7 +133,8 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
               baseStyle = target?.style
               style = { ...baseStyle }
               rotationDegrees = target?.rotationDegrees
-              scale = { ...target?.scale }
+              baseScale = target?.scale
+              scale = { ...baseScale }
               styleMargins = target?.margins
               delete style.align
               if (alignment !== undefined) style.align = alignment
@@ -144,7 +146,7 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
           const envelope = assFade(tag)
           const alpha = /^(alpha|[134]a)(?:&H([\da-f]{1,2})&?)?$/i.exec(tag)
           const rotation = /^frz?([+-]?(?:\d+(?:\.\d*)?|\.\d+))$/i.exec(tag)
-          const scaling = /^fsc([xy])(\d+(?:\.\d+)?|\.\d+)$/i.exec(tag)
+          const scaling = /^fsc(?:([xy])(\d+(?:\.\d+)?|\.\d+)?)?$/i.exec(tag)
           const alignment = /^(an|a)(\d+)$/i.exec(tag)
           const wrap = /^q([0-3])$/i.exec(tag)
           const fontSize = /^fs([+-]?(?:\d+(?:\.\d*)?|\.\d+))?$/i.exec(tag)
@@ -180,10 +182,12 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
             if (hasText || angle === undefined) simplified = true
             else rotationDegrees = angle
           } else if (scaling) {
+            const axis = scaling[1]?.toLowerCase()
             const factor = assScale(scaling[2])
-            if (hasText || factor === undefined) simplified = true
-            else if (scaling[1]?.toLowerCase() === 'x') scale.x = factor
-            else scale.y = factor
+            if (hasText || (scaling[2] !== undefined && factor === undefined)) simplified = true
+            else if (axis === 'x') scale.x = factor ?? baseScale?.x
+            else if (axis === 'y') scale.y = factor ?? baseScale?.y
+            else scale = { ...baseScale }
           } else if (!applyAssOverride(style, baseStyle, tag, hasText)) simplified = true
         }
         return ''
@@ -461,7 +465,7 @@ function assStyle(read: (field: string) => string | undefined): AssStyle {
   const align = assAlign(read('alignment'))
   const outline = assNumber(read('outline'), 0, Number.MAX_VALUE)
   const shadow = assNumber(read('shadow'), 0, 100)
-  const spacing = assNumber(read('spacing'), 0, 5120)
+  const spacing = assNumber(read('spacing'), 0, Number.MAX_VALUE)
   if (size !== undefined) style.fontSizePx = size
   if (color) style.color = color
   if (family) style.fontFamily = family
@@ -484,11 +488,12 @@ function assStyle(read: (field: string) => string | undefined): AssStyle {
 }
 
 function applyAssOverride(style: AssStyle, baseStyle: AssStyle | undefined, tag: string, hasText: boolean): boolean {
-  const spacing = /^fsp([+-]?(?:\d+(?:\.\d*)?|\.\d+))$/i.exec(tag)
+  const spacing = /^fsp([+-]?(?:\d+(?:\.\d*)?|\.\d+))?$/i.exec(tag)
   if (spacing) {
-    const tracking = assNumber(spacing[1], -512, 5120)
-    if (hasText || tracking === undefined) return false
-    style.tracking = tracking
+    const tracking = spacing[1] === undefined ? baseStyle?.tracking : assNumber(spacing[1], -Number.MAX_VALUE, Number.MAX_VALUE)
+    if (hasText || (spacing[1] !== undefined && tracking === undefined)) return false
+    if (tracking === undefined) delete style.tracking
+    else style.tracking = tracking
     return true
   }
   const geometry = /^(bord|shad|[xy]shad)([+-]?(?:\d+(?:\.\d*)?|\.\d+))?$/i.exec(tag)
