@@ -52,7 +52,7 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
   let fields: string[] = []
   let styleFields: string[] = []
   let legacySsa = false
-  const styles = new Map<string, { style: AssStyle; anchor?: SubtitleCue['anchor']; rotationDegrees?: number; scale?: SubtitleCue['scale'] }>()
+  const styles = new Map<string, { style: AssStyle; anchor?: SubtitleCue['anchor']; rotationDegrees?: number; scale?: SubtitleCue['scale']; margins: AssMargins }>()
   const cues: SubtitleCue[] = []
   let simplifiedCueCount = 0
   for (const line of lines) {
@@ -81,6 +81,7 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
         if (name) styles.set(name, {
           style: assStyle(read), anchor: assAnchor(read('alignment')), rotationDegrees: assRotation(read('angle')),
           scale: { x: assScale(read('scalex')), y: assScale(read('scaley')) },
+          margins: assMargins(read),
         })
       }
       continue
@@ -100,6 +101,8 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
       if (values.length < fields.length) throw new SubtitleFormatError('Incomplete ASS dialogue')
       const styleName = values[fields.indexOf('style')]?.trim() ?? ''
       const namedStyle = styles.get(styleName) ?? styles.get('Default')
+      const eventMargins = assMargins(field => values[fields.indexOf(field)]?.trim())
+      let styleMargins = namedStyle?.margins
       let style = { ...namedStyle?.style }
       let anchor = namedStyle?.anchor
       let hasInlineAlignment = false
@@ -127,6 +130,7 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
               style = { ...target?.style }
               rotationDegrees = target?.rotationDegrees
               scale = { ...target?.scale }
+              styleMargins = target?.margins
               delete style.align
               if (alignment !== undefined) style.align = alignment
             }
@@ -196,6 +200,30 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
         movement = undefined
         simplified = true
       }
+      const margins = {
+        left: eventMargins.left || styleMargins?.left,
+        right: eventMargins.right || styleMargins?.right,
+        vertical: eventMargins.vertical || styleMargins?.vertical,
+      }
+      const hasMargins = margins.left !== undefined || margins.right !== undefined || margins.vertical !== undefined
+      let textWidth: number | undefined
+      if (hasMargins && resolution) {
+        const left = margins.left ?? 0
+        const right = margins.right ?? 0
+        const vertical = margins.vertical ?? 0
+        const availableWidth = resolution.width - left - right
+        if (availableWidth > 0) textWidth = availableWidth
+        else simplified = true
+        if (!position && !movement && textWidth !== undefined) {
+          const [x, y] = anchor ?? [0.5, 1]
+          const candidate = {
+            x: left + textWidth * x,
+            y: y === 0.5 ? resolution.height / 2 : y === 0 ? vertical : resolution.height - vertical,
+          }
+          if ((y === 0.5 || vertical < resolution.height) && positionFits(candidate)) position = candidate
+          else simplified = true
+        }
+      }
       cues.push({
         id: `subtitle-${cues.length + 1}`,
         startTicks: assTimestamp(values[fields.indexOf('start')]!.trim()),
@@ -203,8 +231,9 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
         text,
         ...(Object.keys(style).length ? { style } : {}),
         ...(position ? { position } : {}),
+        ...(textWidth !== undefined ? { textWidth } : {}),
         ...(movement ? { movement } : {}),
-        ...(resolution && (position || movement) ? { coordinateResolution: resolution } : {}),
+        ...(resolution && (position || movement || textWidth !== undefined) ? { coordinateResolution: resolution } : {}),
         ...(rotationDegrees !== undefined ? { rotationDegrees } : {}),
         ...(scale.x !== undefined || scale.y !== undefined ? { scale } : {}),
         ...(anchor ? { anchor } : {}),
@@ -215,6 +244,16 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
     }
   }
   return { cues, simplifiedCueCount }
+}
+
+type AssMargins = {left?: number; right?: number; vertical?: number}
+
+function assMargins(read: (field: string) => string | undefined): AssMargins {
+  return {
+    left: assNumber(read('marginl'), 0, 2_147_483_647),
+    right: assNumber(read('marginr'), 0, 2_147_483_647),
+    vertical: assNumber(read('marginv'), 0, 2_147_483_647),
+  }
 }
 
 function assScriptInfo(lines: readonly string[]) {

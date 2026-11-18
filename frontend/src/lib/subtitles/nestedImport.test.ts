@@ -191,6 +191,27 @@ Dialogue: 0:00:01.00,0:00:02.00,{\move(0,0,200,0)}Motion
  })))
 })
 
+it('uses ASS margins for the caption anchor and available text width', () => {
+ const result = importNestedSubtitles(project(), 'root', String.raw`[Script Info]
+PlayResX: 640
+PlayResY: 360
+[V4+ Styles]
+Format: Name, Alignment, MarginL, MarginR, MarginV
+Style: Default,2,40,80,20
+[Events]
+Format: Start, End, Style, MarginL, MarginR, MarginV, Text
+Dialogue: 0:00:00.00,0:00:01.00,Default,120,0,40,Centered
+Dialogue: 0:00:01.00,0:00:02.00,Default,120,0,40,{\pos(200,100)}Positioned
+Dialogue: 0:00:02.00,0:00:03.00,Default,120,0,40,{\move(200,100,400,200)}Moving
+`, allocator())
+ const clips = result.document.compositions.root!.content.tracks[0]!.clips
+ expect(clips[0]).toMatchObject({textBoxWidth:220, transform:{x:{value:10},y:{value:70}}})
+ expect(clips[1]).toMatchObject({textBoxWidth:220,transform:{x:{value:-60},y:{value:-40}}})
+ expect(clips[2]).toMatchObject({textBoxWidth:220,transform:{
+  x:{track:{keyframes:[{tick:0,value:-60},{tick:1000000,value:40}]}},
+ }})
+})
+
 it('maps ASS absolute positions to editable canvas offsets', () => {
  const result = importNestedSubtitles(project(), 'root', String.raw`[Events]
 Format: Start, End, Text
