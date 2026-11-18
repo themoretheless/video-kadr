@@ -219,6 +219,19 @@ Dialogue: 0:00:00.00,0:00:02.00, {\k20}One\h{\K30}два{\kt80\ko10}!
     expect(report.simplifiedCueCount).toBe(1)
   })
 
+  it('imports fractional and omitted ASS karaoke times on the millisecond grid', () => {
+    const report = parseSubtitleDocumentWithReport(String.raw`[Events]
+Format: Start, End, Text
+Dialogue: 0:00:00.00,0:00:03.00,{\kt12.59\k.99}A{\ko}B{\kf+20.5}C{\kt\K}D
+`)
+    expect(report.cues[0]?.karaoke).toMatchObject([
+      { startTicks: 125000, endTicks: 134000, mode: 'step' },
+      { startTicks: 134000, endTicks: 1134000, mode: 'outline' },
+      { startTicks: 1134000, endTicks: 1339000, mode: 'sweep' },
+      { startTicks: 0, endTicks: 1000000, mode: 'sweep' },
+    ])
+  })
+
   it('refuses malformed, inverted, excessive and empty cues before mutation', () => {
     for (const event of [
       'Dialogue: 0:00:02.00,0:00:01.00,text',
