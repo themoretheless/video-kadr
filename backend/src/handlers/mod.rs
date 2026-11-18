@@ -44,8 +44,9 @@ pub use library::{
 };
 pub use luts::{lut_get_handler, lut_list_handler, lut_upload_handler, MAX_LUT_BODY_BYTES};
 pub use project_archive::{
+    concat_mask_import_handler,
     native_template_poster_handler,native_template_list_handler,native_template_install_handler,native_template_download_handler,native_template_remove_handler,native_template_create_handler,
-    composition_project_archive_export_handler, composition_project_archive_import_handler, composition_project_concat_template_export_handler, composition_project_template_export_handler, composition_project_template_save_handler, composition_project_template_import_handler, composition_project_template_inspect_handler,
+    composition_project_archive_export_handler, composition_project_archive_import_handler, composition_project_concat_template_export_handler, composition_project_concat_template_cover_handler, normalize_concat_template_cover_handler, composition_project_template_export_handler, composition_project_template_save_handler, composition_project_template_cover_handler, composition_project_template_import_handler, composition_project_template_inspect_handler,
 };
 pub use proxy::{
     proxy_content_handler, proxy_create_handler, proxy_delete_handler, proxy_list_handler,
@@ -456,6 +457,7 @@ pub mod concat_video_binding;
 pub mod concat_video_bound;
 
 pub(crate) mod concat_video_run;
+pub(crate) mod concat_video_replace;
 pub mod concat_video_cancel;
 
 pub mod concat_video_region_cache;

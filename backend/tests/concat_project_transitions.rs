@@ -22,6 +22,89 @@ fn convert(
     assert_eq!(report.status, "converted", "{:?}", report.diagnostics);
     report.project.unwrap()
 }
+
+#[test]
+fn trimmed_clip_exports_on_a_lane_with_an_unrelated_transition() {
+    let (mut document, bindings) = input("concat.dissolve", 1.0);
+    document["timelines"][0]["clips"].as_array_mut().unwrap().push(json!({
+        "id":"later","trackId":"v","mediaId":"a","kind":"video",
+        "start":5.0,"duration":2.0,"sourceStart":0.4,
+        "keys":[{"property":"volume","at":0.0,"value":0.25},{"property":"volume","at":1.0,"value":1.0}]
+    }));
+    let project = convert(document, &bindings);
+    let mut wire = serde_json::to_value(&project).unwrap();
+    let track = &mut wire["compositions"][&project.root]["content"]["tracks"][0];
+    let clips = track["clips"].as_array_mut().unwrap();
+    let later = clips.iter_mut().find(|clip| clip["id"] == "later").unwrap();
+    later["placement"]["timelineStartTick"] = json!(5_200_000);
+    later["placement"]["timelineDurationTick"] = json!(1_800_000);
+    later["placement"]["sourceTimelineOffsetTick"] = json!(200_000);
+    let trimmed = serde_json::from_value(wire.clone()).unwrap();
+    let paths = BTreeMap::from([
+        ("a".into(), "/portable/a.mov".into()),
+        ("b".into(), "/portable/b.mov".into()),
+    ]);
+    let output = export_with_paths(&trimmed, &paths).unwrap();
+    let clips = output["timelines"][0]["clips"].as_array().unwrap();
+    let later = clips.iter().find(|clip| clip["id"] == "later").unwrap();
+    assert_eq!(later["start"], 5.2);
+    assert_eq!(later["sourceStart"], 0.6);
+    assert_eq!(later["duration"], 1.8);
+    assert_eq!(later["keys"][1]["value"], 1.0);
+    let restored = convert(output, &bindings);
+    let original_wire = serde_json::to_value(project).unwrap();
+    let restored_wire = serde_json::to_value(&restored).unwrap();
+    assert_eq!(
+        restored_wire["compositions"][&restored.root]["content"]["tracks"][0]["transitions"],
+        original_wire["compositions"][&trimmed.root]["content"]["tracks"][0]["transitions"],
+    );
+
+    let outgoing = wire["compositions"][&trimmed.root]["content"]["tracks"][0]["clips"]
+        .as_array_mut().unwrap().iter_mut().find(|clip| clip["id"] == "out").unwrap();
+    outgoing["placement"]["sourceTimelineOffsetTick"] = json!(1);
+    let endpoint_changed = serde_json::from_value(wire).unwrap();
+    let error = export_with_paths(&endpoint_changed, &paths).unwrap_err();
+    assert!(error.to_string().contains("InvalidTransition"), "{error}");
+}
+
+#[test]
+fn colour_fades_roundtrip_retimed_clips_and_keep_their_audio_windows() {
+    use video_kadr_backend::domain::{concat_project_transitions::{source_colour, visual_layers}, nested_audio::plan_audio_tracks};
+    for (name, shade_offset) in [("fade-black", 0.0), ("fade-white", 1.0)] {
+        let (mut document, mut bindings) = input(name, 1.0);
+        let curve = json!([{"at":0.0,"speed":0.5},{"at":1.0,"speed":1.5}]);
+        let clips = document["timelines"][0]["clips"].as_array_mut().unwrap();
+        for clip in clips {
+            clip["speedCurve"] = curve.clone();
+        }
+        for source in bindings.values_mut() {
+            source.has_audio = true;
+        }
+        let project = convert(document, &bindings);
+        let content = &project.compositions[&project.root].content;
+        let CompositionTrack::Video { clips, transitions, .. } = &content.tracks[0] else { panic!("video lane") };
+        let exact = 2 * 254_016_000_000_i128;
+        let shade = source_colour(&clips[1], clips, transitions, &content.canvas, exact, false)
+            .unwrap().unwrap();
+        assert_eq!((shade.scale, shade.offset), (0.0, shade_offset));
+        let layers = visual_layers(clips, transitions, &content.canvas, exact).unwrap().unwrap();
+        assert_eq!(layers.len(), 1);
+        assert_eq!(layers[0].clip_index, 1);
+        assert_eq!(layers[0].source_tick, 254_016_000_000);
+        let audio = plan_audio_tracks(&project, &project.root, 0..4_000_000).unwrap();
+        assert_eq!(audio.len(), 2);
+        assert!(audio.iter().all(|layer| layer.concat_retime_owner.is_some()
+            && layer.clip.fade_in_ticks == 0 && layer.clip.fade_out_ticks == 0));
+        let output = export_with_paths(&project, &BTreeMap::from([
+            ("a".into(), "/portable/a.mov".into()), ("b".into(), "/portable/b.mov".into()),
+        ])).unwrap();
+        assert_eq!(output["timelines"][0]["clips"][1]["transitionIn"]["id"], name);
+        assert_eq!(output["timelines"][0]["clips"][1]["speedCurve"], curve);
+        let restored = convert(output, &bindings);
+        assert_eq!(content.tracks, restored.compositions[&restored.root].content.tracks);
+    }
+}
+
 #[test]
 fn packaged_transitions_import_and_export_with_exact_centered_or_late_windows() {
     for name in [
@@ -2076,15 +2159,73 @@ fn fractional_rate_half_ties_follow_original_float_operation_order() {
 }
 
 #[test]
-fn retained_curve_is_persisted_but_not_admitted_before_audio_integration(){
-    let(document,bindings)=input("fade-black",1.);let mut project=convert(document,&bindings);
+fn retained_curve_stays_serializable_when_overlap_is_unqualified(){
+    let(document,bindings)=input("cross-fade",1.);let mut project=convert(document,&bindings);
     let content=&mut project.compositions.get_mut(&project.root).unwrap().content;
-    let CompositionTrack::Video{clips,..}=&mut content.tracks[0]else{panic!()};
+    let CompositionTrack::Video{clips,transitions,..}=&mut content.tracks[0]else{panic!()};
+    transitions[0].concat_overlap = None;
     clips[0].placement.concat_retime=Some(video_kadr_backend::domain::concat_retime::SourceClock{points:vec![(0.,1.),(1.,3.)],duration_ticks:2000000,rate_num:25,rate_den:1,document_clock:None});
     clips[0].placement.source_out_tick=clips[0].placement.source_in_tick+4000000;
     assert!(content.validate_native_surface().is_err());
     let wire=serde_json::to_value(&project).unwrap();
     let restored:video_kadr_backend::domain::nested_composition::NestedCompositionProject=serde_json::from_value(wire.clone()).unwrap();assert_eq!(serde_json::to_value(restored).unwrap(),wire);
+}
+
+#[test]
+fn retimed_overlaps_hold_the_outgoing_picture_and_only_fade_incoming_audio() {
+    use video_kadr_backend::domain::{concat_project_transitions::visual_layers, nested_audio::plan_audio_tracks};
+    for package in [
+        "concat.dissolve", "concat.fade-black", "concat.fade-white", "concat.linear-wipe",
+        "concat.clock-wipe", "concat.zoom-transition", "concat.cube", "concat.glitch-warp",
+        "cross-fade", "push", "zoom", "wipe-left", "wipe-right",
+    ] {
+        let (mut document, mut bindings) = input(package, 1.0);
+        let curve = json!([{"at":0.0,"speed":0.5},{"at":1.0,"speed":1.5}]);
+        for clip in document["timelines"][0]["clips"].as_array_mut().unwrap() {
+            clip["speedCurve"] = curve.clone();
+        }
+        for source in bindings.values_mut() { source.has_audio = true; }
+        let project = convert(document, &bindings);
+        let content = &project.compositions[&project.root].content;
+        let CompositionTrack::Video { clips, transitions, .. } = &content.tracks[0] else { panic!("video lane") };
+        let overlap = transitions[0].concat_overlap.unwrap();
+        assert_eq!(overlap.lead_ticks, 0);
+        assert!(overlap.hold_outgoing);
+        let layers = visual_layers(clips, transitions, &content.canvas, 2 * 254_016_000_000).unwrap().unwrap();
+        assert_eq!(layers.len(), 2);
+        assert!(layers[0].held);
+        assert_eq!(layers[0].source_tick, 74 * 10_160_640_000);
+        assert!(!layers[1].held);
+        assert_eq!(layers[1].source_tick, 254_016_000_000);
+        let audio = plan_audio_tracks(&project, &project.root, 0..4_000_000).unwrap();
+        assert_eq!(audio.len(), 2);
+        assert_eq!(audio[0].clip.fade_out_ticks, 0);
+        assert_eq!(audio[1].clip.fade_in_ticks, 1_000_000);
+        let output = export_with_paths(&project, &BTreeMap::from([
+            ("a".into(), "/portable/a.mov".into()), ("b".into(), "/portable/b.mov".into()),
+        ])).unwrap();
+        assert_eq!(output["timelines"][0]["clips"][1]["transitionIn"]["id"], package);
+        let restored = convert(output, &bindings);
+        assert_eq!(content.tracks, restored.compositions[&restored.root].content.tracks);
+    }
+}
+
+#[test]
+fn legacy_push_moves_both_pictures_when_only_the_incoming_clip_is_retimed() {
+    use video_kadr_backend::domain::concat_project_transitions::source_pose;
+    let (mut document, bindings) = input("push", 1.0);
+    document["timelines"][0]["clips"][1]["speedCurve"] =
+        json!([{"at":0.0,"speed":0.5},{"at":1.0,"speed":1.5}]);
+    let project = convert(document, &bindings);
+    let content = &project.compositions[&project.root].content;
+    let CompositionTrack::Video { clips, transitions, .. } = &content.tracks[0] else { panic!("video lane") };
+    let overlap = transitions[0].concat_overlap.unwrap();
+    assert_eq!(overlap.lead_ticks, 0);
+    assert!(!overlap.hold_outgoing);
+    let pose = |index| source_pose(&clips[index], clips, transitions, &content.canvas, 635_040_000_000, false)
+        .unwrap().unwrap();
+    assert!((pose(0).x + 8.0).abs() < 1e-6);
+    assert!((pose(1).x - 8.0).abs() < 1e-6);
 }
 
 #[test]

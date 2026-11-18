@@ -117,12 +117,28 @@ fn explicit_media_paths_roundtrip_audio_video_and_image_without_opening_paths(){
  let mut document=source();document["media"]=json!([{"id":"snd","kind":"audio","path":"/missing/snd.wav"},{"id":"vid","kind":"video","path":"/missing/vid.mov"},{"id":"pic","kind":"image","path":"/missing/pic.png"}]);
  let tracks=document["timelines"][0]["tracks"].as_array_mut().unwrap();for id in ["sound","picture","movie"]{tracks.push(json!({"id":id,"name":id}));}
  let clips=document["timelines"][0]["clips"].as_array_mut().unwrap();
- clips.push(json!({"id":"sound","trackId":"sound","kind":"audio","mediaId":"snd","start":0.25,"duration":2,"sourceStart":0.5,"speed":1.5,"volume":0.7,"fadeIn":0.1,"fadeOut":0.2,"keys":[{"property":"volume","at":0,"value":0.2},{"property":"volume","at":1,"value":0.8}],"filters":[{"id":"concat.echo","params":{"delay":0.25,"decay":0.4},"keys":{"delay":[{"at":0.5,"value":0.4}]}},{"id":"concat.hall","enabled":false}]}));
+ clips.push(json!({"id":"sound","trackId":"sound","kind":"audio","mediaId":"snd","start":0.25,"duration":2,"sourceStart":0.5,"speed":1.5,"volume":0.7,"fadeIn":0.1,"fadeOut":0.2,"keys":[{"property":"volume","at":0,"value":0.2},{"property":"volume","at":1,"value":0.8,"ease":[0.2,-0.1,0.85,1.2]}],"filters":[{"id":"concat.echo","params":{"delay":0.25,"decay":0.4},"keys":{"delay":[{"at":0.5,"value":0.4}]}},{"id":"concat.hall","enabled":false}]}));
  clips.push(json!({"id":"picture","trackId":"picture","kind":"image","mediaId":"pic","start":0,"duration":4,"flipH":true,"offsetX":0.2,"keys":[{"property":"rotation","at":0,"value":0},{"property":"rotation","at":1,"value":45}]}));
  clips.push(json!({"id":"movie","trackId":"movie","kind":"video","mediaId":"vid","start":0.5,"duration":3,"sourceStart":0.75,"speed":1.25,"volume":0.5,"audioStream":1,"fadeIn":0.2,"fadeOut":0.3,"crop":{"left":0.1},"videoEffects":[{"id":"concat.exposure","params":{"stops":0.5}}]}));
  let bindings:BTreeMap<String,CompositionSource>=serde_json::from_value(json!({"snd":{"id":"snd","kind":"audio","durationTicks":10000000,"width":0,"height":0,"hasAudio":true,"audioChannels":2},"vid":{"id":"vid","kind":"video","durationTicks":10000000,"width":160,"height":120,"hasAudio":true,"audioChannels":2},"pic":{"id":"pic","kind":"image","durationTicks":0,"width":160,"height":120,"hasAudio":false}})).unwrap();
  let report=import(serde_json::from_value(json!({"schemaVersion":1,"document":document,"mediaBindings":bindings})).unwrap()).unwrap();assert_eq!(report.status,"converted","{:?}",report.diagnostics);let project=report.project.unwrap();let before=serde_json::to_value(&project).unwrap();
  assert!(export(&project).is_err());let paths=BTreeMap::from([("snd".into(),"/unopened/snd.wav".into()),("vid".into(),"/unopened/vid.mov".into()),("pic".into(),"/unopened/pic.png".into())]);let output=export_with_paths(&project,&paths).unwrap();
+ let sound = output["timelines"][0]["clips"].as_array().unwrap().iter()
+     .find(|clip| clip["id"] == "sound").unwrap();
+ assert_eq!(sound["keys"][1]["ease"], json!([0.2, -0.1, 0.85, 1.2]));
+ let mut trimmed = before.clone();
+ let boundary = &mut trimmed["compositions"][&project.root]["content"]["tracks"][2]["clips"][0]["concatGainKeys"][0];
+ boundary["derived"] = json!(true);
+ boundary["value"] = json!(0.35);
+ let trimmed_project = serde_json::from_value(trimmed.clone()).unwrap();
+ let trimmed_output = export_with_paths(&trimmed_project, &paths).unwrap();
+ let volume = trimmed_output["timelines"][0]["clips"].as_array().unwrap().iter()
+     .find(|clip| clip["id"] == "sound").unwrap()["keys"][0].clone();
+ assert_eq!(volume, json!({"property":"volume","at":0.0,"value":0.35,"ease":[0.0,0.0,1.0,1.0]}));
+ assert_eq!(serde_json::to_value(&trimmed_project).unwrap(), trimmed);
+ trimmed["compositions"][&project.root]["content"]["tracks"][2]["clips"][0]["concatGainKeys"][0]["value"] = json!(-0.1);
+ let negative = serde_json::from_value(trimmed).unwrap();
+ assert!(export_with_paths(&negative, &paths).unwrap_err().to_string().contains("Negative boundary gain"));
  let mut slot_paths = paths.clone();
  slot_paths.insert("vid".into(), String::new());
  assert!(export_with_paths(&project, &slot_paths).is_err());
@@ -470,4 +486,253 @@ fn caption_lane_exports_editable_concat_titles_with_bottom_anchor() {
     unsupported["compositions"][root]["content"]["tracks"][0]["clips"][0]["opacity"]["track"]["interpolation"] = json!({"kind":"elastic","dir":"out","amplitude":1,"period":0.000001});
     let error = export(&serde_json::from_value(unsupported).unwrap()).unwrap_err();
     assert!(format!("{error:#}").contains("Elastic caption curve exceeds the Concat key budget"));
+}
+
+#[test]
+fn source_speed_curve_roundtrips_and_rebases_with_new_media() {
+    use std::collections::BTreeMap;
+    use video_kadr_backend::domain::{composition::{CompositionSource, SourceId},
+        concat_project_export::export_with_paths, project_media_fill::fill};
+    for (kind, width, height) in [("video", 16, 8), ("audio", 0, 0)] {
+        let curve = json!([{"at":0.0,"speed":0.5},{"at":1.0,"speed":1.5}]);
+        let document = json!({
+            "version":1,"media":[{"id":"slot","kind":kind,"placeholder":true}],
+            "timelines":[{"id":"main","video":{"width":16,"height":8,"rateNum":24,"rateDen":1},
+              "tracks":[{"id":"video"}],"clips":[{"id":"authored","trackId":"video","mediaId":"slot",
+                "kind":kind,"start":0.125,"sourceStart":0.25,"duration":0.5,"speed":1,
+                "muted":true,"speedCurve":curve}]}]
+        });
+        let binding = json!({"id":"slot","kind":kind,"durationTicks":1000000,
+            "width":width,"height":height,"hasAudio":true});
+        let convert = |document| import(serde_json::from_value(json!({
+            "schemaVersion":1,"document":document,"mediaBindings":{"slot":binding},"preserveMediaIds":true
+        })).unwrap()).unwrap();
+        let result = convert(document.clone());
+        assert_eq!(result.status, "converted", "{:?}", result.diagnostics);
+        let project = result.project.unwrap();
+        let paths = BTreeMap::from([("slot".into(), String::new())]);
+        let output = export_with_paths(&project, &paths).unwrap();
+        let clip = &output["timelines"][0]["clips"][0];
+        assert_eq!(clip["sourceStart"], 0.25);
+        assert_eq!(clip["duration"], 0.5);
+        assert_eq!(clip["speedCurve"], curve);
+        let replacement: CompositionSource = serde_json::from_value(json!({"id":"new","kind":kind,
+            "durationTicks":250000,"width":width,"height":height,"hasAudio":true})).unwrap();
+        let filled = fill(&project, &SourceId::parse("slot").unwrap(), &json!({
+            "path":"library:new","kind":kind,"name":"Replacement","duration":0.25,"width":width,
+            "height":height,"hasAudio":true
+        }), &replacement).unwrap();
+        let value = serde_json::to_value(&filled).unwrap();
+        let placement = &value["compositions"][&filled.root]["content"]["tracks"][0]["clips"][0]["placement"];
+        assert_eq!(placement["sourceInTick"], 0);
+        assert_eq!(placement["sourceOutTick"], 500_000);
+        assert_eq!(placement["concatSourceEof"], true);
+        assert_eq!(placement["concatRetime"]["documentClock"]["sourceStart"], 0.0);
+        assert_eq!(placement["concatRetime"]["documentClock"]["speedCurve"], curve);
+        let (other_kind, other_width, other_height) = if kind == "video" {
+            ("audio", 0, 0)
+        } else {
+            ("video", 16, 8)
+        };
+        let cross_source: CompositionSource = serde_json::from_value(json!({
+            "id":"other","kind":other_kind,"durationTicks":250000,
+            "width":other_width,"height":other_height,"hasAudio":true
+        })).unwrap();
+        let crossed = fill(&project, &SourceId::parse("slot").unwrap(), &json!({
+            "path":"library:other","kind":other_kind,"name":"Cross replacement","duration":0.25,
+            "width":other_width,"height":other_height,"hasAudio":true
+        }), &cross_source).unwrap();
+        let value = serde_json::to_value(&crossed).unwrap();
+        let lane = &value["compositions"][&crossed.root]["content"]["tracks"][0];
+        assert_eq!(lane["kind"], other_kind);
+        let placement = &lane["clips"][0]["placement"];
+        assert_eq!(placement["timelineStartTick"], 125_000);
+        assert_eq!(placement["timelineDurationTick"], 500_000);
+        assert_eq!(placement["sourceInTick"], 0);
+        assert_eq!(placement["sourceOutTick"], 500_000);
+        assert_eq!(placement["concatRetime"]["documentClock"]["speedCurve"], curve);
+        let mut audible = document;
+        audible["timelines"][0]["clips"][0]["muted"] = json!(false);
+        let audible = convert(audible);
+        assert_eq!(audible.status, "converted", "{:?}", audible.diagnostics);
+        let moving = audible.project.unwrap();
+        let output = export_with_paths(&moving, &paths).unwrap();
+        assert_eq!(output["timelines"][0]["clips"][0]["muted"], false);
+        assert_eq!(output["timelines"][0]["clips"][0]["speedCurve"], curve);
+
+        let mut cleared = serde_json::to_value(&moving).unwrap();
+        let placement = &mut cleared["compositions"][&moving.root]["content"]["tracks"][0]["clips"][0]["placement"];
+        let clock: video_kadr_backend::domain::concat_retime_edit::Clock =
+            serde_json::from_value(placement["concatRetime"]["documentClock"].clone()).unwrap();
+        *placement = serde_json::to_value(clock.set_curve(None).unwrap().placement(24, 1).unwrap()).unwrap();
+        let cleared = serde_json::from_value(cleared).unwrap();
+        let output = export_with_paths(&cleared, &paths).unwrap();
+        assert_eq!(output["timelines"][0]["clips"][0]["speedCurve"], json!([]));
+        let reopened = convert(output);
+        assert_eq!(reopened.status, "converted", "{:?}", reopened.diagnostics);
+        let reopened = reopened.project.unwrap();
+        let native = serde_json::to_value(&reopened).unwrap();
+        let clock = &native["compositions"][&reopened.root]["content"]["tracks"][0]["clips"][0]
+            ["placement"]["concatRetime"]["documentClock"];
+        assert!(clock["speedCurve"].is_null());
+        assert_eq!(clock["sourceStart"], 0.25);
+
+        let image: CompositionSource = serde_json::from_value(json!({
+            "id":"picture","kind":"image","durationTicks":0,"width":16,"height":8,"hasAudio":false
+        })).unwrap();
+        let slot = SourceId::parse("slot").unwrap();
+        for (project, portable_curve, native_curve) in [
+            (&moving, &curve, &curve),
+            (&cleared, &json!([]), &serde_json::Value::Null),
+        ] {
+            let still = fill(project, &slot, &json!({
+                "path":"library:picture","kind":"image","name":"Still","width":16,"height":8,"hasAudio":false
+            }), &image).unwrap();
+            let native = serde_json::to_value(&still).unwrap();
+            let clip = &native["compositions"][&still.root]["content"]["tracks"][0]["clips"][0];
+            assert_eq!(clip["concatSourceTiming"]["speedCurve"], *portable_curve);
+            assert_eq!(clip["timelineStartTick"], 125_000);
+            assert_eq!(clip["durationTicks"], 500_000);
+            let (marked, _) = video_kadr_backend::domain::project_media::set_placeholder(&still, &slot, true).unwrap();
+            let portable = export_with_paths(&marked, &paths).unwrap();
+            assert_eq!(portable["timelines"][0]["clips"][0]["speedCurve"], *portable_curve);
+            let reopened = import(serde_json::from_value(json!({
+                "schemaVersion":1,"document":portable,"mediaBindings":{"slot":image},"preserveMediaIds":true
+            })).unwrap()).unwrap();
+            assert_eq!(reopened.status, "converted", "{:?}", reopened.diagnostics);
+            let refilled = fill(&reopened.project.unwrap(), &slot, &json!({
+                "path":"library:new","kind":kind,"name":"Replacement","duration":0.25,
+                "width":width,"height":height,"hasAudio":true
+            }), &replacement).unwrap();
+            let native = serde_json::to_value(&refilled).unwrap();
+            let lane = &native["compositions"][&refilled.root]["content"]["tracks"][0];
+            assert_eq!(lane["kind"], kind);
+            let placement = &lane["clips"][0]["placement"];
+            assert_eq!(placement["sourceInTick"], 0);
+            assert_eq!(placement["timelineDurationTick"], 500_000);
+            let clock = &placement["concatRetime"]["documentClock"];
+            assert!(clock.is_object());
+            assert_eq!(clock["speedCurve"], *native_curve);
+            assert_eq!(clock["sourceStart"], 0.0);
+        }
+    }
+}
+
+#[test]
+fn native_video_export_refusal_names_the_unrepresentable_clip_fields() {
+    use std::collections::BTreeMap;
+    let report = import(serde_json::from_value(json!({
+        "schemaVersion":1,"document":{"version":1,"media":[{"id":"slot","kind":"video","placeholder":true}],
+            "timelines":[{"id":"main","video":{"width":16,"height":8,"rateNum":24,"rateDen":1},
+                "tracks":[{"id":"video"}],
+                "clips":[{"id":"authored","trackId":"video","mediaId":"slot","kind":"video","duration":1}]}]},
+        "mediaBindings":{"slot":{"id":"slot","kind":"video","durationTicks":1000000,
+            "width":16,"height":8,"hasAudio":false}},
+        "preserveMediaIds":true
+    })).unwrap()).unwrap();
+    assert_eq!(report.status, "converted", "{:?}", report.diagnostics);
+    let imported = report.project.unwrap();
+    let mut wire = serde_json::to_value(&imported).unwrap();
+    let mut trimmed = wire.clone();
+    let trimmed_node = &mut trimmed["compositions"][&imported.root];
+    trimmed_node["durationUs"] = json!(750_000);
+    let trimmed_clip = &mut trimmed_node["content"]["tracks"][0]["clips"][0];
+    trimmed_clip["placement"]["timelineDurationTick"] = json!(750_000);
+    trimmed_clip["concatGainKeys"] = json!([
+        {"at":0.0,"value":0.25},
+        {"at":1.0,"value":0.75,"ease":[0.2,0.1,0.8,0.9],"derived":true}
+    ]);
+    let trimmed_project = serde_json::from_value(trimmed.clone()).unwrap();
+    let paths = BTreeMap::from([("slot".into(), String::new())]);
+    let output = video_kadr_backend::domain::concat_project_export::export_with_paths(
+        &trimmed_project, &paths,
+    ).unwrap();
+    let clip = &output["timelines"][0]["clips"][0];
+    assert_eq!(clip["duration"], json!(0.75));
+    assert_eq!(clip["keys"][1], json!({"property":"volume","at":1.0,"value":0.75,"ease":[0.2,0.1,0.8,0.9]}));
+    assert_eq!(serde_json::to_value(trimmed_project).unwrap()["compositions"][&imported.root]
+        ["content"]["tracks"][0]["clips"][0]["placement"]["sourceOutTick"], 1_000_000);
+
+    let mut head_trimmed = trimmed.clone();
+    let node = &mut head_trimmed["compositions"][&imported.root];
+    node["durationUs"] = json!(875_000);
+    let placement = &mut node["content"]["tracks"][0]["clips"][0]["placement"];
+    placement["timelineStartTick"] = json!(125_000);
+    placement["sourceTimelineOffsetTick"] = json!(125_000);
+    let output = video_kadr_backend::domain::concat_project_export::export_with_paths(
+        &serde_json::from_value(head_trimmed).unwrap(), &paths,
+    ).unwrap();
+    let clip = &output["timelines"][0]["clips"][0];
+    assert_eq!(clip["start"], json!(0.125));
+    assert_eq!(clip["sourceStart"], json!(0.125));
+    assert_eq!(clip["duration"], json!(0.75));
+
+    let mut extended = trimmed;
+    let node = &mut extended["compositions"][&imported.root];
+    node["durationUs"] = json!(875_000);
+    let placement = &mut node["content"]["tracks"][0]["clips"][0]["placement"];
+    placement["timelineStartTick"] = json!(125_000);
+    placement["sourceInTick"] = json!(250_000);
+    placement["sourceTimelineOffsetTick"] = json!(-125_000);
+    placement["sourceHeadTimelineTick"] = json!(125_000);
+    let output = video_kadr_backend::domain::concat_project_export::export_with_paths(
+        &serde_json::from_value(extended).unwrap(), &paths,
+    ).unwrap();
+    let clip = &output["timelines"][0]["clips"][0];
+    assert_eq!(clip["start"], json!(0.125));
+    assert_eq!(clip["sourceStart"], json!(0.125));
+    assert_eq!(clip["duration"], json!(0.75));
+
+    for (speed, expected_in) in [(0.5, 0.25), (0.75, 0.275), (1.25, 0.325), (1.5, 0.35), (2.0, 0.4)] {
+        let mut retimed = wire.clone();
+        let node = &mut retimed["compositions"][&imported.root];
+        node["durationUs"] = json!(300_000);
+        let clip = &mut node["content"]["tracks"][0]["clips"][0];
+        clip["sourceAudioEnabled"] = json!(false);
+        clip["placement"] = json!({"timelineStartTick":100_000,"timelineDurationTick":200_000,
+            "sourceInTick":200_000,"sourceOutTick":1_000_000,"sourceTimelineOffsetTick":100_000,"speed":speed});
+        let output = video_kadr_backend::domain::concat_project_export::export_with_paths(
+            &serde_json::from_value(retimed.clone()).unwrap(), &paths,
+        ).unwrap();
+        let clip = &output["timelines"][0]["clips"][0];
+        assert_eq!(clip["sourceStart"], expected_in);
+        assert_eq!(clip["duration"], 0.2);
+        assert_eq!(clip["speed"], speed);
+        assert_eq!(clip["muted"], true);
+
+        if speed == 0.5 {
+            let mut unaligned = retimed.clone();
+            unaligned["compositions"][&imported.root]["content"]["tracks"][0]["clips"][0]
+                ["placement"]["sourceTimelineOffsetTick"] = json!(100_001);
+            assert!(video_kadr_backend::domain::concat_project_export::export_with_paths(
+                &serde_json::from_value(unaligned).unwrap(), &paths,
+            ).is_err());
+        }
+        retimed["compositions"][&imported.root]["content"]["tracks"][0]["clips"][0]["sourceAudioEnabled"] = json!(true);
+        assert!(video_kadr_backend::domain::concat_project_export::export_with_paths(
+            &serde_json::from_value(retimed).unwrap(), &paths,
+        ).is_err());
+    }
+
+    let mut inexact = wire.clone();
+    let node = &mut inexact["compositions"][&imported.root];
+    node["durationUs"] = json!(300_000);
+    let clip = &mut node["content"]["tracks"][0]["clips"][0];
+    clip["sourceAudioEnabled"] = json!(false);
+    clip["placement"] = json!({"timelineStartTick":100_000,"timelineDurationTick":200_000,
+        "sourceInTick":200_000,"sourceOutTick":1_000_000,"sourceTimelineOffsetTick":100_000,"speed":1.1});
+    assert!(video_kadr_backend::domain::concat_project_export::export_with_paths(
+        &serde_json::from_value(inexact).unwrap(), &paths,
+    ).is_err());
+
+    let clip = &mut wire["compositions"][&imported.root]["content"]["tracks"][0]["clips"][0];
+    clip["transform"].as_object_mut().unwrap().remove("concatPreparation");
+    clip.as_object_mut().unwrap().remove("independentAudio");
+    let project = serde_json::from_value(wire).unwrap();
+    let error = video_kadr_backend::domain::concat_project_export::export_with_paths(
+        &project, &BTreeMap::from([("slot".into(), String::new())]),
+    ).unwrap_err().to_string();
+    assert!(error.contains("authored"), "{error}");
+    assert!(error.contains("transform.concatPreparation"), "{error}");
+    assert!(error.contains("independentAudio"), "{error}");
 }

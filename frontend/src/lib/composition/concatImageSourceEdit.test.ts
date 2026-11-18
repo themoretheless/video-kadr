@@ -19,15 +19,18 @@ function project():api.NativeNestedProject {
 function part(clock:ConcatSourceDocumentClock,role:'head'|'tail'|'clip',tracks:api.ConcatSourceEditTracks):api.ConcatSourceEditPlan['parts'][number]{
  return {role,clock,tracks,fadeIn:0,fadeOut:0,placement:{timelineStartTick:Math.round(clock.start*1e6),timelineDurationTick:Math.round(clock.duration*1e6),sourceInTick:Math.round(clock.sourceStart*1e6),sourceOutTick:Math.round((clock.sourceStart+clock.duration*clock.speed)*1e6),speed:clock.speed,concatRetime:{documentClock:clock,points:[],durationTicks:Math.round(clock.duration*1e6),rateNum:25,rateDen:1}}}
 }
-it('applies native split clocks to stills without leaking moving-media fields or changing the input',async()=>{
- const input=project(),before=JSON.stringify(input)
+it.each([false, true])('applies native split clocks to stills with a retained flat clock marker: %s',async(retainFlatClock)=>{
+ const input=project()
+ const original = input.compositions.root!.content.tracks[0]!.clips[0] as WireImageClip
+ if (retainFlatClock) Object.assign(original, {concatSourceTiming:{...original.concatSourceTiming,speedCurve:[]}})
+ const before=JSON.stringify(input)
  expect(()=>splitNativeClips(input,'root',['still'],3250000,()=> 'tail')).toThrow('нативного плана')
  vi.mocked(api.planConcatSourceEdit).mockImplementation(async request=>({changed:true,rippleBy:0,parts:[part({...request.clock,duration:1.25},'head',request.tracks!),part({...request.clock,start:3.25,duration:1.75,sourceStart:6.5},'tail',request.tracks!)]}))
  const output=await splitNativeClipsWithSourcePlans(input,'root',['still'],3250000,()=> 'tail')
  expect(api.planConcatSourceEdit).toHaveBeenCalledWith(expect.objectContaining({clock:{start:2,duration:3,sourceStart:4,speed:2},command:{kind:'split',time:3.25},tracks:expect.objectContaining({video:{'video/0/concatKeys':[{at:0,value:0},{at:1,value:1}]}})}))
  const clips=output.compositions.root!.content.tracks[0]!.clips as readonly WireImageClip[]
  expect(clips).toHaveLength(2);expect(clips[0]).toMatchObject({durationTicks:1250000,concatSourceTiming:{sourceStart:4,speed:2}});expect(clips[1]).toMatchObject({id:'tail',timelineStartTick:3250000,durationTicks:1750000,concatSourceTiming:{sourceStart:6.5,speed:2}})
- for(const clip of clips){expect('placement' in clip).toBe(false);expect('dspEffects' in clip).toBe(false);expect(clip.effects).toEqual((input.compositions.root!.content.tracks[0]!.clips[0] as WireImageClip).effects)}
+ for(const clip of clips){expect('placement' in clip).toBe(false);expect('dspEffects' in clip).toBe(false);expect(clip.effects).toEqual(original.effects);expect(clip.concatSourceTiming?.speedCurve).toEqual(retainFlatClock ? [] : undefined)}
  expect(JSON.stringify(input)).toBe(before)
 })
 it('uses the Rust trim plan for head movement and refuses synchronous or failed-plan edits atomically',async()=>{
@@ -62,5 +65,21 @@ it('retains native curve results on images and supplies the curve to the followi
  const split=await splitNativeClipsWithSourcePlans(curved,'root',['still'],3000000,()=> 'tail')
  expect(api.planConcatSourceEdit).toHaveBeenCalledWith(expect.objectContaining({clock:expect.objectContaining({speedCurve:points})}))
  const clips=split.compositions.root!.content.tracks[0]!.clips as readonly WireImageClip[]
- expect(clips[1].concatSourceTiming).toEqual({sourceStart:7,speed:3});expect(clips[0].concatSourceTiming).toEqual({sourceStart:4,speed:3})
+ expect(clips[1].concatSourceTiming).toEqual({sourceStart:7,speed:3,speedCurve:[]});expect(clips[0].concatSourceTiming).toEqual({sourceStart:4,speed:3,speedCurve:[]})
+})
+
+it('retains the constant Concat clock when the image speed curve is cleared',async()=>{
+ const input = project()
+ const clip = input.compositions.root!.content.tracks[0]!.clips[0] as WireImageClip
+ const points = [{at:0,speed:1},{at:1,speed:3}]
+ Object.assign(clip, {concatSourceTiming:{sourceStart:4,speed:2,speedCurve:points}})
+ vi.mocked(api.planConcatSourceEdit).mockImplementation(async request=>({
+   changed:true,rippleBy:0,parts:[part({...request.clock,speedCurve:null},'clip',request.tracks!)],
+ }))
+ const result = await setNativeSourceSpeedCurve(input,'root',['still'],null)
+ expect(api.planConcatSourceEdit).toHaveBeenCalledWith(expect.objectContaining({command:{kind:'setCurve',points:null}}))
+ expect(result.compositions.root!.content.tracks[0]!.clips[0]).toMatchObject({
+   timelineStartTick:2000000,durationTicks:3000000,concatSourceTiming:{sourceStart:4,speed:2,speedCurve:[]},
+ })
+ expect(clip.concatSourceTiming?.speedCurve).toEqual(points)
 })

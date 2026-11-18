@@ -1479,6 +1479,7 @@ pub struct ImageSourceTiming {
     pub source_start: f64,
     pub speed: f64,
     #[serde(default, skip_serializing_if="Option::is_none")]
+    // An explicit empty curve retains the original constant-speed Concat clock.
     pub speed_curve: Option<Vec<super::concat_retime_edit::Point>>,
 }
 impl ImageSourceTiming {
@@ -1487,7 +1488,7 @@ impl ImageSourceTiming {
             || !self.speed.is_finite() || !(0.0625..=16.0).contains(&self.speed) {
             return Err(CompositionError::InvalidPlacement);
         }
-        if self.speed_curve.as_ref().is_some_and(|points| points.is_empty() || points.len()>4096 || points.iter().any(|point| !point.at.is_finite() || !(0.0..=1.0).contains(&point.at) || !point.speed.is_finite() || !(0.0625..=16.0).contains(&point.speed))) {
+        if self.speed_curve.as_ref().is_some_and(|points| points.len()>4096 || points.iter().any(|point| !point.at.is_finite() || !(0.0..=1.0).contains(&point.at) || !point.speed.is_finite() || !(0.0625..=16.0).contains(&point.speed))) {
             return Err(CompositionError::InvalidSpeedRamp);
         }
         Ok(())
@@ -1980,6 +1981,24 @@ impl Composition {
                     clip_count = clip_count.saturating_add(clips.len());
                     let mut local_ids = BTreeSet::new();
                     for clip in clips {
+                        if clip.placement.concat_retime.is_some()
+                            && (clip.playback_mode != PlaybackMode::Forward
+                                || clip.stabilization.is_enabled()
+                                || clip.frame_interpolation != FrameInterpolation::Duplicate
+                                || transitions.iter().any(|transition| {
+                                    (transition.from_clip_id.as_ref() == Some(&clip.id)
+                                        || transition.to_clip_id.as_ref() == Some(&clip.id))
+                                        && !super::concat_project_transitions::supports_retained_curve(transition)
+                                }))
+                        {
+                            return Err(CompositionError::InvalidSpeedRamp);
+                        }
+                        if clip.placement.concat_retime.is_some() && clip.source_audio_enabled
+                            && (!matches!(clip.audio_gain, AnimatableValue::Constant { .. })
+                                || !matches!(clip.audio_pan, AnimatableValue::Constant { .. }))
+                        {
+                            return Err(CompositionError::InvalidSpeedRamp);
+                        }
                         if (clip.placement.source_timeline_offset_tick.unwrap_or(0) != 0 || clip.placement.source_head_timeline_tick.unwrap_or(0) != 0) && (!native || clip.effect_timing.is_some()) {
                             return Err(CompositionError::InvalidPlacement);
                         }
@@ -2064,6 +2083,15 @@ impl Composition {
                     clip_count = clip_count.saturating_add(clips.len());
                     for clip in clips {
                         if !native && (clip.placement.source_timeline_offset_tick.unwrap_or(0) != 0 || clip.placement.source_head_timeline_tick.unwrap_or(0) != 0) { return Err(CompositionError::InvalidPlacement); }
+                        if clip.placement.concat_retime.is_some() && clip.enabled
+                            && (!matches!(clip.gain, AnimatableValue::Constant { .. })
+                                || !matches!(clip.pan, AnimatableValue::Constant { .. })
+                                || clip.crossfade_in_ticks != 0 || clip.ducking.is_some()
+                                || clip.voice_effect != AudioVoiceEffect::None
+                                || clip.pitch_semitones != 0.0 || clip.tone_db != 0.0)
+                        {
+                            return Err(CompositionError::InvalidSpeedRamp);
+                        }
                         validate_media_clip(
                             &self.sources,
                             &clip.id,
@@ -2660,11 +2688,12 @@ fn validate_media_clip(
     reverse: bool,
     native: bool,
 ) -> Result<(), CompositionError> {
-    if placement.concat_source_eof && (!native || reverse || placement.speed_ramp.is_some()) {
+    if placement.concat_source_eof && (!native || reverse) {
         return Err(CompositionError::InvalidPlacement);
     }
-    // Do not admit source curves to production until audio and edit clocks are wired.
-    if placement.concat_retime.is_some(){return Err(CompositionError::InvalidSpeedRamp);}
+    if placement.concat_retime.is_some() && (!native || reverse) {
+        return Err(CompositionError::InvalidSpeedRamp);
+    }
 
     let source = sources
         .get(source_id)

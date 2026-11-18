@@ -7,7 +7,7 @@ use axum::response::Response;
 use axum::Json;
 use serde::de::{Deserializer, Visitor};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use tower::ServiceExt;
 use tower_http::services::ServeFile;
 
@@ -40,20 +40,15 @@ pub async fn output_file_handler(
     }
     let id = path.file_stem().and_then(|v| v.to_str())
         .ok_or_else(|| AppError::not_found("Медиафайл не найден"))?;
-    let protected: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM output_access WHERE output_id=?)")
-        .bind(id).fetch_one(state.db.pool()).await
-        .map_err(|e| AppError::internal("resolve output access", e))?;
-    if protected {
-        let actor = super::publish::authenticated_actor(&state, request.headers()).await?;
-        if !state.db.can_access_output(id, &actor).await
-            .map_err(|e| AppError::internal("authorize output download", e))? {
-            return Err(AppError::forbidden("Нет доступа к результату экспорта"));
-        }
-    }
-    ServeFile::new(state.storage.join("outputs").join(filename))
+    let protected = authorize_output_access(&state, id, request.headers()).await?;
+    let mut response = ServeFile::new(state.storage.join("outputs").join(filename))
         .oneshot(request).await
         .map(|response| response.map(Body::new))
-        .map_err(|e| AppError::internal("serve output file", e))
+        .map_err(|error| AppError::internal("serve output file", error))?;
+    if protected {
+        response.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("private, no-store"));
+    }
+    Ok(response)
 }
 
 pub async fn source_file_handler(
@@ -145,16 +140,37 @@ fn source_session_token(headers: &HeaderMap) -> Option<&str> {
         })
 }
 
+async fn authorize_output_access(state: &AppState, id: &str, headers: &HeaderMap) -> AppResult<bool> {
+    let protected: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM output_access WHERE output_id=?)")
+        .bind(id).fetch_one(state.db.pool()).await
+        .map_err(|error| AppError::internal("resolve output access", error))?;
+    if !protected {
+        return Ok(false);
+    }
+    let token = source_session_token(headers)
+        .ok_or_else(|| AppError::unauthorized("Требуется сессия для доступа к экспорту"))?;
+    let user = state.db.resolve_auth_session(token).await
+        .map_err(|error| AppError::internal("authenticate output access", error))?
+        .ok_or_else(|| AppError::unauthorized("Сессия недействительна или истекла"))?;
+    if !state.db.can_access_output(id, &user.username).await
+        .map_err(|error| AppError::internal("authorize output access", error))?
+    {
+        return Err(AppError::forbidden("Нет доступа к результату экспорта"));
+    }
+    Ok(true)
+}
+
 pub(super) struct LibraryVisibility {
     all_scoped_sources: HashSet<String>,
     visible_scoped_sources: HashSet<String>,
     selected_space: bool,
+    protected_outputs: HashMap<String, bool>,
 }
 
 impl LibraryVisibility {
     pub(super) fn allows(&self, id: &str, kind: &str) -> bool {
         if kind != "source" {
-            return !self.selected_space;
+            return !self.selected_space && self.protected_outputs.get(id).copied().unwrap_or(true);
         }
         if self.selected_space {
             self.visible_scoped_sources.contains(id)
@@ -212,25 +228,35 @@ pub(super) async fn library_visibility(state: &AppState, headers: &HeaderMap) ->
             .space_source_ids(space_id)
             .await
             .map_err(|error| AppError::internal("list space library sources", error))?
-    } else if let Some(actor) = actor {
+    } else if let Some(actor) = actor.as_deref() {
         state
             .db
-            .accessible_space_source_ids(&actor)
+            .accessible_space_source_ids(actor)
             .await
             .map_err(|error| AppError::internal("list accessible library sources", error))?
     } else {
         HashSet::new()
     };
+    let protected_outputs = if selected_space.is_none() {
+        let rows: Vec<(String, bool)> = sqlx::query_as(
+            "SELECT output_id, MAX(CASE WHEN actor=? THEN 1 ELSE 0 END) FROM output_access GROUP BY output_id",
+        ).bind(actor.as_deref()).fetch_all(state.db.pool()).await
+            .map_err(|error| AppError::internal("list protected export outputs", error))?;
+        rows.into_iter().collect()
+    } else {
+        HashMap::new()
+    };
     Ok(LibraryVisibility {
         all_scoped_sources,
         visible_scoped_sources,
         selected_space: selected_space.is_some(),
+        protected_outputs,
     })
 }
 
 /// Internal background jobs already hold a validated owner identity, not a token.
 pub(super) async fn library_visibility_for_owner(state:&AppState,owner:&str)->AppResult<LibraryVisibility>{
-    Ok(LibraryVisibility{all_scoped_sources:state.db.all_space_source_ids().await.map_err(|e|AppError::internal("list scoped sources",e))?,visible_scoped_sources:state.db.accessible_space_source_ids(owner).await.map_err(|e|AppError::internal("list accessible sources",e))?,selected_space:false})
+    Ok(LibraryVisibility{all_scoped_sources:state.db.all_space_source_ids().await.map_err(|e|AppError::internal("list scoped sources",e))?,visible_scoped_sources:state.db.accessible_space_source_ids(owner).await.map_err(|e|AppError::internal("list accessible sources",e))?,selected_space:false,protected_outputs:HashMap::new()})
 }
 
 #[derive(Debug, Serialize)]
@@ -387,7 +413,7 @@ pub async fn library_thumbnail_handler(
     headers: HeaderMap,
 ) -> AppResult<Response> {
     authorize_source_access(&state, &id, &headers).await?;
-    let source = thumbnail_source(&state, &id).await?;
+    let (source, _) = thumbnail_source(&state, &id, &headers).await?;
     ensure_thumbnail_support(&state, source.kind)?;
     let key = state
         .thumbnail_service
@@ -419,7 +445,7 @@ pub async fn library_thumbnail_version_handler(
     if !is_sha256(&key) {
         return Err(AppError::bad_request("Некорректный ключ предпросмотра"));
     }
-    let source = thumbnail_source(&state, &id).await?;
+    let (source, protected) = thumbnail_source(&state, &id, &headers).await?;
     ensure_thumbnail_support(&state, source.kind)?;
     let current_key = state
         .thumbnail_service
@@ -432,11 +458,12 @@ pub async fn library_thumbnail_version_handler(
     if current_key != key {
         return Err(AppError::not_found("Версия предпросмотра устарела"));
     }
+    let cache_control = if protected { "private, no-store" } else { IMMUTABLE_THUMBNAIL_CACHE };
     let etag = format!("\"{key}\"");
     if etag_matches(headers.get(header::IF_NONE_MATCH), &etag) {
         return Response::builder()
             .status(StatusCode::NOT_MODIFIED)
-            .header(header::CACHE_CONTROL, IMMUTABLE_THUMBNAIL_CACHE)
+            .header(header::CACHE_CONTROL, cache_control)
             .header(header::ETAG, etag)
             .body(Body::empty())
             .map_err(|error| AppError::internal("build thumbnail response", error));
@@ -468,7 +495,7 @@ pub async fn library_thumbnail_version_handler(
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "image/png")
         .header(header::CONTENT_LENGTH, bytes.len())
-        .header(header::CACHE_CONTROL, IMMUTABLE_THUMBNAIL_CACHE)
+        .header(header::CACHE_CONTROL, cache_control)
         .header(header::ETAG, etag)
         .body(Body::from(bytes))
         .map_err(|error| AppError::internal("build thumbnail response", error))
@@ -481,7 +508,7 @@ pub async fn library_filmstrip_handler(
     headers: HeaderMap,
 ) -> AppResult<Response> {
     authorize_source_access(&state, &id, &headers).await?;
-    let source = filmstrip_source(&state, &id).await?;
+    let (source, _) = filmstrip_source(&state, &id, &headers).await?;
     ensure_filmstrip_support(&state)?;
     let key = state
         .thumbnail_service
@@ -511,7 +538,7 @@ pub async fn library_filmstrip_version_handler(
     if !is_sha256(&key) {
         return Err(AppError::bad_request("Некорректный ключ раскадровки"));
     }
-    let source = filmstrip_source(&state, &id).await?;
+    let (source, protected) = filmstrip_source(&state, &id, &headers).await?;
     ensure_filmstrip_support(&state)?;
     let current_key = state
         .thumbnail_service
@@ -524,11 +551,12 @@ pub async fn library_filmstrip_version_handler(
     if current_key != key {
         return Err(AppError::not_found("Версия раскадровки устарела"));
     }
+    let cache_control = if protected { "private, no-store" } else { IMMUTABLE_THUMBNAIL_CACHE };
     let etag = format!("\"{key}\"");
     if etag_matches(headers.get(header::IF_NONE_MATCH), &etag) {
         return Response::builder()
             .status(StatusCode::NOT_MODIFIED)
-            .header(header::CACHE_CONTROL, IMMUTABLE_THUMBNAIL_CACHE)
+            .header(header::CACHE_CONTROL, cache_control)
             .header(header::ETAG, etag)
             .body(Body::empty())
             .map_err(|error| AppError::internal("build filmstrip response", error));
@@ -560,7 +588,7 @@ pub async fn library_filmstrip_version_handler(
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "image/png")
         .header(header::CONTENT_LENGTH, bytes.len())
-        .header(header::CACHE_CONTROL, IMMUTABLE_THUMBNAIL_CACHE)
+        .header(header::CACHE_CONTROL, cache_control)
         .header(header::ETAG, etag)
         .header("x-filmstrip-cells", FILMSTRIP_CELL_COUNT)
         .header("x-filmstrip-cell-width", FILMSTRIP_CELL_WIDTH)
@@ -569,7 +597,7 @@ pub async fn library_filmstrip_version_handler(
         .map_err(|error| AppError::internal("build filmstrip response", error))
 }
 
-async fn thumbnail_source(state: &AppState, id: &str) -> AppResult<ThumbnailSource> {
+async fn thumbnail_source(state: &AppState, id: &str, headers: &HeaderMap) -> AppResult<(ThumbnailSource, bool)> {
     if !valid_composition_source_id(id) {
         return Err(AppError::bad_request("Некорректный ID медиафайла"));
     }
@@ -578,6 +606,7 @@ async fn thumbnail_source(state: &AppState, id: &str) -> AppResult<ThumbnailSour
         .get(id)
         .await
         .ok_or_else(|| AppError::not_found("Медиафайл не найден"))?;
+    let protected = entry.kind == "output" && authorize_output_access(state, id, headers).await?;
     let kind = infer_thumbnail_kind(&entry).ok_or_else(|| {
         AppError::unsupported_media_type("Для этого формата предпросмотр не поддерживается")
     })?;
@@ -589,16 +618,16 @@ async fn thumbnail_source(state: &AppState, id: &str) -> AppResult<ThumbnailSour
             tracing::warn!(media.id = %id, %error, "resolve thumbnail source");
             AppError::not_found("Медиафайл не найден")
         })?;
-    Ok(ThumbnailSource {
+    Ok((ThumbnailSource {
         id: entry.id,
         path,
         kind,
         duration_seconds: entry.duration,
-    })
+    }, protected))
 }
 
-async fn filmstrip_source(state: &AppState, id: &str) -> AppResult<ThumbnailSource> {
-    let source = thumbnail_source(state, id).await?;
+async fn filmstrip_source(state: &AppState, id: &str, headers: &HeaderMap) -> AppResult<(ThumbnailSource, bool)> {
+    let (source, protected) = thumbnail_source(state, id, headers).await?;
     if source.kind != ThumbnailKind::Video {
         return Err(AppError::unsupported_media_type(
             "Раскадровка доступна только для видео",
@@ -612,7 +641,7 @@ async fn filmstrip_source(state: &AppState, id: &str) -> AppResult<ThumbnailSour
             "Для раскадровки нужна длительность видео",
         ));
     }
-    Ok(source)
+    Ok((source, protected))
 }
 
 fn ensure_thumbnail_support(state: &AppState, kind: ThumbnailKind) -> AppResult<()> {
@@ -772,6 +801,9 @@ pub async fn library_metadata_put_handler(
         .get(&id)
         .await
         .ok_or_else(|| AppError::not_found("Медиафайл не найден"))?;
+    if entry.kind == "output" {
+        authorize_output_access(&state, &id, &headers).await?;
+    }
     let title = validate_title(payload.title)?;
     let tags = validate_tags(payload.tags)?;
     let metadata = state
@@ -794,6 +826,9 @@ pub async fn library_metadata_patch_handler(
         .get(&id)
         .await
         .ok_or_else(|| AppError::not_found("Медиафайл не найден"))?;
+    if entry.kind == "output" {
+        authorize_output_access(&state, &id, &headers).await?;
+    }
     let title = match payload.title {
         TitlePatch::Missing => None,
         TitlePatch::Null => Some(None),
@@ -844,6 +879,9 @@ pub async fn library_delete_handler(
 ) -> AppResult<StatusCode> {
     authorize_source_access(&state, &id, &headers).await?;
     let entry = state.library.get(&id).await;
+    if entry.as_ref().is_some_and(|entry| entry.kind == "output") {
+        authorize_output_access(&state, &id, &headers).await?;
+    }
     if entry.as_ref().is_some_and(|entry| entry.kind == "source") {
         let references = state
             .db

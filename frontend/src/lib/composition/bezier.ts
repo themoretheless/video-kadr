@@ -68,3 +68,37 @@ export function bezierEndpointSlope(value: CompositionBezierInterpolation, befor
   if (d[0] === 0 && d[1] === 0) d = [1, 1]
   return d[0]! <= 0 ? 0 : d[1]! / d[0]!
 }
+
+/** A subinterval of a timing curve, with both coordinates renormalized. */
+export function sliceTimingBezier(curve: CompositionBezierInterpolation, from: number, to: number) {
+  if (curve.p1[0] === curve.p1[1] && curve.p2[0] === curve.p2[1]) {
+    return {from, to, ease: [0, 0, 1, 1] as const}
+  }
+  const parameter = (x: number) => {
+    if (x === 0 || x === 1) return x
+    let lo = 0, hi = 1
+    for (let i = 0; i < 52; i++) {
+      const t = (lo + hi) / 2
+      if (coordinate(curve, 0, t) < x) lo = t
+      else hi = t
+    }
+    return (lo + hi) / 2
+  }
+  const start = parameter(from), end = parameter(to)
+  const sliceAxis = (axis: 0 | 1) => {
+    const initial = coordinate(curve, axis, start)
+    const final = coordinate(curve, axis, end)
+    const [a, b, c] = coefficients(curve, axis)
+    const derivative = (t: number) => (3 * a * t + 2 * b) * t + c
+    const span = final - initial
+    return {
+      initial, final,
+      p1: derivative(start) * (end - start) / (3 * span),
+      p2: 1 - derivative(end) * (end - start) / (3 * span),
+    }
+  }
+  const x = sliceAxis(0), y = sliceAxis(1)
+  return {from: y.initial, to: y.final, ease: [
+    Math.max(0, Math.min(1, x.p1)), y.p1, Math.max(0, Math.min(1, x.p2)), y.p2,
+  ] as const}
+}

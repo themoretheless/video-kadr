@@ -445,3 +445,59 @@ async fn imports_creator_slots_without_opening_paths_or_changing_timeline_placem
     assert!(refused["project"].is_null());
     assert_eq!(refused["sourceDocument"], slots);
 }
+
+#[test]
+fn plans_video_cutout_rebuild_after_converting_timeline_and_source_ids() {
+    use video_kadr_backend::domain::concat_project_import::{import, prepare_video_import, ImportRequest};
+    let mut original = source();
+    original["timelines"][0]["clips"][0]["cutout"] = json!({
+        "mode":"custom","subject":"person","feather":0.02,
+        "strokes":[{"tool":"smartBrush","size":0.1,"points":[[0.5,0.5]],"at":0.3}]
+    });
+    let input = |preserve| {
+        let mut request = body(original.clone());
+        request["preserveMediaIds"] = json!(preserve);
+        serde_json::from_value::<ImportRequest>(request).unwrap()
+    };
+    assert_eq!(import(input(false)).unwrap().status, "needs_attention");
+    for (preserve, id) in [(true, "m1"), (false, "source")] {
+        let (report, masks) = prepare_video_import(input(preserve), &Default::default()).unwrap();
+        assert_eq!(report.status, "converted", "{:?}", report.diagnostics);
+        assert_eq!(report.source_document, original);
+        assert_eq!(masks.len(), 1);
+        let mask = &masks[0];
+        assert_eq!(mask.timeline_id, report.timeline_ids["TL1"]);
+        assert_eq!(mask.clip_id.as_str(), "clip");
+        assert_eq!(mask.source_id.as_str(), id);
+        assert_eq!(mask.settings.region_source_seconds, vec![0.3]);
+        assert_eq!(mask.settings.correction.strokes[0].points, vec![[0.5, 0.5]]);
+    }
+    original["timelines"][1]["unsupported"] = json!(true);
+    let (report, masks) = prepare_video_import(
+        serde_json::from_value(body(original.clone())).unwrap(), &Default::default(),
+    ).unwrap();
+    assert_eq!(report.source_document, original);
+    assert_eq!(report.status, "needs_attention");
+    assert!(masks.is_empty());
+}
+
+#[tokio::test]
+async fn preserves_authored_video_mute_when_the_creator_source_has_no_audio() {
+    let (state, _dir) = support::make_state(false, false).await;
+    let app = support::router(state);
+    for muted in [false, true] {
+        let mut input = source();
+        input["media"][0]["placeholder"] = json!(true);
+        input["timelines"][0]["clips"][0]["muted"] = json!(muted);
+        let mut payload = body(input);
+        payload["preserveMediaIds"] = json!(true);
+        let (_, report, _) = support::send(&app, request(payload)).await;
+        assert_eq!(report["status"], "converted", "{report}");
+        let project: video_kadr_backend::domain::nested_composition::NestedCompositionProject =
+            serde_json::from_value(report["project"].clone()).unwrap();
+        let exported = video_kadr_backend::domain::concat_project_export::export_with_paths(
+            &project, &std::collections::BTreeMap::from([("m1".into(), String::new())]),
+        ).unwrap();
+        assert_eq!(exported["timelines"][0]["clips"][0]["muted"], muted);
+    }
+}

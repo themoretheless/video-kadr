@@ -28,7 +28,8 @@ CREATE INDEX IF NOT EXISTS idx_job_requests_kind_created
     ON job_requests(kind, created_at DESC);
 CREATE TABLE IF NOT EXISTS nested_export_job_access (
     job_id TEXT PRIMARY KEY,
-    owner TEXT NOT NULL
+    owner TEXT NOT NULL,
+    download_name TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_nested_export_job_owner ON nested_export_job_access(owner, job_id);
 CREATE TABLE IF NOT EXISTS job_dedupe (
@@ -69,6 +70,15 @@ CREATE TABLE IF NOT EXISTS job_outbox (
     completed_at INTEGER,
     last_error TEXT
 );
+CREATE TABLE IF NOT EXISTS nested_export_priority (
+    job_id TEXT PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,
+    raised INTEGER NOT NULL CHECK (raised IN (0, 1))
+);
+CREATE TABLE IF NOT EXISTS nested_export_order (
+    job_id TEXT PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,
+    rank_time INTEGER NOT NULL,
+    rank_sequence INTEGER NOT NULL
+);
 CREATE INDEX IF NOT EXISTS idx_job_outbox_dispatch
     ON job_outbox(completed_at, available_at, lease_until);
 CREATE TABLE IF NOT EXISTS job_operator_actions (
@@ -101,6 +111,28 @@ pub struct SqliteJobStore {
     db: Db,
 }
 
+// Both listing and the claim statement use the same readiness and order.
+const DELIVERABLE_JOBS: &str = "SELECT o.job_id FROM job_outbox o \
+             JOIN jobs j ON j.id = o.job_id \
+             JOIN job_requests r ON r.job_id = o.job_id AND r.payload_json <> 'null' \
+             LEFT JOIN nested_export_priority p ON p.job_id = o.job_id \
+             LEFT JOIN nested_export_order q ON q.job_id = o.job_id \
+             WHERE j.status = 'pending' AND o.completed_at IS NULL AND o.available_at <= ?1 \
+               AND (o.lease_until IS NULL OR o.lease_until <= ?1) \
+               AND (?2 IS NULL OR r.kind = ?2) \
+             ORDER BY COALESCE(p.raised, 0) DESC, COALESCE(q.rank_time,o.available_at), COALESCE(q.rank_sequence,o.rowid)";
+
+const OWNER_EXPORT_QUEUE: &str = "SELECT o.job_id, COALESCE(p.raised,0), COALESCE(q.rank_time,o.available_at), \
+                    COALESCE(q.rank_sequence,o.rowid) FROM job_outbox o \
+             JOIN jobs j ON j.id=o.job_id AND j.status='pending' \
+             JOIN job_requests r ON r.job_id=o.job_id AND r.kind='nested_export' AND r.payload_json<>'null' \
+             LEFT JOIN nested_export_job_access a ON a.job_id=o.job_id \
+             LEFT JOIN nested_export_priority p ON p.job_id=o.job_id \
+             LEFT JOIN nested_export_order q ON q.job_id=o.job_id \
+             WHERE o.completed_at IS NULL AND o.available_at<=?1 AND (o.lease_until IS NULL OR o.lease_until<=?1) \
+               AND COALESCE(a.owner,json_extract(r.payload_json,'$.owner'))=?2 \
+             ORDER BY 2 DESC, 3, 4";
+
 impl SqliteJobStore {
     pub fn new(db: Db) -> Self {
         Self { db }
@@ -108,6 +140,13 @@ impl SqliteJobStore {
 
     pub async fn migrate(&self) -> Result<()> {
         sqlx::query(JOB_SCHEMA).execute(self.db.pool()).await?;
+        let mut tx = self.db.pool().begin_with("BEGIN IMMEDIATE").await?;
+        let columns = sqlx::query("PRAGMA table_info(nested_export_job_access)").fetch_all(&mut *tx).await?;
+        if !columns.iter().any(|row| row.get::<String, _>("name") == "download_name") {
+            sqlx::query("ALTER TABLE nested_export_job_access ADD COLUMN download_name TEXT")
+                .execute(&mut *tx).await?;
+        }
+        tx.commit().await?;
         quarantine::migrate(&self.db).await?;
         self.backfill_legacy_events().await?;
         Ok(())
@@ -252,9 +291,10 @@ impl SqliteJobStore {
         .await?;
         if kind == JobKind::NestedExport {
             if let Some(owner) = payload.get("owner").and_then(Value::as_str) {
-                sqlx::query("INSERT INTO nested_export_job_access (job_id, owner) VALUES (?, ?)")
+                sqlx::query("INSERT INTO nested_export_job_access (job_id, owner, download_name) VALUES (?, ?, ?)")
                     .bind(&job_id)
                     .bind(owner)
+                    .bind(payload.pointer("/request/downloadName").and_then(Value::as_str))
                     .execute(&mut *tx)
                     .await?;
             }
@@ -308,20 +348,23 @@ impl SqliteJobStore {
     pub async fn claim(&self, job_id: &str, lease_seconds: i64) -> Result<Option<JobEnvelope>> {
         let now = now_secs() as i64;
         let mut tx = self.db.pool().begin().await?;
-        let claimed = sqlx::query(
-            "UPDATE job_outbox SET lease_until = ?, delivery_count = delivery_count + 1 \
-             WHERE job_id = ? AND completed_at IS NULL AND available_at <= ? \
-               AND (lease_until IS NULL OR lease_until <= ?) \
+        let statement = format!(
+            "UPDATE job_outbox SET lease_until = ?3, delivery_count = delivery_count + 1 \
+             WHERE job_id = ?4 AND completed_at IS NULL AND available_at <= ?1 \
+               AND (lease_until IS NULL OR lease_until <= ?1) \
                AND EXISTS (SELECT 1 FROM jobs j \
                            WHERE j.id = job_outbox.job_id AND j.status = 'pending') \
                AND EXISTS (SELECT 1 FROM job_requests r \
                            WHERE r.job_id = job_outbox.job_id AND r.payload_json <> 'null') \
+               AND (NOT EXISTS (SELECT 1 FROM job_requests r WHERE r.job_id=job_outbox.job_id AND r.kind=?2) \
+                    OR job_id = ({DELIVERABLE_JOBS} LIMIT 1)) \
              RETURNING delivery_count",
-        )
+        );
+        let claimed = sqlx::query(&statement)
+        .bind(now)
+        .bind(JobKind::NestedExport.as_str())
         .bind(now.saturating_add(lease_seconds.max(1)))
         .bind(job_id)
-        .bind(now)
-        .bind(now)
         .fetch_optional(&mut *tx)
         .await?;
         let Some(row) = claimed else {
@@ -376,18 +419,91 @@ impl SqliteJobStore {
         Ok(result.rows_affected() == 1)
     }
 
+    pub(crate) async fn is_nested_export(&self, job_id: &str) -> Result<bool> {
+        Ok(self.nested_export_uses_video(job_id).await?.is_some())
+    }
+
+    pub(crate) async fn nested_export_uses_video(&self, job_id: &str) -> Result<Option<bool>> {
+        Ok(sqlx::query_scalar(
+            "SELECT COALESCE(json_extract(payload_json, '$.request.mode'), 'video_only') != 'audio_only'
+             FROM job_requests WHERE job_id = ? AND kind = 'nested_export'",
+        ).bind(job_id).fetch_optional(self.db.pool()).await?)
+    }
+
+    pub(crate) async fn set_nested_export_priority(
+        &self,
+        job_id: &str,
+        actor: &str,
+        raised: bool,
+    ) -> Result<bool> {
+        let now = now_secs() as i64;
+        let result = sqlx::query(
+            "INSERT INTO nested_export_priority (job_id, raised) \
+             SELECT o.job_id, ? FROM job_outbox o \
+             JOIN jobs j ON j.id=o.job_id AND j.status='pending' \
+             JOIN job_requests r ON r.job_id=o.job_id AND r.kind='nested_export' AND r.payload_json<>'null' \
+             LEFT JOIN nested_export_job_access a ON a.job_id=o.job_id \
+             WHERE o.job_id=? AND o.completed_at IS NULL AND (o.lease_until IS NULL OR o.lease_until<=?) \
+               AND COALESCE(a.owner, json_extract(r.payload_json, '$.owner'))=? \
+             ON CONFLICT(job_id) DO UPDATE SET raised=excluded.raised",
+        ).bind(raised).bind(job_id).bind(now).bind(actor).execute(self.db.pool()).await?;
+        Ok(result.rows_affected() == 1)
+    }
+
+    pub(crate) async fn nested_export_queue(&self, actor: &str) -> Result<Vec<(String, bool)>> {
+        let rows: Vec<(String, bool, i64, i64)> = sqlx::query_as(OWNER_EXPORT_QUEUE)
+            .bind(now_secs() as i64)
+            .bind(actor)
+            .fetch_all(self.db.pool())
+            .await?;
+        Ok(rows.into_iter().map(|(id, raised, _, _)| (id, raised)).collect())
+    }
+
+    pub(crate) async fn move_nested_export(
+        &self,
+        job_id: &str,
+        actor: &str,
+        earlier: bool,
+    ) -> Result<bool> {
+        let now = now_secs() as i64;
+        let mut tx = self.db.pool().begin_with("BEGIN IMMEDIATE").await?;
+        let rows: Vec<(String, bool, i64, i64)> = sqlx::query_as(
+            OWNER_EXPORT_QUEUE,
+        ).bind(now).bind(actor).fetch_all(&mut *tx).await?;
+        let Some(index) = rows.iter().position(|row| row.0 == job_id) else {
+            tx.rollback().await?;
+            return Ok(false);
+        };
+        let next = if earlier { index.checked_sub(1) } else { index.checked_add(1) };
+        let current = &rows[index];
+        let Some(neighbor) = next.and_then(|index| rows.get(index)).filter(|row| row.1 == current.1) else {
+            tx.rollback().await?;
+            return Ok(false);
+        };
+        for (id, other) in [(&current.0, neighbor), (&neighbor.0, current)] {
+            sqlx::query(
+                "INSERT INTO nested_export_order (job_id,rank_time,rank_sequence) VALUES (?,?,?) \
+                 ON CONFLICT(job_id) DO UPDATE SET rank_time=excluded.rank_time,rank_sequence=excluded.rank_sequence",
+            ).bind(id).bind(other.2).bind(other.3).execute(&mut *tx).await?;
+        }
+        tx.commit().await?;
+        Ok(true)
+    }
+
+    /// Insertion order breaks ties when several outbox entries become ready
+    /// in the same second. A job ID does not represent enqueue order.
     pub async fn deliverable_ids(&self) -> Result<Vec<String>> {
+        self.deliverable_ids_for_kind(None).await
+    }
+
+    pub(crate) async fn deliverable_ids_for_kind(&self, kind: Option<JobKind>) -> Result<Vec<String>> {
+        let kind = kind.map(JobKind::as_str);
         let now = now_secs() as i64;
         let rows = sqlx::query(
-            "SELECT o.job_id FROM job_outbox o \
-             JOIN jobs j ON j.id = o.job_id \
-             JOIN job_requests r ON r.job_id = o.job_id AND r.payload_json <> 'null' \
-             WHERE j.status = 'pending' AND o.completed_at IS NULL AND o.available_at <= ? \
-               AND (o.lease_until IS NULL OR o.lease_until <= ?) \
-             ORDER BY o.available_at, o.job_id",
+            DELIVERABLE_JOBS,
         )
         .bind(now)
-        .bind(now)
+        .bind(kind)
         .fetch_all(self.db.pool())
         .await?;
         rows.into_iter()
@@ -1594,6 +1710,77 @@ mod tests {
         assert_eq!(db.load_jobs().await.unwrap()[0].status, JobStatus::Pending);
         assert_eq!(store.deliverable_ids().await.unwrap(), vec!["job"]);
         assert_eq!(store.lifecycle_counts().await.unwrap().queued, 1);
+    }
+
+    #[tokio::test]
+    async fn deliverable_jobs_keep_enqueue_order_when_availability_ties() {
+        let (store, db, _dir) = store().await;
+        for id in ["z-first", "a-second", "m-third", "deferred"] {
+            store
+                .enqueue(
+                    id.into(),
+                    JobKind::NestedExport,
+                    &json!({}),
+                    &format!("dedupe-{id}"),
+                    QueueLimits::default(),
+                )
+                .await
+                .unwrap();
+        }
+        sqlx::query("UPDATE job_outbox SET available_at = CASE WHEN job_id = 'deferred' THEN ? ELSE 0 END")
+            .bind(now_secs() as i64 + 3600)
+            .execute(db.pool())
+            .await
+            .unwrap();
+        assert_eq!(
+            store.deliverable_ids().await.unwrap(),
+            vec!["z-first", "a-second", "m-third"]
+        );
+    }
+
+    #[tokio::test]
+    async fn claim_rechecks_export_priority_after_listing() {
+        let (store, db, _dir) = store().await;
+        for id in ["first", "raised", "later"] {
+            store.enqueue(
+                id.into(),
+                JobKind::NestedExport,
+                &json!({"owner":"owner"}),
+                &format!("dedupe-{id}"),
+                QueueLimits::default(),
+            ).await.unwrap();
+        }
+        sqlx::query("UPDATE job_outbox SET available_at=0").execute(db.pool()).await.unwrap();
+        let old_order = store.deliverable_ids().await.unwrap();
+        assert_eq!(old_order, vec!["first", "raised", "later"]);
+        assert!(store.set_nested_export_priority("raised", "owner", true).await.unwrap());
+        assert!(store.claim(&old_order[0], 60).await.unwrap().is_none());
+        assert_eq!(store.claim("raised", 60).await.unwrap().unwrap().attempt, 1);
+        assert_eq!(store.claim("first", 60).await.unwrap().unwrap().attempt, 1);
+        assert_eq!(store.claim("later", 60).await.unwrap().unwrap().attempt, 1);
+    }
+
+    #[tokio::test]
+    async fn moving_an_export_swaps_owned_ready_jobs_in_the_same_priority() {
+        let (store, db, _dir) = store().await;
+        for (id, actor) in [("first", "owner"), ("other", "outsider"), ("second", "owner"), ("delayed", "owner")] {
+            store.enqueue(
+                id.into(), JobKind::NestedExport, &json!({"owner":actor}),
+                &format!("dedupe-{id}"), QueueLimits::default(),
+            ).await.unwrap();
+        }
+        sqlx::query("UPDATE job_outbox SET available_at=CASE WHEN job_id='delayed' THEN ? ELSE 0 END")
+            .bind(now_secs() as i64 + 3600).execute(db.pool()).await.unwrap();
+        assert!(!store.move_nested_export("second", "outsider", true).await.unwrap());
+        assert!(!store.move_nested_export("delayed", "owner", true).await.unwrap());
+        assert!(store.move_nested_export("second", "owner", true).await.unwrap());
+        assert_eq!(store.deliverable_ids().await.unwrap(), vec!["second", "other", "first"]);
+        assert!(store.move_nested_export("second", "owner", false).await.unwrap());
+        assert_eq!(store.deliverable_ids().await.unwrap(), vec!["first", "other", "second"]);
+        assert!(store.set_nested_export_priority("second", "owner", true).await.unwrap());
+        assert!(!store.move_nested_export("second", "owner", false).await.unwrap());
+        assert!(store.claim("second", 60).await.unwrap().is_some());
+        assert!(!store.move_nested_export("second", "owner", true).await.unwrap());
     }
 
     #[tokio::test]

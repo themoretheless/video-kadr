@@ -118,6 +118,7 @@ pub fn build_router_with_mcp(
         .route("/composition-projects/:id/concat-video-cutout/smart-region/operations/:operation/cancel", post(handlers::concat_video_operation::cancel).layer(DefaultBodyLimit::max(1024)))
         .route("/composition-projects/:id/concat-video-cutout/smart-region/attach", post(handlers::concat_video_smart::attach).layer(DefaultBodyLimit::max(16 * 1024)))
         .route("/composition-projects/:id/concat-video-cutout/smart-region", post(handlers::concat_video_smart::start).layer(DefaultBodyLimit::max(handlers::concat_video_smart::MAX_START_BODY_BYTES)))
+        .route("/composition-projects/:id/concat-video-cutout/replace-source", post(handlers::concat_video_replace::handler).layer(DefaultBodyLimit::max(16 * 1024)))
         .route("/composition-projects/:id/concat-video-cutout/binding", post(handlers::concat_video_binding::handler).layer(DefaultBodyLimit::max(handlers::concat_video_binding::MAX_BODY_BYTES)))
         .route("/composition-projects/:id/concat-video-cutout/preview", post(handlers::concat_video_preview::handler).layer(DefaultBodyLimit::max(handlers::concat_video_binding::MAX_BODY_BYTES)))
         .route("/composition-projects/:id/concat-video-cutout/cancel", post(handlers::concat_video_cancel::handler).layer(DefaultBodyLimit::max(16 * 1024)))
@@ -126,6 +127,15 @@ pub fn build_router_with_mcp(
         .route("/compositions/concat-project/fill-registered-slot", post(handlers::concat_registered_media::fill_handler).layer(DefaultBodyLimit::max(5*1024*1024)))
         .route("/compositions/concat-project/media-slots", post(handlers::concat_project_import::media_slot_handler).layer(DefaultBodyLimit::max(5*1024*1024)))
         .route("/compositions/concat-project/export", post(handlers::concat_project_import::export_handler).layer(DefaultBodyLimit::max(32*1024*1024)))
+        .route(
+            "/compositions/concat-project/import-rebuild",
+            post(handlers::concat_mask_import_handler).layer(DefaultBodyLimit::max(
+                4 * 1024 * 1024
+                    + crate::domain::concat_project_fonts::MAX_FONT_JSON_BYTES
+                    + crate::domain::metadata_burnin::MAX_SUBTITLE_DOCUMENT_JSON_BYTES
+                    + 1024 * 1024,
+            )),
+        )
         .route("/compositions/concat-project/import-ready", post(handlers::concat_project_import_ready::handler).layer(DefaultBodyLimit::max(4 * 1024 * 1024 + crate::domain::concat_project_fonts::MAX_FONT_JSON_BYTES + 1024*1024)))
         .route("/compositions/concat-project/import", post(handlers::concat_project_import::import_handler).layer(DefaultBodyLimit::max(4 * 1024 * 1024 + crate::domain::concat_project_fonts::MAX_FONT_JSON_BYTES + 1024*1024)))
         .route("/compositions/concat-effects/upgrade", post(handlers::concat_effect_upgrade::upgrade_handler).layer(DefaultBodyLimit::max(512 * 1024)))
@@ -500,6 +510,18 @@ pub fn build_router_with_mcp(
             post(handlers::nested_export::nested_export_handler).layer(DefaultBodyLimit::max(
                 db::MAX_EXTENDED_COMPOSITION_PROJECT_DOCUMENT_BYTES + 64 * 1024,
             )).get(handlers::nested_export::list),
+        )
+        .route(
+            "/compositions/nested-export/cursor-timecode",
+            post(handlers::nested_export::cursor_timecode).layer(DefaultBodyLimit::max(1024)),
+        )
+        .route(
+            "/compositions/nested-export/:id/priority",
+            post(handlers::nested_export::set_priority).layer(DefaultBodyLimit::max(1024)),
+        )
+        .route(
+            "/compositions/nested-export/:id/move",
+            post(handlers::nested_export::move_export).layer(DefaultBodyLimit::max(1024)),
         )
         .route(
             "/compositions/scopes-rgba",
@@ -977,8 +999,20 @@ pub fn build_router_with_mcp(
             get(handlers::composition_project_template_export_handler).post(handlers::composition_project_template_save_handler),
         )
         .route(
+            "/composition-projects/:id/template-cover",
+            post(handlers::composition_project_template_cover_handler)
+                .layer(DefaultBodyLimit::max(crate::template_bundle::MAX_POSTER_BYTES + 64 * 1024)),
+        )
+        .route(
+            "/composition-projects/concat-template-cover",
+            post(handlers::normalize_concat_template_cover_handler)
+                .layer(DefaultBodyLimit::max(crate::template_bundle::MAX_CONCAT_POSTER_BYTES + 64 * 1024)),
+        )
+        .route(
             "/composition-projects/:id/concat-template",
-            get(handlers::composition_project_concat_template_export_handler),
+            get(handlers::composition_project_concat_template_export_handler)
+                .post(handlers::composition_project_concat_template_cover_handler)
+                .layer(DefaultBodyLimit::max(crate::template_bundle::MAX_POSTER_BYTES + 64 * 1024)),
         )
         .route(
             "/composition-projects/:id/archive",

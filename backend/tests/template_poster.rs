@@ -23,10 +23,19 @@ fn png(width: u32, height: u32) -> Vec<u8> {
     out.into_inner()
 }
 fn package(poster: &[u8]) -> Vec<u8> {
+    use base64::{engine::general_purpose::STANDARD, Engine};
+
+    // A template poster supersedes a different cover on its source project.
+    let mut project = project();
+    let mut jpeg = Cursor::new(Vec::new());
+    image::DynamicImage::ImageRgb8(image::RgbImage::from_pixel(16, 8, image::Rgb([120, 90, 70])))
+        .write_to(&mut jpeg, image::ImageFormat::Jpeg)
+        .unwrap();
+    project.cover_jpeg = Some(STANDARD.encode(jpeg.into_inner()));
     template_bundle::write_with_poster(
         Cursor::new(Vec::new()),
         "Poster design",
-        &project(),
+        &project,
         &[],
         Some(poster),
     )
@@ -116,7 +125,7 @@ async fn private_poster_is_persisted_and_served_only_to_its_owner_without_changi
             Request::post("/api/template-library")
                 .header(header::AUTHORIZATION, format!("Bearer {}", owner.token))
                 .header(header::CONTENT_TYPE, "multipart/form-data; boundary=POSTER")
-                .body(Body::from(multipart))
+                .body(Body::from(multipart.clone()))
                 .unwrap(),
         )
         .await
@@ -171,6 +180,36 @@ async fn private_poster_is_persisted_and_served_only_to_its_owner_without_changi
             .as_ref(),
         poster.as_slice()
     );
+    use base64::{engine::general_purpose::STANDARD, Engine};
+    let mut created_ids = Vec::new();
+    for (uri, body) in [
+        (format!("/api/template-library/{id}/create?fills=%5B%5D"), Body::empty()),
+        ("/api/composition-projects/template-import?fills=%5B%5D".into(), Body::from(multipart)),
+    ] {
+        let response = reopened
+            .clone()
+            .oneshot(Request::post(uri)
+                .header(header::AUTHORIZATION, format!("Bearer {}", owner.token))
+                .header(header::CONTENT_TYPE, "multipart/form-data; boundary=POSTER")
+                .body(body)
+                .unwrap())
+            .await.unwrap();
+        assert_eq!(response.status(), StatusCode::CREATED);
+        let created: Value = serde_json::from_slice(&to_bytes(response.into_body(), 1 << 20).await.unwrap()).unwrap();
+        let created_id = created["project"]["id"].as_str().unwrap();
+        let saved = state.db.get_composition_project_for(created_id, &owner.user.username)
+            .await.unwrap().unwrap();
+        let cover = saved.document["coverJpeg"].as_str().unwrap();
+        assert_eq!(Some(cover), created["project"]["document"]["coverJpeg"].as_str());
+        let jpeg = STANDARD.decode(cover).unwrap();
+        let image = image::load_from_memory_with_format(&jpeg, image::ImageFormat::Jpeg).unwrap().to_rgb8();
+        assert_eq!(image.dimensions(), (320, 180));
+        for (actual, expected) in image.get_pixel(160, 90).0.into_iter().zip([11, 25, 67]) {
+            assert!(actual.abs_diff(expected) <= 3);
+        }
+        created_ids.push(created_id.to_owned());
+    }
+    assert_ne!(created_ids[0], created_ids[1]);
     let response = reopened
         .oneshot(request(&owner.token, format!("/api/template-library/{id}")))
         .await

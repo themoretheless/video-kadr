@@ -892,3 +892,18 @@ mod packet_delivery_tests {
 #[cfg(test)]
 #[path = "packet_clip_context_tests.rs"]
 mod packet_context_tests;
+
+/// Output conversion for the native stereo 48 kHz mix.
+pub(crate) fn output_audio_filter(channels: u16, sample_rate: u32, frames_in: u64) -> Option<String> {
+    let mut filters = Vec::new();
+    if channels == 1 {
+        filters.push("pan=mono|c0=0.5*c0+0.5*c1".to_owned());
+    }
+    if sample_rate != 48_000 {
+        let frames = (u128::from(frames_in) * u128::from(sample_rate)).div_ceil(48_000);
+        // Supply the resampler's tail for even a one-sample cut, then trim
+        // to the exact number of output samples covering the mixed interval.
+        filters.push(format!("apad=pad_len=128,aresample={sample_rate},atrim=end_sample={frames}"));
+    }
+    (!filters.is_empty()).then(|| filters.join(","))
+}

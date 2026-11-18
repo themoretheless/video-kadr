@@ -26,13 +26,13 @@ pub async fn start(State(state):State<AppState>,Path(project):Path<String>,heade
   let clip=composition.tracks.iter().find_map(|t|match t{CompositionTrack::Video{locked:false,clips,..}=>clips.iter().find(|c|c.id==id&&c.enabled),_=>None}).ok_or_else(||AppError::bad_request("Нужно незаблокированное видео"))?;
   let physical=super::concat_cutout_access::library_id(&saved.document,clip.source_id.as_str()).map_err(|e|AppError::conflict(e.to_string()))?;
   if !saved.source_ids.iter().any(|id|id==&physical){return Err(AppError::forbidden("Исходник не принадлежит проекту"))}
-  let source_us=crate::domain::video_clock::source_tick(&clip.placement,clip.playback_mode,request.time_us).map_err(|e|AppError::bad_request(e.to_string()))?.ok_or_else(||AppError::bad_request("Кадр вне клипа"))?;
+  let source_us=crate::domain::video_clock::presented_source_tick(&clip.placement,clip.playback_mode,request.time_us,composition.sources[&clip.source_id].duration_ticks).map_err(|e|AppError::bad_request(e.to_string()))?.ok_or_else(||AppError::bad_request("Кадр вне клипа"))?;
   // Source authorization can relocate legacy files into private Space storage.
   // Complete that move before concurrent seed probes or receipt authorization.
   super::library::authorize_source_access(&state,&physical,&headers).await?;
   let source_id=clip.source_id.as_str().to_owned();let path=super::concat_cutout_access::source_for_document(&state,&actor,&saved.document,&source_id).await.map_err(|e|AppError::forbidden(e.to_string()))?;
   let before=crate::project_archive::fingerprint_file_with_limit(&path,64*1024*1024*1024).await.map_err(|e|AppError::conflict(e.to_string()))?;
-  let seed=crate::services::concat_video_sam_seed::resolve(&state.process_runtime,&path,source_us,&cancel).await.map_err(|e|AppError::bad_request(e.to_string()))?;
+  let seed=crate::services::concat_video_sam_seed::resolve_held(&state.process_runtime,&path,source_us,&cancel).await.map_err(|e|AppError::bad_request(e.to_string()))?;
   super::cutout_assets::authorize(&state,&project,&actor).await?;
   let current=state.db.get_composition_project_for(&project,&actor).await.map_err(|e|AppError::internal("recheck smart video target",e))?.ok_or_else(||AppError::conflict("Проект недоступен"))?;
   if current.revision!=saved.revision||current.document!=saved.document||cancel.is_cancelled()||crate::project_archive::fingerprint_file_with_limit(&path,64*1024*1024*1024).await.map_err(|e|AppError::conflict(e.to_string()))?!=before{return Err(AppError::conflict("Исходник или проект изменился"))}
@@ -67,11 +67,14 @@ pub async fn attach(State(state):State<AppState>,Path(project):Path<String>,head
   ensure!(!composition.metadata.as_ref().is_some_and(|m|m.media_versions.contains_key(&id)),"clip contains another processed version");
   let clip=composition.tracks.iter_mut().find_map(|t|match t{CompositionTrack::Video{locked:false,clips,..}=>clips.iter_mut().find(|c|c.id==id&&c.enabled),_=>None}).ok_or_else(||anyhow::anyhow!("unlocked video required"))?;
   let source_id=clip.source_id.clone();let physical=super::concat_cutout_access::library_id(&saved.document,source_id.as_str())?;ensure!(saved.source_ids.iter().any(|s|s==&physical),"unrelated clip source");
-  let source_us=crate::domain::video_clock::source_tick(&clip.placement,clip.playback_mode,request.time_us)?.ok_or_else(||anyhow::anyhow!("cursor outside clip"))?;
+  let source_us=crate::domain::video_clock::presented_source_tick(&clip.placement,clip.playback_mode,request.time_us,composition.sources[&clip.source_id].duration_ticks)?.ok_or_else(||anyhow::anyhow!("cursor outside clip"))?;
   let binding=clip.concat_cutout.as_mut().ok_or_else(||anyhow::anyhow!("enable automatic video cutout before attaching a smart region"))?;
   let cache=super::concat_video_cache::restore_for_model(&state,&actor,&project,source_id.as_str(),saved.revision,&binding.runtime_hash,&binding.model_hash,&cancel).await?.ok_or_else(||anyhow::anyhow!("automatic video cache missing"))?;ensure!(cache.video_hash()==binding.source_hash,"automatic source changed");
   let(movie,_)=super::sam_jobs::checked_video(&state,&request.job_id,&headers).await.map_err(|_|anyhow::anyhow!("SAM video job unavailable"))?;
   let recipe=super::sam_jobs::points(State(state.clone()),Path(request.job_id.clone()),headers.clone()).await.map_err(|_|anyhow::anyhow!("SAM points unavailable"))?.0;
+  let source_us = source_us.min(crate::domain::video_region::last_frame_time_us(
+   movie.frames, movie.frame_rate, movie.frame_times_us.as_deref(),
+  )?);
   let seed=crate::domain::video_region::frame_ordinal(source_us,movie.frames,movie.frame_rate,movie.frame_times_us.as_deref())?;
   ensure!(movie.source_hash==binding.source_hash&&recipe["sourceId"].as_str()==Some(physical.as_str())&&seed==movie.seed_frame,"SAM job source/seed does not match clip cursor");
   let mut correction=binding.settings();let stroke=crate::domain::cutout::Stroke{tool:request.tool,size:request.size,points:serde_json::from_value(recipe["points"].clone())?,at:Some(source_us as f64/1_000_000.),region:None};let index=correction.strokes.len();correction.strokes.push(stroke);correction.custom=true;correction.validate()?;

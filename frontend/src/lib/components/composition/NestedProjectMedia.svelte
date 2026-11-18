@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { nestedComposition, nestedHistory, setNestedMediaPlaceholder, removeNestedMedia, fillNestedMedia, fillAllNestedMedia } from '$lib/state/nestedComposition.svelte'
+  import { SvelteSet } from 'svelte/reactivity'
+  import { nestedComposition, nestedHistory, setNestedMediaPlaceholder, removeNestedMedia, fillNestedMedia, fillAllNestedMedia, replaceNestedSavedMaskedVideo } from '$lib/state/nestedComposition.svelte'
   import {inspectNativeTemplate,type NativeTemplateInfo} from '$lib/api'
   import type { ConcatImportSource } from '$lib/composition/concatProjectImport'
   let { disabled = false, token = null, sources = [] }: { disabled?: boolean; token?: string|null; sources?:readonly ConcatImportSource[] } = $props()
@@ -8,6 +9,26 @@
   let templateInfo=$state<NativeTemplateInfo|null>(null)
   let templateError=$state('')
   let epoch=0
+  let replacementRequest: AbortController | undefined
+  let replacing = $state(false)
+  $effect(() => {
+    void token
+    return () => replacementRequest?.abort()
+  })
+  async function replaceMasked(id: string) {
+    const source = choices[id]
+    if (!token || !source || disabled || nestedHistory.busy) return
+    const request = new AbortController()
+    replacementRequest = request
+    replacing = true
+    try {
+      if (await replaceNestedSavedMaskedVideo(id, source, token, request.signal)) {
+        choices = { ...choices, [id]: '' }
+      }
+    } finally {
+      replacing = false
+    }
+  }
   $effect(()=>{void token;void sources;return()=>{epoch++}})
   async function fill(id:string){
     const replacement=choices[id],auth=token,serial=epoch
@@ -21,6 +42,17 @@
     await fillAllNestedMedia(fills,auth,()=>{if(serial!==epoch||auth!==token)throw new Error('Контекст заполнения слотов изменился')})
   }
   const project = $derived(nestedComposition.document)
+  const maskedSources = $derived.by(() => {
+    const ids = new SvelteSet<string>()
+    for (const node of Object.values(project?.compositions ?? {})) {
+      for (const track of node.content.tracks) {
+        if (track.kind === 'video') {
+          for (const clip of track.clips) if (clip.concatCutout) ids.add(clip.sourceId)
+        }
+      }
+    }
+    return ids
+  })
   $effect(()=>{
     const current=project,active=nestedComposition.activeCompositionId??current?.root
     templateInfo=null;templateError=''
@@ -45,6 +77,7 @@
 {#if project}
   <details ontoggle={event=>{expanded=event.currentTarget.open}}>
     <summary>Медиа проекта и слоты шаблона</summary>
+    {#if replacing}<p role="status">Пересчитываю видеомаску…</p>{/if}
     {#if templateError}<p role="alert">{templateError}</p>{/if}
     {#if items.some(item=>item.placeholder)}
       <button disabled={disabled||nestedHistory.busy||!token||items.some(item=>item.placeholder&&!choices[item.id])} onclick={()=>{void fillAll()}}>Заполнить все слоты шаблона</button>
@@ -60,6 +93,20 @@
         {#if slot}<p>Тип: {slot.kind==='video'?'Видео':slot.kind==='audio'?'Аудио':'Изображение'} · Длительность на активном таймлайне: {slot.seconds.toLocaleString('ru-RU',{maximumFractionDigits:3})} с</p>{/if}
         <label>Новый файл <select aria-label={`Замена медиа слота ${item.name}`} value={choices[item.id]??''} disabled={disabled||nestedHistory.busy||!token} onchange={event=>{choices={...choices,[item.id]:event.currentTarget.value}}}><option value="">Выберите файл из библиотеки</option>{#each sources as entry(entry.source.id)}<option value={entry.source.id}>{entry.label}</option>{/each}</select></label>
         <button disabled={disabled||nestedHistory.busy||!token||!choices[item.id]} aria-label={`Заполнить слот проекта: ${item.name}`} onclick={()=>{void fill(item.id)}}>Заполнить слот на всех таймлайнах</button>
+      {:else if maskedSources.has(item.id) && nestedComposition.projectId && token}
+        <label>Новое видео для {item.name}
+          <select aria-label={`Замена видео с маской: ${item.name}`} value={choices[item.id] ?? ''}
+            disabled={disabled || nestedHistory.busy}
+            onchange={event => { choices = { ...choices, [item.id]: event.currentTarget.value } }}>
+            <option value="">Выберите видео из библиотеки</option>
+            {#each sources.filter(entry => entry.source.kind === 'video' &&
+              entry.source.id !== (project.projectMedia?.[item.id]?.librarySourceId ?? item.id)) as entry (entry.source.id)}
+              <option value={entry.source.id}>{entry.label}</option>
+            {/each}
+          </select>
+        </label>
+        <button disabled={disabled || nestedHistory.busy || !choices[item.id]}
+          onclick={() => void replaceMasked(item.id)}>Заменить видео и пересчитать маску</button>
       {/if}
       <button disabled={disabled || nestedHistory.busy} aria-label={`Удалить медиа и все его клипы: ${item.name}`} onclick={() => { void removeNestedMedia(item.id) }}>Удалить медиа и его клипы</button>
     {:else}<p>В проекте пока нет медиа.</p>{/each}

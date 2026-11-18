@@ -100,6 +100,22 @@ async fn main() -> anyhow::Result<()> {
     // Reconcile durable jobs and rebuild derived state before workers can add
     // new media; incremental indexing owns every change after this boundary.
     video_kadr_backend::services::concat_freeze_publish::recover_at_startup(&state).await?;
+    let cache_cleanup_state = state.clone();
+    let cache_cleanup_shutdown = state.shutdown_token();
+    state.spawn_task(async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(5 * 60));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            tokio::select! {
+                _ = cache_cleanup_shutdown.cancelled() => break,
+                _ = interval.tick() => {
+                    if let Err(error) = video_kadr_backend::services::concat_video_analysis::cleanup_retired_caches(&cache_cleanup_state).await {
+                        tracing::warn!(%error, "could not clean retired video caches");
+                    }
+                }
+            }
+        }
+    });
     state.recover_jobs().await;
     state.sync_media_search().await;
     state.cleanup_thumbnail_cache().await;

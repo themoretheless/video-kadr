@@ -282,3 +282,82 @@ async fn private_library_survives_reopen_creates_without_reupload_and_rolls_back
         StatusCode::NOT_FOUND
     );
 }
+
+#[tokio::test]
+async fn space_catalogue_shares_packages_and_checks_current_membership() {
+    let (state, _dir) = support::make_state(false, false).await;
+    let register = |name| state.db.register_auth_user(name, "template library password");
+    let owner = register("catalogue-owner").await.unwrap().unwrap();
+    let editor = register("catalogue-editor").await.unwrap().unwrap();
+    let viewer = register("catalogue-viewer").await.unwrap().unwrap();
+    let outsider = register("catalogue-outsider").await.unwrap().unwrap();
+    let space = state.db.create_space(&owner.user.username, "Designs").await.unwrap();
+    for (actor, role) in [
+        (&editor, video_kadr_backend::db::SpaceRole::Editor),
+        (&viewer, video_kadr_backend::db::SpaceRole::Viewer),
+    ] {
+        state.db.set_space_member(&space.id, &owner.user.username, &actor.user.username, role)
+            .await.unwrap().unwrap();
+    }
+    let project: NestedCompositionProject = serde_json::from_value(json!({
+        "schemaVersion":1,"root":"root","compositions":{
+            "root":{"content":Composition::new(CanvasSpec::default()),"instances":[]}
+        }
+    })).unwrap();
+    let package = template_bundle::write(Cursor::new(Vec::new()), "Design", &project, &[])
+        .unwrap().into_inner();
+    let scoped = |mut request: Request<Body>| {
+        request.headers_mut().insert("x-space-id", space.id.parse().unwrap());
+        request
+    };
+    let app = support::router(state.clone());
+    let personal = app.clone().oneshot(upload(&package, &owner.token)).await.unwrap();
+    assert_eq!(personal.status(), StatusCode::CREATED);
+    let personal = json_body(personal).await;
+    let denied = app.clone().oneshot(scoped(upload(&package, &viewer.token))).await.unwrap();
+    assert_eq!(denied.status(), StatusCode::FORBIDDEN);
+    let shared = app.clone().oneshot(scoped(upload(&package, &owner.token))).await.unwrap();
+    assert_eq!(shared.status(), StatusCode::CREATED);
+    let shared = json_body(shared).await;
+    let path = format!("/api/template-library/{}", shared["id"].as_str().unwrap());
+
+    let list = app.clone().oneshot(scoped(req("GET", "/api/template-library", &viewer.token))).await.unwrap();
+    assert_eq!(list.status(), StatusCode::OK);
+    let list = json_body(list).await;
+    assert_eq!(list.as_array().unwrap().len(), 1);
+    assert_eq!(list[0]["id"], shared["id"]);
+    assert_eq!(list[0]["canManage"], false);
+    assert_eq!(list[0]["spaceId"], space.id);
+    let private = app.clone().oneshot(req("GET", "/api/template-library", &owner.token)).await.unwrap();
+    assert_eq!(json_body(private).await, json!([personal]));
+    let denied = app.clone().oneshot(req("GET", &path, &outsider.token)).await.unwrap();
+    assert_eq!(denied.status(), StatusCode::NOT_FOUND);
+
+    let download = app.clone().oneshot(req("GET", &path, &viewer.token)).await.unwrap();
+    assert_eq!(download.status(), StatusCode::OK);
+    assert_eq!(to_bytes(download.into_body(), 1 << 20).await.unwrap().as_ref(), package);
+    let create = format!("{path}/create?fills=%5B%5D");
+    let denied = app.clone().oneshot(req("POST", &create, &viewer.token)).await.unwrap();
+    assert_eq!(denied.status(), StatusCode::FORBIDDEN);
+    let denied = app.clone().oneshot(req("DELETE", &path, &viewer.token)).await.unwrap();
+    assert_eq!(denied.status(), StatusCode::FORBIDDEN);
+    let created = app.clone().oneshot(req("POST", &create, &editor.token)).await.unwrap();
+    let status = created.status();
+    let created = json_body(created).await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    let created = state.db.get_composition_project_for(
+        created["project"]["id"].as_str().unwrap(), &viewer.user.username,
+    ).await.unwrap().unwrap();
+    assert_eq!(created.space_id.as_deref(), Some(space.id.as_str()));
+
+    assert_eq!(
+        state.db.remove_space_member(&space.id, &owner.user.username, &viewer.user.username)
+            .await.unwrap(),
+        Some(true),
+    );
+    let denied = app.clone().oneshot(req("GET", &path, &viewer.token)).await.unwrap();
+    assert_eq!(denied.status(), StatusCode::NOT_FOUND);
+
+    let deleted = app.oneshot(req("DELETE", &path, &editor.token)).await.unwrap();
+    assert_eq!(deleted.status(), StatusCode::NO_CONTENT);
+}

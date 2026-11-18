@@ -1,12 +1,18 @@
 <script lang="ts">
  import {inspectNativeTemplatePackage,importNativeTemplate,type NativeTemplatePackageInfo,type NativeTemplateImportResponse} from '$lib/api'
+ import {doUpload} from '$lib/state/store.svelte'
+ import {compositionSourceFromMediaInfo} from '$lib/state/composition/media.svelte'
  import type {ConcatImportSource} from '$lib/composition/concatProjectImport'
  let {token,spaceId,context,disabled=false,sources=[],oncreated}:{token:string|null;spaceId?:string;context:unknown;disabled?:boolean;sources?:readonly ConcatImportSource[];oncreated:(result:NativeTemplateImportResponse,guard:()=>void)=>Promise<void>}=$props()
  let file=$state<File|null>(null),info=$state<NativeTemplatePackageInfo|null>(null),choices=$state<Record<string,string>>({}),busy=$state(false),error=$state(''),message=$state(''),progress=$state('')
  let projectName = $state('')
+ let uploadedSources = $state<ConcatImportSource[]>([])
+ const availableSources = $derived([
+  ...sources, ...uploadedSources.filter(entry => !sources.some(item => item.source.id === entry.source.id)),
+ ])
  let epoch=0,controller:AbortController|undefined
- $effect(()=>{void token;void spaceId;void context;epoch++;controller?.abort();file=null;info=null;choices={};projectName='';error='';message='';busy=false;return()=>{epoch++;controller?.abort()}})
- function choose(event:Event){controller?.abort();epoch++;file=(event.currentTarget as HTMLInputElement).files?.[0]??null;(event.currentTarget as HTMLInputElement).value='';info=null;choices={};projectName='';error='';message=''}
+ $effect(()=>{void token;void spaceId;void context;epoch++;controller?.abort();file=null;info=null;choices={};uploadedSources=[];projectName='';error='';message='';busy=false;return()=>{epoch++;controller?.abort()}})
+ function choose(event:Event){controller?.abort();epoch++;file=(event.currentTarget as HTMLInputElement).files?.[0]??null;(event.currentTarget as HTMLInputElement).value='';info=null;choices={};uploadedSources=[];projectName='';error='';message=''}
  async function inspect(){
   if(!token||!file||busy||disabled)return
   const serial=epoch,request=new AbortController();controller=request;busy=true;error='';progress='Проверяю шаблон…'
@@ -14,7 +20,26 @@
   catch(reason){if(serial===epoch&&!request.signal.aborted)error=reason instanceof Error?reason.message:String(reason)}
   finally{if(serial===epoch)busy=false}
  }
- const ready=$derived(!!info&&info.template.slots.every(slot=>sources.some(entry=>entry.source.id===choices[slot.mediaId])))
+ const ready=$derived(!!info&&info.template.slots.every(slot=>availableSources.some(entry=>entry.source.id===choices[slot.mediaId])))
+ async function uploadSlot(mediaId: string, localFile: File | undefined) {
+  if (!localFile || !token || busy || disabled || !info?.template.slots.some(slot => slot.mediaId === mediaId)) return
+  const serial = epoch
+  busy = true
+  error = ''
+  progress = 'Загружаю файл для слота…'
+  try {
+   const media = await doUpload(localFile, false)
+   if (serial !== epoch) return
+   if (!media) throw new Error(`Не удалось загрузить ${localFile.name}`)
+   const source = compositionSourceFromMediaInfo(media)
+   uploadedSources = [...uploadedSources.filter(item => item.source.id !== source.id), { label: localFile.name, source }]
+   choices = { ...choices, [mediaId]: source.id }
+  } catch (reason) {
+   if (serial === epoch) error = reason instanceof Error ? reason.message : String(reason)
+  } finally {
+   if (serial === epoch) busy = false
+  }
+ }
  async function create(){
   if(!token||!file||!info||!ready||busy||disabled)return
   const serial=epoch,request=new AbortController();controller=request;busy=true;error='';message='';progress='Создаю проект…'
@@ -41,8 +66,15 @@
    <label>{slot.name} · {slot.kind==='image'?'Изображение':slot.kind==='video'?'Видео':'Аудио'} · {slot.seconds.toLocaleString('ru-RU',{maximumFractionDigits:3})} с
     <select aria-label={`Файл для слота ${slot.name}`} value={choices[slot.mediaId]??''} disabled={disabled||busy} onchange={event=>{choices={...choices,[slot.mediaId]:event.currentTarget.value}}}>
      <option value="">Выберите файл из библиотеки</option>
-     {#each sources as entry(entry.source.id)}<option value={entry.source.id}>{entry.label}</option>{/each}
+     {#each availableSources as entry(entry.source.id)}<option value={entry.source.id}>{entry.label}</option>{/each}
     </select>
+   </label>
+   <label>Загрузить файл для слота {slot.name}
+    <input type="file" accept="image/*,video/*,audio/*" disabled={disabled || busy} onchange={event => {
+     const selectedFile = event.currentTarget.files?.[0]
+     event.currentTarget.value = ''
+     void uploadSlot(slot.mediaId, selectedFile)
+    }} />
    </label>
   {/each}
   <button class="btn primary sm" disabled={disabled||busy||!token||!ready} onclick={()=>void create()}>Создать проект из выбранного шаблона</button>

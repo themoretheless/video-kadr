@@ -29,10 +29,9 @@ pub async fn handler(State(state): State<AppState>, Path(project): Path<String>,
     }).ok_or_else(|| AppError::bad_request("Нужно незаблокированное видео"))?;
     if composition.metadata.as_ref().is_some_and(|m| m.media_versions.contains_key(&id)) { return Err(AppError::conflict("Клип содержит обработанную версию")); }
     let placement = &clip.placement;
-    let end = placement.timeline_end_tick().map_err(|e| AppError::bad_request(e.to_string()))?;
-    let clock = |at| crate::domain::video_clock::source_tick(placement, clip.playback_mode, at).ok().flatten().ok_or_else(|| AppError::bad_request("Неверный диапазон видео"));
-    let first = clock(placement.timeline_start_tick)?;
-    let last = clock(end.checked_sub(1).ok_or_else(|| AppError::bad_request("Пустое видео"))?)?;
+    let duration = composition.sources[&clip.source_id].duration_ticks;
+    let (first, last) = crate::domain::video_clock::presented_source_bounds(placement, clip.playback_mode, duration)
+        .map_err(|e| AppError::bad_request(e.to_string()))?;
     let ranges = [(first.min(last) as f64 / 1_000_000., first.max(last) as f64 / 1_000_000.)];
     let source_id = clip.source_id.as_str().to_owned();
     let path = super::concat_cutout_access::source_for_document(&state, &actor, &saved.document, &source_id).await.map_err(|_| AppError::forbidden("Исходник недоступен"))?;

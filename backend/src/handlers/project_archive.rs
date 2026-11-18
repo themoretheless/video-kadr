@@ -9,15 +9,23 @@ use std::time::Duration;
 
 mod video_export;
 mod video_import;
+mod generated_video;
+mod generated_still;
+mod concat_mask_import;
+pub use concat_mask_import::create as concat_mask_import_handler;
 mod template_export;
 mod concat_template_export;
 mod template_frame;
+pub use template_frame::normalize_concat_cover as normalize_concat_template_cover_handler;
 mod template_import;
 mod template_library;
 pub use template_library::{poster as native_template_poster_handler,list as native_template_list_handler,install as native_template_install_handler,download as native_template_download_handler,remove as native_template_remove_handler,instantiate as native_template_create_handler};
 pub use template_import::{import as composition_project_template_import_handler,inspect as composition_project_template_inspect_handler};
-pub use template_export::{export as composition_project_template_export_handler, save_to_library as composition_project_template_save_handler};
-pub use concat_template_export::export as composition_project_concat_template_export_handler;
+pub use template_export::{export as composition_project_template_export_handler, save_to_library as composition_project_template_save_handler, with_uploaded_cover as composition_project_template_cover_handler};
+pub use concat_template_export::{
+    export as composition_project_concat_template_export_handler,
+    with_uploaded_cover as composition_project_concat_template_cover_handler,
+};
 
 use axum::body::Body;
 use axum::extract::{multipart::MultipartError, Multipart, Path as AxPath, State};
@@ -389,7 +397,7 @@ async fn import_parsed_archive(
     if !cache_entries.is_empty(){video_import::remove_origins(&mut project.document);}
     let document = rewrite_document_source_ids(project.document, &source_mapping)?;
     let cancel=tokio_util::sync::CancellationToken::new();let _guard=cancel.clone().drop_guard();
-    let mut video=run_with_timeout(video_import::prepare(&state,&owner,&old_document,&document,&source_mapping,&prepared,&cache_entries,&video_caches,&cancel),ARCHIVE_IO_TIMEOUT,"проверка видеокэша архива превысила лимит времени").await?.map_err(|error|AppError::bad_request(error.to_string()))?;
+    let mut video=run_with_timeout(video_import::prepare(&state,&owner,&old_document,&document,&source_mapping,&prepared,&cache_entries,&video_caches,&cancel,false),ARCHIVE_IO_TIMEOUT,"проверка видеокэша архива превысила лимит времени").await?.map_err(|error|AppError::bad_request(error.to_string()))?;
 
     let source_ids = crate::db::extract_document_source_ids(&document)
         .map_err(|error| AppError::bad_request(error.to_string()))?;

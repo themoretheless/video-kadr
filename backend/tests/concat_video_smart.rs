@@ -13,7 +13,10 @@ async fn vfr_saved_cursor_tracks_source_presentation_time(){scenario(true,false,
 async fn delayed_vfr_video_with_earlier_audio_survives_sam_preview_and_export(){scenario(true,true,false).await}
 #[tokio::test]
 #[ignore="requires actual SAM/RVM models/ORT and FFmpeg; logical slots, operation replay and region history"]
-async fn logical_vfr_slots_track_physical_video_and_restore_region_history(){scenario(true,false,true).await}
+async fn logical_vfr_slots_track_physical_video_and_restore_region_history() {
+    // Keep the combined fixture's async state off the Tokio test stack.
+    Box::pin(scenario(true, false, true)).await;
+}
 fn content(document:&Value,logical:bool)->&Value{if logical{&document["compositions"]["root"]["content"]}else{document}}
 fn nested(document:&Value,logical:bool)->Value{if logical{document.clone()}else{json!({"schemaVersion":1,"root":"root","compositions":{"root":{"content":document,"instances":[]}}})}}
 async fn scenario(vfr:bool,earlier_audio:bool,logical:bool){
@@ -94,9 +97,375 @@ async fn scenario(vfr:bool,earlier_audio:bool,logical:bool){
   let response=app.clone().oneshot(command(&attach_endpoint,json!({"clipId":"clip","expectedRevision":undone.revision,"timeUs":cursor,"jobId":id,"tool":"smartBrush","size":0.1}))).await.unwrap();assert_eq!(response.status(),StatusCode::CONFLICT);assert_eq!(state.db.get_composition_project_for(&project.id,"smart-owner").await.unwrap().unwrap().revision,undone.revision);
  }
 
+ if logical {
+     Box::pin(qualify_held_tail(&state, &app, &project.id, undone.revision, &owner.token)).await;
+ }
 
 
 
+}
+
+async fn qualify_held_tail(
+    state: &video_kadr_backend::state::AppState,
+    app: &axum::Router,
+    project: &str,
+    revision: u64,
+    token: &str,
+) {
+    let target = json!({"compositionId":"root","clipId":"eof","expectedRevision":revision});
+    let command = |action: &str, body: Value| {
+        Request::post(format!("/api/composition-projects/{project}/concat-video-cutout/{action}"))
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(body.to_string())).unwrap()
+    };
+    let response = app.clone().oneshot(command("analyse", target.clone())).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let mut bind = target.clone();
+    bind["enabled"] = json!(true);
+    let response = app.clone().oneshot(command("binding", bind)).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let saved: Value = serde_json::from_slice(&to_bytes(response.into_body(), 1 << 20).await.unwrap()).unwrap();
+
+    let mut tail = target;
+    tail["expectedRevision"] = saved["revision"].clone();
+    tail["timeUs"] = json!(2_900_000);
+    let mut start = tail.clone();
+    start["points"] = json!([[0.25, 0.5]]);
+    let response = app.clone().oneshot(command("smart-region", start)).await.unwrap();
+    let status = response.status();
+    let body = to_bytes(response.into_body(), 1 << 20).await.unwrap();
+    assert_eq!(status, StatusCode::ACCEPTED, "{}", String::from_utf8_lossy(&body));
+    let accepted: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(accepted["sourceId"], "alias");
+    assert_eq!(accepted["sourceUs"], 499_999);
+    assert_eq!(accepted["seedFrame"], 2);
+    let job = accepted["jobId"].as_str().unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(90), async {
+        loop {
+            let job = state.get_job(job).await.unwrap().unwrap();
+            if job.status.is_terminal() {
+                assert_eq!(job.status, video_kadr_backend::model::JobStatus::Done, "{job:?}");
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+    }).await.unwrap();
+
+    tail["jobId"] = json!(job);
+    tail["tool"] = json!("smartBrush");
+    tail["size"] = json!(0.1);
+    let response = app.clone().oneshot(command("smart-region/attach", tail)).await.unwrap();
+    let status = response.status();
+    let body = to_bytes(response.into_body(), 1 << 20).await.unwrap();
+    assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
+    let saved: Value = serde_json::from_slice(&body).unwrap();
+    let binding = &saved["document"]["compositions"]["root"]["content"]["tracks"][1]["clips"][0]["concatCutout"];
+    assert_eq!(binding["correction"]["strokes"][0]["at"], json!(0.499999));
+    assert_eq!(binding["regionTracks"][0]["snapshot"]["sourceId"], "alias");
+    Box::pin(qualify_replacement_regions(state, app, project, token, &saved)).await;
+
+}
+
+async fn qualify_sam_template_slot(
+    state: &video_kadr_backend::state::AppState,
+    app: &axum::Router,
+    project: &str,
+    token: &str,
+    old: &Value,
+) {
+    use video_kadr_backend::{domain::{composition::SourceId, project_media}, template_bundle};
+    let saved = state.db.get_composition_project_for(project, "smart-owner")
+        .await.unwrap().unwrap();
+    let mut draft: video_kadr_backend::domain::nested_composition::NestedCompositionProject =
+        serde_json::from_value(old["document"].clone()).unwrap();
+    for node in draft.compositions.values_mut() {
+        for track in &mut node.content.tracks {
+            if let video_kadr_backend::domain::composition::CompositionTrack::Video { clips, .. } = track {
+                for clip in clips.iter_mut().filter(|clip| clip.source_id.as_str() != "alias") {
+                    clip.concat_cutout = None;
+                }
+            }
+        }
+    }
+    let (draft, _) = project_media::set_placeholder(
+        &draft, &SourceId::parse("alias").unwrap(), true,
+    ).unwrap();
+    let author = state.db.create_space_composition_project(
+        "Tracked template slot", &serde_json::to_value(draft).unwrap(),
+        &saved.source_ids, "smart-owner", saved.space_id.as_deref().unwrap(),
+    ).await.unwrap();
+    let response = app.clone().oneshot(Request::get(format!(
+        "/api/composition-projects/{}/template", author.id,
+    )).header("authorization", format!("Bearer {token}")).body(Body::empty()).unwrap())
+        .await.unwrap();
+    let status = response.status();
+    let package = to_bytes(response.into_body(), 8 << 20).await.unwrap();
+    assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&package));
+    let stage = tempfile::tempdir().unwrap();
+    let parsed = template_bundle::read(std::io::Cursor::new(package.as_ref()), stage.path()).unwrap();
+    assert_eq!(parsed.manifest.slot_masks.len(), 1);
+    assert!(parsed.video_caches.is_empty());
+    let old_mask = &old["document"]["compositions"]["root"]["content"]["tracks"][1]["clips"][0]["concatCutout"];
+    let old_region = &old_mask["regionTracks"][0]["snapshot"];
+    assert!(parsed.manifest.project.compositions["root"].content.sources.keys()
+        .all(|id| Some(id.as_str()) != old_region["maskSourceId"].as_str()));
+    let upload = |replacement: &str| {
+        let selections: Vec<_> = parsed.manifest.project.project_media.iter()
+            .filter(|(_, item)| item.placeholder)
+            .map(|(id, _)| json!({"mediaId":id,"sourceId":replacement})).collect();
+        let selections = serde_json::to_string(&selections).unwrap();
+        let fills: String = url::form_urlencoded::byte_serialize(selections.as_bytes()).collect();
+        let mut body = b"--SAMTPL\r\nContent-Disposition: form-data; name=\"file\"; filename=\"slot.vktemplate\"\r\n\r\n".to_vec();
+        body.extend_from_slice(&package);
+        body.extend_from_slice(b"\r\n--SAMTPL--\r\n");
+        Request::post(format!("/api/composition-projects/template-import?fills={fills}"))
+            .header("content-type", "multipart/form-data; boundary=SAMTPL")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(body)).unwrap()
+    };
+    let pool = sqlx::sqlite::SqlitePoolOptions::new().connect_with(
+        sqlx::sqlite::SqliteConnectOptions::new().filename(state.storage.join("app.db")),
+    ).await.unwrap();
+    let before_assets = state.library.list().await.len();
+    let cache_root = state.storage.join("concat-video-caches");
+    let before_caches = std::fs::read_dir(&cache_root).unwrap().count();
+    sqlx::query("CREATE TRIGGER reject_sam_template BEFORE INSERT ON concat_video_project_region_refs BEGIN SELECT RAISE(ABORT,'forced template SAM rollback'); END")
+        .execute(&pool).await.unwrap();
+    let failed = app.clone().oneshot(upload("replacement")).await.unwrap();
+    assert_eq!(failed.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(state.library.list().await.len(), before_assets);
+    assert_eq!(std::fs::read_dir(&cache_root).unwrap().count(), before_caches);
+    sqlx::query("DROP TRIGGER reject_sam_template").execute(&pool).await.unwrap();
+    let created = app.clone().oneshot(upload("replacement")).await.unwrap();
+    let status = created.status();
+    let body = to_bytes(created.into_body(), 1 << 20).await.unwrap();
+    assert_eq!(status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&body));
+    let imported: Value = serde_json::from_slice(&body).unwrap();
+    let project = &imported["project"];
+    let mask = &project["document"]["compositions"]["root"]["content"]["tracks"][1]["clips"][0]["concatCutout"];
+    let region = &mask["regionTracks"][0]["snapshot"];
+    assert_eq!(region["sourceHash"], mask["sourceHash"]);
+    assert_ne!(region["sourceHash"], old_region["sourceHash"]);
+    assert_ne!(region["maskSourceId"], old_region["maskSourceId"]);
+    assert_eq!(region["points"], old_region["points"]);
+    assert_eq!(region["seedFrame"], 2);
+    assert!(state.library.get(region["maskSourceId"].as_str().unwrap()).await.is_some());
+    // Container duration includes a longer audio stream. The retained prompt
+    // at the third video frame is beyond the replacement's two pictures.
+    let short = state.sources_dir().join("short-with-audio.mkv");
+    let output = std::process::Command::new("ffmpeg")
+        .args(["-nostdin", "-v", "error", "-i"])
+        .arg(state.sources_dir().join("replacement.mkv"))
+        .args(["-f", "lavfi", "-i", "anullsrc=r=48000:cl=mono:d=0.5",
+            "-vf", "trim=end_frame=2", "-c:v", "ffv1", "-c:a", "pcm_s16le"])
+        .arg(&short).output().unwrap();
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    assert!(state.library.add(video_kadr_backend::library::MediaEntry::from_result("source",
+        &json!({"id":"short-with-audio","filename":"short-with-audio.mkv",
+            "url":"/files/sources/short-with-audio.mkv","mediaType":"video",
+            "width":32,"height":16,"duration":0.5,"hasAudio":true}))).await);
+    let response = app.clone().oneshot(upload("short-with-audio")).await.unwrap();
+    let status = response.status();
+    let body = to_bytes(response.into_body(), 1 << 20).await.unwrap();
+    assert_eq!(status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&body));
+    let imported: Value = serde_json::from_slice(&body).unwrap();
+    let mask = &imported["project"]["document"]["compositions"]["root"]["content"]["tracks"][1]["clips"][0]["concatCutout"];
+    let region = &mask["regionTracks"][0]["snapshot"];
+    assert_eq!(region["frames"], 2);
+    assert_eq!(region["seedFrame"], 1);
+    assert_eq!(region["points"], old_region["points"]);
+    assert_eq!(region["sourceHash"], mask["sourceHash"]);
+    let saved = &imported["project"];
+    let project: video_kadr_backend::domain::nested_composition::NestedCompositionProject =
+        serde_json::from_value(saved["document"].clone()).unwrap();
+    let context = video_kadr_backend::handlers::concat_video_bound::SavedProject {
+        project_id: saved["id"].as_str().unwrap().to_owned(),
+        expected_revision: saved["revision"].as_u64().unwrap(),
+    };
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let mut masks = video_kadr_backend::handlers::concat_video_bound::BoundMasks::load(
+        state, "smart-owner", Some(&context), &project, &cancel,
+    ).await.unwrap();
+    let clip = &saved["document"]["compositions"]["root"]["content"]["tracks"][1]["clips"][0];
+    let clip_id = video_kadr_backend::domain::composition::CompositionClipId::parse(
+        clip["id"].as_str().unwrap(),
+    ).unwrap();
+    let source = SourceId::parse(clip["sourceId"].as_str().unwrap()).unwrap();
+    let frame = || video_kadr_backend::domain::group_surface::GroupSurface {
+        width: 32, height: 16, rgba: vec![255; 32 * 16 * 4],
+    };
+    let mut last = frame();
+    masks.apply("root", &clip_id, &source, 199_999, &mut last).unwrap();
+    let mut held = frame();
+    masks.apply("root", &clip_id, &source, 250_000, &mut held).unwrap();
+    assert_eq!(held.rgba, last.rgba, "held tail must use the last video's mask");
+
+    let cursor = clip["placement"]["timelineStartTick"].as_u64().unwrap() + 250_000;
+    let request = |action: &str, payload: Value| Request::post(format!(
+        "/api/composition-projects/{}/concat-video-cutout/{action}", context.project_id,
+    ))
+        .header("authorization", format!("Bearer {token}"))
+        .header("content-type", "application/json")
+        .body(Body::from(payload.to_string())).unwrap();
+    let target = json!({"compositionId":"root","clipId":clip_id.as_str(),
+        "timeUs":cursor,"expectedRevision":context.expected_revision});
+    let mut start = target.clone();
+    start["points"] = json!([[0.6, 0.5]]);
+    let response = app.clone().oneshot(request("smart-region", start)).await.unwrap();
+    let status = response.status();
+    let body = to_bytes(response.into_body(), 1 << 20).await.unwrap();
+    assert_eq!(status, StatusCode::ACCEPTED, "{}", String::from_utf8_lossy(&body));
+    let accepted: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(accepted["seedFrame"], 1);
+    assert_eq!(accepted["sourceUs"], 199_999);
+    let job = accepted["jobId"].as_str().unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(90), async {
+        loop {
+            let job = state.get_job(job).await.unwrap().unwrap();
+            if job.status.is_terminal() {
+                assert_eq!(job.status, video_kadr_backend::model::JobStatus::Done, "{job:?}");
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+    }).await.unwrap();
+    let mut attach = target;
+    attach["jobId"] = json!(job);
+    attach["tool"] = json!("smartBrush");
+    attach["size"] = json!(0.1);
+    let response = app.clone().oneshot(request("smart-region/attach", attach)).await.unwrap();
+    let status = response.status();
+    let body = to_bytes(response.into_body(), 1 << 20).await.unwrap();
+    assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
+    let updated: Value = serde_json::from_slice(&body).unwrap();
+    let mask = &updated["document"]["compositions"]["root"]["content"]["tracks"][1]["clips"][0]["concatCutout"];
+    assert_eq!(mask["regionTracks"][1]["snapshot"]["seedFrame"], 1);
+    assert_eq!(mask["correction"]["strokes"][1]["at"], json!(0.199999));
+
+    let mut document = updated["document"].clone();
+    document["compositions"]["root"]["content"]["canvas"] =
+        json!({"width":32,"height":16,"fpsMilli":10000,
+            "background":{"red":0,"green":0,"blue":0,"alpha":0}});
+    let saved = json!({"projectId":updated["id"],"expectedRevision":updated["revision"]});
+    let composition_request = |action: &str, payload: Value| Request::post(format!(
+        "/api/compositions/{action}",
+    ))
+        .header("authorization", format!("Bearer {token}"))
+        .header("content-type", "application/json")
+        .body(Body::from(payload.to_string())).unwrap();
+    let preview = app.clone().oneshot(composition_request("nested-preview", json!({
+        "project":document,"compositionId":"root","timeUs":cursor,
+        "renderedOutputs":{},"savedProject":saved,
+    }))).await.unwrap();
+    let status = preview.status();
+    let expected = to_bytes(preview.into_body(), 1 << 20).await.unwrap();
+    assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&expected));
+    assert_eq!(expected.len(), 32 * 16 * 4);
+    let export = app.clone().oneshot(composition_request("nested-export", json!({
+        "schemaVersion":1,"mode":"video_only","project":document,"compositionId":"root",
+        "startUs":cursor,"endUs":cursor+1,"renderedOutputs":{},"savedProject":saved,
+    }))).await.unwrap();
+    let status = export.status();
+    let body = to_bytes(export.into_body(), 1 << 20).await.unwrap();
+    assert_eq!(status, StatusCode::ACCEPTED, "{}", String::from_utf8_lossy(&body));
+    let accepted: Value = serde_json::from_slice(&body).unwrap();
+    let job = accepted["jobId"].as_str().unwrap();
+    let rendered = tokio::time::timeout(std::time::Duration::from_secs(90), async {
+        loop {
+            let job = state.get_job(job).await.unwrap().unwrap();
+            if job.status.is_terminal() {
+                assert_eq!(job.status, video_kadr_backend::model::JobStatus::Done, "{job:?}");
+                break job.result.unwrap();
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+    }).await.unwrap();
+    let decoded = std::process::Command::new("ffmpeg")
+        .args(["-nostdin", "-v", "error", "-i"])
+        .arg(state.outputs_dir().join(rendered["filename"].as_str().unwrap()))
+        .args(["-map", "0:v:0", "-pix_fmt", "rgba", "-f", "rawvideo", "pipe:1"])
+        .output().unwrap();
+    assert!(decoded.status.success(), "{}", String::from_utf8_lossy(&decoded.stderr));
+    assert_eq!(decoded.stdout.as_slice(), expected.as_ref());
+
+}
+
+async fn qualify_replacement_regions(
+    state: &video_kadr_backend::state::AppState,
+    app: &axum::Router,
+    project: &str,
+    token: &str,
+    old: &Value,
+) {
+    let source = state.sources_dir().join("replacement.mkv");
+    let ffmpeg = std::process::Command::new("ffmpeg")
+        .args(["-nostdin","-v","error","-f","rawvideo","-pixel_format","rgba",
+            "-video_size","32x16","-framerate","10","-i"])
+        .arg(state.storage.join("source.rgba"))
+        .args(["-vf","hflip","-c:v","ffv1"])
+        .arg(&source).output().unwrap();
+    assert!(ffmpeg.status.success(), "{}", String::from_utf8_lossy(&ffmpeg.stderr));
+    assert!(state.library.add(video_kadr_backend::library::MediaEntry::from_result("source",
+        &json!({"id":"replacement","filename":"replacement.mkv","url":"/files/sources/replacement.mkv",
+            "mediaType":"video","duration":0.3,"width":32,"height":16,"fps":10}),
+    )).await);
+    Box::pin(qualify_sam_template_slot(state, app, project, token, old)).await;
+    let replace = || Request::post(format!("/api/composition-projects/{project}/concat-video-cutout/replace-source"))
+        .header("content-type","application/json").header("authorization",format!("Bearer {token}"))
+        .body(Body::from(json!({"mediaId":"alias","sourceId":"replacement","expectedRevision":old["revision"]}).to_string())).unwrap();
+    let pool = sqlx::sqlite::SqlitePoolOptions::new().connect_with(
+        sqlx::sqlite::SqliteConnectOptions::new().filename(state.storage.join("app.db")),
+    ).await.unwrap();
+    sqlx::query("CREATE TRIGGER reject_sam_replacement BEFORE INSERT ON concat_video_project_region_refs BEGIN SELECT RAISE(ABORT,'forced SAM replacement rollback'); END")
+        .execute(&pool).await.unwrap();
+    let assets = state.library.list().await.len();
+    let response = app.clone().oneshot(replace()).await.unwrap();
+    let status = response.status();
+    let body = to_bytes(response.into_body(), 1 << 20).await.unwrap();
+    assert_eq!(status, StatusCode::CONFLICT, "{}", String::from_utf8_lossy(&body));
+    assert!(String::from_utf8_lossy(&body).contains("forced SAM replacement rollback"));
+    assert_eq!(state.library.list().await.len(), assets);
+    let saved = state.db.get_composition_project_for(project, "smart-owner").await.unwrap().unwrap();
+    assert_eq!(saved.document, old["document"]);
+    assert_eq!(saved.revision, old["revision"].as_u64().unwrap());
+    sqlx::query("DROP TRIGGER reject_sam_replacement").execute(&pool).await.unwrap();
+
+    let response = app.clone().oneshot(replace()).await.unwrap();
+    let status = response.status();
+    let body = to_bytes(response.into_body(), 1 << 20).await.unwrap();
+    assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
+    let new: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(new["document"]["projectMedia"]["alias"]["librarySourceId"], "replacement");
+    let get_mask = |saved: &Value| saved["document"]["compositions"]["root"]["content"]["tracks"][1]["clips"][0]["concatCutout"].clone();
+    let old_mask = get_mask(old);
+    let new_mask = get_mask(&new);
+    assert_eq!(new_mask["correction"]["strokes"][0]["at"], json!(0.299999));
+    let new_region = &new_mask["regionTracks"][0]["snapshot"];
+    let old_region = &old_mask["regionTracks"][0]["snapshot"];
+    assert_eq!(new_region["sourceHash"], new_mask["sourceHash"]);
+    assert_ne!(new_region["sourceHash"], old_region["sourceHash"]);
+    assert_ne!(new_region["maskSourceId"], old_region["maskSourceId"]);
+    let old_id = old_region["maskSourceId"].as_str().unwrap();
+    let new_id = new_region["maskSourceId"].as_str().unwrap();
+    let active_sources = &new["document"]["compositions"]["root"]["content"]["sources"];
+    assert!(active_sources.get(old_id).is_none());
+    assert!(active_sources.get(new_id).is_some());
+    assert!(state.library.get(old_id).await.is_some());
+
+    assert_eq!(new_region["points"], old_region["points"]);
+    assert_eq!(new_region["seedFrame"], 2);
+
+    let context = video_kadr_backend::handlers::concat_video_bound::SavedProject {
+        project_id: project.into(), expected_revision: new["revision"].as_u64().unwrap(),
+    };
+    let cancel = tokio_util::sync::CancellationToken::new();
+    for snapshot in [&old["document"], &new["document"]] {
+        let draft = serde_json::from_value(snapshot.clone()).unwrap();
+        video_kadr_backend::handlers::concat_video_bound::BoundMasks::load(
+            state, "smart-owner", Some(&context), &draft, &cancel,
+        ).await.unwrap();
+    }
 }
 
 async fn qualify_region_transfer(state:&video_kadr_backend::state::AppState,source_project:&video_kadr_backend::db::CompositionProject,source_revision:u64,enabled:&video_kadr_backend::db::CompositionProject,erased:&video_kadr_backend::db::CompositionProject,space_id:&str,original:&[u8],end:u64,expected:&[u8],token:&str){

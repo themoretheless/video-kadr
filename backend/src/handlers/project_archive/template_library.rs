@@ -1,4 +1,4 @@
-//! Owner-scoped package library; a hard-link snapshot survives concurrent deletion.
+//! Personal and Space template packages; a hard-link snapshot survives concurrent deletion.
 use super::*;
 use crate::{db::NativeTemplateEntry, template_bundle};
 use axum::{extract::Query, response::IntoResponse};
@@ -11,7 +11,7 @@ fn package(state: &AppState, id: &str) -> AppResult<PathBuf> {
     }
     Ok(directory(state).join(format!("{id}.vktemplate")))
 }
-async fn owned(
+async fn accessible(
     state: &AppState,
     headers: &HeaderMap,
     id: &str,
@@ -26,11 +26,32 @@ async fn owned(
         .ok_or_else(|| AppError::not_found("Шаблон не найден"))?;
     Ok((actor, entry))
 }
+pub(super) async fn require_space_editor(state: &AppState, actor: &str, space: Option<&str>) -> AppResult<()> {
+    if let Some(space) = space {
+        let allowed: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM collaboration_space_members WHERE space_id=? AND actor=? AND role IN ('owner','editor'))",
+        ).bind(space).bind(actor).fetch_one(state.db.pool()).await
+            .map_err(|error| AppError::internal("authorize Space template catalogue", error))?;
+        if !allowed {
+            return Err(AppError::forbidden("Для библиотеки шаблонов нужен доступ редактора пространства"));
+        }
+    }
+    Ok(())
+}
+
 pub async fn list(State(state): State<AppState>, headers: HeaderMap) -> AppResult<Response> {
     let actor = archive_actor(&state, &headers, false).await?;
+    let space = archive_space_id(&headers)?;
+    if let Some(id) = space.as_deref() {
+        if !state.db.is_space_member(id, &actor).await
+            .map_err(|error| AppError::internal("authorize Space template catalogue", error))?
+        {
+            return Err(AppError::forbidden("Нет доступа к библиотеке пространства"));
+        }
+    }
     let entries = state
         .db
-        .native_templates(&actor)
+        .native_templates(&actor, space.as_deref())
         .await
         .map_err(|e| AppError::internal("list template library", e))?;
     Ok((
@@ -45,6 +66,8 @@ pub async fn install(
     ApiMultipart(multipart): ApiMultipart,
 ) -> AppResult<(StatusCode, Json<NativeTemplateEntry>)> {
     let actor = archive_actor(&state, &headers, false).await?;
+    let space = archive_space_id(&headers)?;
+    require_space_editor(&state, &actor, space.as_deref()).await?;
     let slot = state.try_acquire_upload_slot().ok_or_else(|| {
         AppError::too_many_requests("слишком много операций с локальными файлами")
     })?;
@@ -59,13 +82,14 @@ pub async fn install(
         "Загрузка шаблона превысила лимит времени",
     )
     .await??;
-    let result = publish_package(state, actor, upload, Some(slot)).await?;
+    let result = publish_package(state, actor, space, upload, Some(slot)).await?;
     Ok((StatusCode::CREATED, Json(result)))
 }
 
 pub(super) async fn publish_package(
     state: AppState,
     actor: String,
+    space: Option<String>,
     upload: TemporaryFile,
     permit: Option<crate::state::UploadPermit>,
 ) -> AppResult<NativeTemplateEntry> {
@@ -88,6 +112,8 @@ pub(super) async fn publish_package(
             .map_err(export_archive_error)?;
         let entry = NativeTemplateEntry {
             has_poster: poster.is_some(),
+            space_id: space,
+            can_manage: true,
             id: Uuid::new_v4().to_string(),
             name,
             info,
@@ -110,6 +136,8 @@ pub(super) async fn publish_package(
             .map_err(|e| {
                 if e.to_string().contains("name already exists") {
                     AppError::conflict("Шаблон с таким именем уже есть")
+                } else if e.to_string().contains("Space editor access required") {
+                    AppError::forbidden("Права редактора пространства изменились")
                 } else if e.to_string().contains("quota") {
                     AppError::conflict("Библиотека шаблонов заполнена")
                 } else {
@@ -127,7 +155,7 @@ pub async fn download(
     AxPath(id): AxPath<String>,
     headers: HeaderMap,
 ) -> AppResult<Response> {
-    let (_actor, entry) = owned(&state, &headers, &id, true).await?;
+    let (_actor, entry) = accessible(&state, &headers, &id, true).await?;
     let path = package(&state, &id)?;
     let file = tokio::fs::File::open(&path)
         .await
@@ -159,12 +187,15 @@ pub async fn remove(
     AxPath(id): AxPath<String>,
     headers: HeaderMap,
 ) -> AppResult<StatusCode> {
-    let (actor, _) = owned(&state, &headers, &id, false).await?;
-    state
+    let (actor, _) = accessible(&state, &headers, &id, false).await?;
+    let deleted = state
         .db
         .delete_native_template(&actor, &id)
         .await
         .map_err(|e| AppError::internal("delete template entry", e))?;
+    if !deleted {
+        return Err(AppError::forbidden("Для удаления нужен доступ редактора пространства"));
+    }
     if let Err(error) = tokio::fs::remove_file(package(&state, &id)?).await {
         if error.kind() != std::io::ErrorKind::NotFound {
             tracing::warn!(template.id=%id,%error,"orphan template package needs cleanup");
@@ -178,8 +209,15 @@ pub async fn instantiate(
     headers: HeaderMap,
     Query(options): Query<template_import::Options>,
 ) -> AppResult<(StatusCode, Json<ProjectArchiveImportResponse>)> {
-    let (actor, entry) = owned(&state, &headers, &id, false).await?;
-    let space = archive_space_id(&headers)?;
+    let (actor, entry) = accessible(&state, &headers, &id, false).await?;
+    let destination = archive_space_id(&headers)?;
+    if let Some(scope) = entry.space_id.as_ref() {
+        if destination.as_ref().is_some_and(|other| other != scope) {
+            return Err(AppError::bad_request("Выберите пространство шаблона"));
+        }
+    }
+    let space = entry.space_id.or(destination);
+    require_space_editor(&state, &actor, space.as_deref()).await?;
     let refs = template_import::parse_references(&options.fills)?;
     let name = template_import::project_name(options.name)?;
     let slot = state.try_acquire_upload_slot().ok_or_else(|| {
@@ -216,7 +254,7 @@ pub async fn poster(
     AxPath(id): AxPath<String>,
     headers: HeaderMap,
 ) -> AppResult<Response> {
-    let (actor, _) = owned(&state, &headers, &id, false).await?;
+    let (actor, _) = accessible(&state, &headers, &id, false).await?;
     let bytes = state
         .db
         .native_template_poster(&actor, &id)

@@ -57,6 +57,14 @@ impl Window {
 // Integer source metadata validates ownership; it must not replace these raw
 // sequential calculations at half-frame rounding boundaries.
 struct RawOverlap {from:usize,to:usize,lead:f64,length:f64,held:bool,from_window:Window,to_window:Window,colour:Option<bool>}
+fn retained_curve(clip: &super::composition::VideoClip) -> bool {
+    clip.placement.concat_retime.as_ref().is_some_and(|clock| !clock.points.is_empty())
+}
+
+fn authored_curve(clip: &Value) -> bool {
+    clip["speedCurve"].as_array().is_some_and(|points| !points.is_empty())
+}
+
 fn raw_overlaps(clips:&[super::composition::VideoClip],transitions:&[super::composition::ClipTransition],canvas:&super::composition::CanvasSpec)->Result<Vec<RawOverlap>>{
     let (num,den)=canvas.fps_rate.map(|r|(r.numerator as u64,r.denominator as u64)).unwrap_or((canvas.fps_milli as u64,1000));
     let frame=den as f64/num as f64;
@@ -68,9 +76,8 @@ fn raw_overlaps(clips:&[super::composition::VideoClip],transitions:&[super::comp
         let to=clips.iter().position(|clip|Some(&clip.id)==transition.to_clip_id.as_ref()).context("Source incoming clip missing")?;
         let requested=overlap.authored_duration_ticks.unwrap_or(overlap.duration_ticks) as f64/1e6;
         if let Some(white)=colour_target(overlap.legacy){result.push(RawOverlap{from,to,lead:0.,length:requested,held:false,from_window:windows[from],to_window:windows[to],colour:Some(white)});continue;}
-        ensure!(clips[from].placement.concat_retime.is_none()&&clips[to].placement.concat_retime.is_none(),"retained document clock overlap needs separate source window qualification");
         let length=requested.min(windows[from].duration).min(windows[to].duration);
-        let mut lead=(length/2.).min(windows[to].source_start);
+        let mut lead=if retained_curve(&clips[to]) { 0. } else { (length/2.).min(windows[to].source_start) };
         if lead<frame/2.{lead=0.;}
         result.push(RawOverlap{from,to,lead,length,held:overlap.hold_outgoing,from_window:windows[from],to_window:windows[to],colour:None});
         windows[to].extend(lead,0.);
@@ -163,11 +170,11 @@ pub fn import(
         );
         for clip in [outgoing, incoming] {
             ensure!(
-                colour_target(legacy).is_some() || number(clip, "speed", 1.)? == 1.,
+                colour_target(legacy).is_some() || authored_curve(clip) || number(clip, "speed", 1.)? == 1.,
                 "Retimed transition sides need separately quantized source clocks"
             );
             for field in ["start", "sourceStart", "duration"] {
-                if colour_target(legacy).is_some(){continue;}
+                if colour_target(legacy).is_some() || authored_curve(clip) {continue;}
                 let position = number(clip, field, if field == "duration" { 1. } else { 0. })?
                     * num as f64
                     / den as f64;
@@ -185,17 +192,17 @@ pub fn import(
             native["timeline"]=json!({"startTick":begin.to_string(),"durationTick":duration.to_string()});result.push(native);continue;
         }
         let speed = number(incoming, "speed", 1.)?;
-        let mut lead = (length / 2.).min(to_window.source_start / speed);
+        let mut lead = if authored_curve(incoming) { 0. } else { (length / 2.).min(to_window.source_start / speed) };
         if lead < frame / 2. {
             lead = 0.;
         }
         let outgoing_source = &bindings[outgoing["mediaId"].as_str().unwrap()];
         let outgoing_speed = number(outgoing, "speed", 1.)?;
-        let handle = ((outgoing_source.duration_ticks as f64 / 1e6 - from_window.source_start)
+        let handle = if authored_curve(outgoing) { 0. } else { ((outgoing_source.duration_ticks as f64 / 1e6 - from_window.source_start)
             / outgoing_speed
             - from_window.duration
             - frame)
-            .max(0.);
+            .max(0.) };
         let hold_outgoing = handle + frame / 2. < length - lead;
         let begin = frame_tick(to_window.start - lead, num, den)?;
         let duration = frame_tick(length, num, den)?;
@@ -275,6 +282,22 @@ pub fn export(transition: &Value) -> Result<Value> {
 pub enum SourceLegacy{CrossFade,Push,Zoom,WipeLeft,WipeRight,FadeBlack,FadeWhite}
 
 fn colour_target(legacy:Option<SourceLegacy>)->Option<bool>{match legacy{Some(SourceLegacy::FadeBlack)=>Some(false),Some(SourceLegacy::FadeWhite)=>Some(true),_=>None}}
+pub(super) fn is_source_colour_fade(transition: &super::composition::ClipTransition) -> bool {
+    transition.concat_overlap.is_some_and(|overlap| colour_target(overlap.legacy).is_some())
+}
+pub(super) fn supports_retained_curve(transition: &super::composition::ClipTransition) -> bool {
+    transition.concat_overlap.is_some_and(|overlap| {
+        if overlap.legacy.is_some() {
+            transition.kind == super::composition::TransitionKind::ConcatDissolve
+        } else {
+            matches!(transition.kind,
+                super::composition::TransitionKind::ConcatDissolve
+                | super::composition::TransitionKind::ConcatFadeBlack
+                | super::composition::TransitionKind::ConcatFadeWhite
+                | super::composition::TransitionKind::Procedural)
+        }
+    })
+}
 fn colour_span(a:Window,b:Window,requested:f64,num:u64,den:u64)->Result<(i64,i64)>{
     let fps=num as f64/den as f64;let unit=frame_tick(den as f64/num as f64,num,den)? as i128;
     let out=((requested/2.).min(a.duration)*fps).round().max(1.)as i128;
@@ -306,7 +329,20 @@ pub fn audio_clip(
     mut clip: super::composition::AudioClip,
 ) -> Result<super::composition::AudioClip> {
     if clip.placement.concat_retime.is_some(){
-        ensure!(!transitions.iter().any(|t|t.concat_overlap.is_some_and(|overlap|colour_target(overlap.legacy).is_none())&&(t.to_clip_id.as_ref()==Some(&video.id)||t.from_clip_id.as_ref()==Some(&video.id))),"retimed source overlap sound is not migrated");
+        for transition in transitions.iter().filter(|transition| {
+            transition.to_clip_id.as_ref() == Some(&video.id) || transition.from_clip_id.as_ref() == Some(&video.id)
+        }) {
+            if is_source_colour_fade(transition) { continue; }
+            let overlap = transition.concat_overlap.context("Retimed audio needs a source transition")?;
+            ensure!(supports_retained_curve(transition), "Retimed source overlap sound is not migrated");
+            if transition.to_clip_id.as_ref() == Some(&video.id) {
+                ensure!(overlap.lead_ticks == 0, "A source curve has no audio head handle");
+                clip.fade_in_ticks = clip.fade_in_ticks.max(overlap.duration_ticks);
+            }
+            if transition.from_clip_id.as_ref() == Some(&video.id) {
+                ensure!(overlap.hold_outgoing, "A source curve has no audio tail handle");
+            }
+        }
         // Delay rounding happens separately for each audio piece, after slicing.
         return Ok(clip);
     }
@@ -444,7 +480,8 @@ pub fn validate_audio_overlaps(
                 ensure!(clip.transform.concat_animation.as_ref().is_some_and(|animation|animation.duration_ticks==clip.placement.timeline_duration_ticks().unwrap_or(0)as i64&&animation.rest.scale_x>0.),"Legacy movement needs its retained authored pose clock");
             }
             ensure!(
-                (colour_target(overlap.legacy).is_some() || (clip.placement.speed == 1. && clip.placement.timeline_duration_tick.is_none()))
+                (colour_target(overlap.legacy).is_some() || retained_curve(clip)
+                    || (clip.placement.speed == 1. && clip.placement.timeline_duration_tick.is_none()))
                     && clip.placement.speed_ramp.is_none()
                     && clip.placement.source_timeline_offset_tick.is_none()
                     && clip.placement.source_head_timeline_tick.is_none()
@@ -452,15 +489,8 @@ pub fn validate_audio_overlaps(
                 "Modified source overlap playback clock"
             );
         }
-        let base = |clip: &super::composition::VideoClip| -> Result<Window> {
-            Ok(Window {
-                start: clip.placement.timeline_start_tick as f64 / 1e6,
-                duration: clip.placement.timeline_duration_ticks()? as f64 / 1e6,
-                source_start: clip.placement.source_in_tick as f64 / 1e6,
-            })
-        };
-        let mut from_window = windows.get(&from.id).copied().unwrap_or(base(from)?);
-        let mut to_window = windows.get(&to.id).copied().unwrap_or(base(to)?);
+        let mut from_window = windows.get(&from.id).copied().unwrap_or(clip_window(from, canvas)?);
+        let mut to_window = windows.get(&to.id).copied().unwrap_or(clip_window(to, canvas)?);
         let requested = overlap
             .authored_duration_ticks
             .unwrap_or(overlap.duration_ticks);
@@ -480,7 +510,7 @@ pub fn validate_audio_overlaps(
             overlap.duration_ticks == (length * 1e6).round() as u64 && overlap.duration_ticks > 0,
             "Source overlap duration differs from sequential clip windows"
         );
-        let mut lead = (length / 2.).min(to_window.source_start);
+        let mut lead = if retained_curve(to) { 0. } else { (length / 2.).min(to_window.source_start) };
         if lead < frame / 2. {
             lead = 0.;
         }
@@ -501,11 +531,11 @@ pub fn validate_audio_overlaps(
                 == expected,
             "Source video/audio windows disagree"
         );
-        let handle = ((sources[&from.source_id].duration_ticks as f64 / 1e6
+        let handle = if retained_curve(from) { 0. } else { ((sources[&from.source_id].duration_ticks as f64 / 1e6
             - from_window.source_start)
             - from_window.duration
             - frame)
-            .max(0.);
+            .max(0.) };
         ensure!(
             overlap.hold_outgoing == (handle + frame / 2. < length - lead),
             "Stale source outgoing hold ownership"
@@ -690,7 +720,7 @@ pub fn visual_layers(
         let start=frame_tick(window.start,num,den)? as i128;
         let duration=frame_tick(window.duration,num,den)? as i128;
         if exact<start || exact>=start+duration { continue; }
-        let source=if clips[index].placement.concat_retime.is_none() && transitions.iter().any(|t|t.from_clip_id.as_ref()==Some(&clips[index].id)||t.to_clip_id.as_ref()==Some(&clips[index].id)) {
+        let source=if held || clips[index].placement.concat_retime.is_none() && transitions.iter().any(|t|t.from_clip_id.as_ref()==Some(&clips[index].id)||t.to_clip_id.as_ref()==Some(&clips[index].id)) {
             // Concat Rational::approximate retains six decimal places for speed.
             let rate=(clips[index].placement.speed*1_000_000.).round() as i128;
             frame_tick(window.source_start,num,den)? as i128+if held{0}else{(exact-start)*rate/1_000_000}
@@ -738,7 +768,11 @@ fn resolved_visual_state(clips:&[super::composition::VideoClip],transitions:&[su
                 if generated[from].contains("offsetX"){pose.x-=animation.rest.x*animation.canvas[0];}
                 Some(pose)
             }else{None};
-            holds.push(HeldVisual{index:from,lane:lanes[from],window:Window{start:step.from_window.start+step.from_window.duration,duration:tail,source_start:step.from_window.source_start+(step.from_window.duration-frame).max(0.)},pose});
+            let source_offset = if let Some(clock) = &clips[from].placement.concat_retime {
+                let curve = clock.curve()?;
+                step.from_window.duration * curve.consumed(1.0) - frame * curve.speed_at(1.0)
+            } else { step.from_window.duration - frame };
+            holds.push(HeldVisual{index:from,lane:lanes[from],window:Window{start:step.from_window.start+step.from_window.duration,duration:tail,source_start:step.from_window.source_start+source_offset.max(0.)},pose});
         }else{extend_visual(&mut keys[from],&mut windows[from],0.,tail);}
         let legacy=transition.concat_overlap.and_then(|overlap|overlap.legacy);
         let property=match legacy{Some(SourceLegacy::Push)=>Some("offsetX"),Some(SourceLegacy::Zoom)=>Some("scale"),_=>None};

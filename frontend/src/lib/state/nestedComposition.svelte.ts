@@ -703,9 +703,11 @@ export async function editNestedEmbeddedAudio(compositionId:string,trackId:strin
  },true,undefined,undefined,0,undefined,validateCommit)
 }
 
-export async function editNestedSourceGainKeys(compositionId:string,trackId:string,clipId:string,keys:readonly import('$lib/composition/types').WireConcatParamKey[],validateCommit?:()=>void):Promise<void>{
- const copied=cloneGainSourceKeys(keys)
+export async function editNestedSourceGainKeys(compositionId:string,trackId:string,clipId:string,edit:readonly import('$lib/composition/types').WireConcatParamKey[]|'convert',validateCommit?:()=>void):Promise<void>{
+ const copied=edit==='convert'?null:cloneGainSourceKeys(edit)
  await editNestedDocument(async document=>{
+  const {convertConcatGain}=await import('$lib/composition/concatPreparation')
+  const {nativeClipEnd}=await import('$lib/composition/nativeClipInsert')
   const node=document.compositions[compositionId];if(!node)throw new Error('Композиция не найдена')
   let found=false
   const tracks=node.content.tracks.map(track=>{
@@ -714,6 +716,11 @@ export async function editNestedSourceGainKeys(compositionId:string,trackId:stri
    function change<T extends import('$lib/composition/types').WireVideoClip|import('$lib/composition/types').WireAudioClip>(clip:T):T {
     if(clip.id!==clipId)return clip
     found=true;const gain='audioGain'in clip?clip.audioGain:clip.gain
+    if(!copied){
+     if('audioGain'in clip&&!clip.independentAudio)throw new Error('Сначала включите независимый микс видеоклипа')
+     const converted=convertConcatGain(gain,nativeClipEnd(clip)-clip.placement.timelineStartTick)
+     return {...clip,...('audioGain'in clip?{audioGain:converted.gain}:{gain:converted.gain}),concatGainKeys:converted.keys}
+    }
     if(copied.length&&gain?.mode==='keyframes')throw new Error('Сначала отключите анимацию громкости по времени')
     return {...clip,concatGainKeys:copied,...(track.kind==='video'?{independentAudio:true}:{})}
    }
@@ -819,7 +826,9 @@ export async function editNestedConcatPreparation(compositionId:string,trackId:s
  await editNestedDocument(async document=>{
     guard()
   const node=document.compositions[compositionId];if(!node)throw new Error('Композиция не найдена')
-  const {editConcatPreparation}=await import('$lib/composition/concatPreparation');let found=false
+  const {editConcatPreparation,applyConcatFit}=await import('$lib/composition/concatPreparation')
+  const {nativeClipEnd}=await import('$lib/composition/nativeClipInsert')
+  let found=false
   const tracks=node.content.tracks.map(track=>{
    if(track.id!==trackId||(track.kind!=='video'&&track.kind!=='image'&&track.kind!=='text'&&track.kind!=='graphic'))return track
    if(track.locked)throw new Error('Дорожка заблокирована')
@@ -827,6 +836,23 @@ export async function editNestedConcatPreparation(compositionId:string,trackId:s
     if(clip.id!==clipId)return clip
     if(track.kind==='text'&&(!('concatTitle' in clip)||!clip.concatTitle))throw new Error('Нужен титр Concat')
     if(track.kind==='graphic'&&(!('concatShape' in clip)||!clip.concatShape))throw new Error('Нужна фигура Concat')
+    if (edit.kind === 'enable-fit') {
+     if (track.kind !== 'video' && track.kind !== 'image') {
+      throw new Error('Подгонка Concat доступна для видео и изображений')
+     }
+     const videoOrImage = clip as unknown as import('$lib/composition/types').WireVideoClip | import('$lib/composition/types').WireImageClip
+     const source = node.content.sources[videoOrImage.sourceId]
+     if (!source) throw new Error('Источник клипа не найден')
+     found = true
+     const start = 'placement' in videoOrImage ? videoOrImage.placement.timelineStartTick : videoOrImage.timelineStartTick
+     const transform = clip.transform.concatPreparation ? clip.transform : applyConcatFit(
+      clip.transform, node.content.canvas, source,
+      {durationTicks: nativeClipEnd(videoOrImage) - start, opacity: videoOrImage.opacity},
+     )
+     const opacity = transform.concatAnimation
+      ? {mode: 'constant' as const, value: transform.concatAnimation.rest.opacity} : videoOrImage.opacity
+     return {...clip, transform, opacity, ...(track.kind === 'video' ? {independentAudio: true} : {})}
+    }
     const preparation=clip.transform.concatPreparation??(track.kind==='text'||track.kind==='graphic'?{crop:[0,0,0,0] as const,canvas:[node.content.canvas.width,node.content.canvas.height] as const}:undefined);if(!preparation)throw new Error('Исходная геометрия Concat не найдена')
     found=true;return {...clip,transform:{...clip.transform,concatPreparation:editConcatPreparation(preparation,edit)}}
    }
@@ -890,6 +916,48 @@ export async function previewNestedSavedVideoCutout(token:string,compositionId:s
 }
 
 /** Save one clip's cutout selection; render providers resolve the verified mask data. */
+export async function replaceNestedSavedMaskedVideo(
+  mediaId: string, sourceId: string, token: string, signal: AbortSignal,
+): Promise<boolean> {
+  const { projectId, revision } = nestedComposition
+  const before = snapshot(true)
+  if (!projectId || revision === null || !before || nestedHistory.busy || signal.aborted) return false
+  const ownerGeneration = generation
+  const identity = canonicalCutoutDocument(before.document)
+  const isCurrent = () => !signal.aborted && generation === ownerGeneration &&
+    nestedComposition.projectId === projectId && nestedComposition.revision === revision &&
+    canonicalCutoutDocument(nestedComposition.document) === identity
+  nestedHistory.busy = true
+  nestedHistory.error = ''
+  try {
+    const api = await import('$lib/api')
+    const saved = await api.getNestedCompositionProject(projectId, token)
+    if (!isCurrent()) return false
+    if (saved.revision !== revision || canonicalCutoutDocument(saved.document) !== identity) {
+      throw new Error('Сначала сохраните изменения проекта')
+    }
+    const updated = await api.replaceNestedMaskedVideo(projectId, mediaId, sourceId, revision, token, signal)
+    if (!isCurrent()) return false
+    if (updated.id !== projectId || updated.revision !== revision + 1 ||
+        updated.document.projectMedia?.[mediaId]?.librarySourceId !== sourceId) {
+      throw new Error('Сервер не подтвердил замену видео')
+    }
+    nestedHistory.past = [...nestedHistory.past.slice(-99), before]
+    nestedHistory.future = []
+    nestedComposition.document = updated.document
+    nestedComposition.revision = updated.revision
+    nestedComposition.renderedOutputs = {}
+    return true
+  } catch (error) {
+    if (generation === ownerGeneration && !signal.aborted) {
+      nestedHistory.error = error instanceof Error ? error.message : String(error)
+    }
+    return false
+  } finally {
+    if (generation === ownerGeneration) nestedHistory.busy = false
+  }
+}
+
 export async function setNestedSavedVideoCutout(token:string,compositionId:string,clipId:string,enabled:boolean,signal?:AbortSignal,subject?:import('$lib/api').ConcatCutoutSubject,expectedModelHash?:string,feather?:number,correction?:import('$lib/api').MaskCorrection,regionTracks?:readonly import('$lib/composition/types').ConcatVideoRegionTrack[]):Promise<boolean>{
  const projectId=nestedComposition.projectId,revision=nestedComposition.revision,before=snapshot(true)
  if(nestedHistory.busy||!projectId||revision===null||!before||signal?.aborted)return false

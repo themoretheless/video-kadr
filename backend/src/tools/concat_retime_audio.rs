@@ -11,12 +11,16 @@ impl PreparedCurvePcm{pub fn path(&self)->&Path{&self.path}
     pub(crate) fn into_owned_parts(mut self)->(PathBuf,u64,u64){(std::mem::take(&mut self.path),self.start_sample,self.frames)}
 }
 impl Drop for PreparedCurvePcm{fn drop(&mut self){if !self.path.as_os_str().is_empty(){let _=std::fs::remove_file(&self.path);}}}
+
+pub(crate) fn validate_source_curve_effects(clip: &AudioClip) -> Result<()> {
+    super::concat_curve_effects::validate_effects(&clip.dsp_effects)
+}
 /// Render the original source-owned part of an active audio clip, on its local
 /// composition clock. Unsupported active effects refuse instead of disappearing.
 #[allow(clippy::too_many_arguments)]
 pub async fn prepare_source_curve_stem(runtime:&ProcessRuntime,ffmpeg:&Path,ffprobe:&Path,source:&Path,metadata:&StreamMetadata,clip:&AudioClip,range:Range<u64>,staging:&Path,staging_bytes:u64,limit:Duration,cancel:&CancellationToken)->Result<PreparedCurvePcm>{
     ensure!(clip.enabled&&!cancel.is_cancelled()&&!limit.is_zero(),"source curve stem disabled or cancelled");
-    super::concat_curve_effects::validate_effects(&clip.dsp_effects)?;
+    validate_source_curve_effects(clip)?;
     let frames=range.end.checked_sub(range.start).filter(|v|*v>0&&*v<=48000*60*60*6).context("invalid source curve output range")?;
     let bytes=frames.checked_mul(8).context("source curve PCM extent overflow")?;
     ensure!(bytes<staging_bytes&&staging_bytes<=8*1024*1024*1024,"source curve stem staging budget exceeded");
@@ -25,9 +29,15 @@ pub async fn prepare_source_curve_stem(runtime:&ProcessRuntime,ffmpeg:&Path,ffpr
     let rest=match clip.gain{AnimatableValue::Constant{value}=>value,_=>anyhow::bail!("source curve native gain rewindowing is not compiled")};
     let mut command=Command::new(ffmpeg);command.args(["-nostdin","-v","error","-y","-protocol_whitelist",super::OFFLINE_PROTOCOLS]);
     let mut captures=Vec::new();let mut processed_captures=Vec::new();let mut inputs=Vec::new();let mut chains=Vec::new();let mut captured_bytes=0u64;
-    for(index,piece)in pieces.iter().enumerate(){
+    for piece in &pieces {
+        let index = captures.len();
         let available=staging_bytes.checked_sub(bytes).and_then(|v|v.checked_sub(captured_bytes)).context("source capture budget exhausted")?;
-        let capture=super::concat_audio_frames::prepare_source_piece(runtime,ffmpeg,ffprobe,source,metadata,&piece.source,staging,available,remaining()?,cancel).await?;
+        let capture = match super::concat_audio_frames::prepare_source_piece(runtime,ffmpeg,ffprobe,source,metadata,&piece.source,staging,available,remaining()?,cancel).await {
+            Ok(capture) => capture,
+            Err(error) if clip.placement.concat_source_eof
+                && error.is::<super::concat_audio_frames::SourceAudioExhausted>() => continue,
+            Err(error) => return Err(error),
+        };
         captured_bytes=captured_bytes.checked_add(tokio::fs::metadata(capture.path()).await?.len()).context("source capture byte count overflow")?;
         ensure!(captured_bytes<=staging_bytes-bytes,"source captures exceeded aggregate budget");
         let middle=PreparedTrack::new(&piece.clip.concat_gain_keys)?.audio_volume_filter(piece.source.duration_seconds,rest)?.into_iter().collect::<Vec<_>>();
@@ -46,13 +56,17 @@ pub async fn prepare_source_curve_stem(runtime:&ProcessRuntime,ffmpeg:&Path,ffpr
         }
         captures.push(capture);
     }
-    ensure!(!captures.is_empty(),"source curve stem has no pieces");
+    let path=staging.join(format!(".concat-curve-{}.f32le",uuid::Uuid::new_v4()));
+    let reservation=tokio::fs::OpenOptions::new().write(true).create_new(true).open(&path).await?;
+    let output=PreparedCurvePcm{path:path.clone(),start_sample:range.start,frames};
+    if captures.is_empty() {
+        reservation.set_len(bytes).await?;
+        return Ok(output);
+    }
+    drop(reservation);
     let labels=(0..captures.len()).map(|i|format!("[a{i}]")).collect::<String>();
     chains.push(if captures.len()==1{format!("{labels}anull[mix]")}else{format!("{labels}amix=inputs={}:normalize=0[mix]",captures.len())});
     chains.push(format!("[mix]aresample=48000,apad,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,atrim=start_sample={}:end_sample={},asetpts=PTS-STARTPTS[out]",range.start,range.end));
-    let path=staging.join(format!(".concat-curve-{}.f32le",uuid::Uuid::new_v4()));
-    let reservation=tokio::fs::OpenOptions::new().write(true).create_new(true).open(&path).await?;
-    let output=PreparedCurvePcm{path:path.clone(),start_sample:range.start,frames};drop(reservation);
     command.args(["-filter_complex",&chains.join(";"),"-map","[out]","-c:a","pcm_f32le","-f","f32le","-fs",&bytes.to_string()]).arg(&path);
     let result=crate::process_control::capture_output_cancellable(runtime,command,runtime.render_policy(inputs,path.clone()),remaining()?,cancel).await?;
     ensure!(result.status.success()&&!cancel.is_cancelled(),"source curve stem render failed: {}",String::from_utf8_lossy(&result.stderr));

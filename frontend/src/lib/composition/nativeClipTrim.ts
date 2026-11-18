@@ -74,7 +74,7 @@ export function trimNativeClipEnds(project: NativeNestedProject, compositionId: 
       if (clips.some((b, j) => j !== i && intersects(a, b))) throw new Error('Новая граница пересекает соседний клип')
     }
     if (track.kind === 'video') {
-      const transitions = track.transitions.map(transition => {
+      const transitions = (track.transitions ?? []).map(transition => {
         if (transition.fromClipId && selected.has(transition.fromClipId)) {
           const shift = nativeClipEnd(clips.find(clip => clip.id === transition.fromClipId)!) - nativeClipEnd(track.clips.find(clip => clip.id === transition.fromClipId)!)
           if (!shift) return transition
@@ -137,7 +137,7 @@ export function trimNativeClipStarts(project: NativeNestedProject, compositionId
     for (const clip of clips) if (selected.has(clip.id)) {
       if (clips.some(other => other.id !== clip.id && intersects(clip, other))) throw new Error('Новая граница пересекает соседний клип')
     }
-    return { ...track, clips, ...(track.kind === 'video' ? { transitions: track.transitions.map(transition => {
+    return { ...track, clips, ...(track.kind === 'video' ? { transitions: (track.transitions ?? []).map(transition => {
       if (!transition.toClipId || !selected.has(transition.toClipId)) return transition
       const shift = clipStart(clips.find(clip => clip.id === transition.toClipId)!) - clipStart(track.clips.find(clip => clip.id === transition.toClipId)!)
       if (!shift) return transition

@@ -1,6 +1,6 @@
 //! Native source-frame clock shared by nested media rendering.
 use super::composition::{ClipPlacement, PlaybackMode, SpeedRampInterpolation};
-use anyhow::{ensure, Result};
+use anyhow::{ensure, Context, Result};
 
 /// Decoder timestamp ownership. Concat clocks must retain their exact source ticks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,6 +43,44 @@ impl FrameTime {
         ensure!(value <= 9_007_199_254_740_991, "video PTS exceeds exact filter range");
         Ok(value)
     }
+}
+
+/// Physical frame clock for held video tails, with the same timeline boundaries.
+pub fn presented_source_tick(
+    placement: &ClipPlacement,
+    mode: PlaybackMode,
+    timeline_tick: u64,
+    duration_us: u64,
+) -> Result<Option<u64>> {
+    source_tick(placement, mode, timeline_tick)?
+        .map(|tick| {
+            FrameTime::Microseconds(tick)
+                .clamp_video_duration(duration_us)?
+                .microseconds()
+        })
+        .transpose()
+}
+
+/// First and last source positions in the renderer's presented interval.
+pub(crate) fn presented_source_bounds(
+    placement: &ClipPlacement,
+    mode: PlaybackMode,
+    duration_us: u64,
+) -> Result<(u64, u64)> {
+    if let Some(clock) = &placement.concat_retime {
+        let (start, duration) = clock.timeline_window_ticks(placement.timeline_start_tick, placement.source_in_tick)?;
+        let sample = |tick| -> Result<u64> {
+            let source = transition_source_sample_tick(placement, mode, tick)?
+                .context("retimed clip has no presented source position")?;
+            FrameTime::SourceTicks(source).clamp_video_duration(duration_us)?.microseconds()
+        };
+        return Ok((sample(start)?, sample(start + duration - 1)?));
+    }
+    let sample = |tick| -> Result<u64> {
+        presented_source_tick(placement, mode, tick, duration_us)?
+            .context("clip has no presented source position")
+    };
+    Ok((sample(placement.timeline_start_tick)?, sample(placement.timeline_end_tick()? - 1)?))
 }
 
 pub fn source_tick(

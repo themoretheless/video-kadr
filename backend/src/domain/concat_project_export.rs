@@ -2,7 +2,7 @@
 use super::{nested_composition::NestedCompositionProject,concat_effect_export::export_effect};
 use anyhow::{Context,Result,ensure,bail};
 use serde_json::{Value,json};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 fn constant(value:&Value)->Result<f64>{ensure!(value["mode"]=="constant","Native animation needs source-key conversion before Concat export");value["value"].as_f64().context("Missing constant pose value")}
 fn source_keys(value:&Value)->Result<Value>{
  if let Some(object)=value.as_object(){let key=object.get("at").and_then(Value::as_f64).is_some()&&object.get("value").and_then(Value::as_f64).is_some();ensure!(!key||object.get("derived")!=Some(&Value::Bool(true)),"Derived source-window keys need a portable authoring conversion");let mut out=serde_json::Map::new();for (name,value) in object{if !key||name!="derived"{out.insert(name.clone(),source_keys(value)?);}}return Ok(Value::Object(out))}
@@ -90,6 +90,7 @@ pub fn export_with_paths(project:&NestedCompositionProject,paths:&BTreeMap<Strin
    ensure!(matches!(track["kind"].as_str(),Some("text"|"graphic"|"video"|"image"|"audio")),"Unsupported native track kind");
    ensure!(track["locked"]!=true,"Locked lane state needs a source workspace mapping");ensure!(track["solo"]!=true,"Solo lane state needs a source workspace mapping");ensure!(track["kind"]=="video"||track["transitions"].as_array().map_or(true,Vec::is_empty),"Transitions require a source video lane");
    let track_clip_start=clips.len();
+   let transition_clips = transition_clip_ids(track);
    let mut kind=None;
    for clip in track["clips"].as_array().context("Clips missing")?{
     let media_kind=if matches!(track["kind"].as_str(),Some("video"|"image"|"audio")){track["kind"].as_str()}else{None};
@@ -101,9 +102,16 @@ pub fn export_with_paths(project:&NestedCompositionProject,paths:&BTreeMap<Strin
          .with_context(|| format!("caption {}", caption.id.as_str()))?;
      view = serde_json::to_value(caption)?;
     }
-    if media_kind.is_some(){let(start,duration)=media_timing(clip)?;view["timelineStartTick"]=json!(start);view["timelineEndTick"]=json!(start.checked_add(duration).context("Media end overflow")?);}
+    if media_kind.is_some() {
+     if clip["id"].as_str().is_some_and(|id| !transition_clips.contains(id)) {
+      canonicalize_forward_window(&mut view);
+     }
+     let (start, duration) = media_timing(&view)?;
+     view["timelineStartTick"] = json!(start);
+     view["timelineEndTick"] = json!(start.checked_add(duration).context("Media end overflow")?);
+    }
     let mut converted=if media_kind==Some("audio"){json!({"id":clip["id"],"kind":"audio","mediaId":clip["sourceId"],"start":view["timelineStartTick"].as_u64().unwrap() as f64/1e6,"duration":(view["timelineEndTick"].as_u64().unwrap()-view["timelineStartTick"].as_u64().unwrap()) as f64/1e6})}else{visual(&view,width,height,media_kind).with_context(||format!("clip {}",clip["id"]))?};
-    if let Some(kind)=media_kind{media_controls(clip,kind,&mut converted)?;}
+    if let Some(kind)=media_kind{media_controls(&view,kind,&mut converted)?;}
 
     let current=converted["kind"].as_str().unwrap().to_owned();if let Some(kind)=&kind{ensure!(kind==&current,"Mixed retained kinds need separate source lanes");}else{kind=Some(current);}
     converted["trackId"]=track["id"].clone();converted["name"]=metadata["clipNames"].get(clip["id"].as_str().unwrap()).cloned().unwrap_or_else(||clip["id"].clone());
@@ -139,7 +147,7 @@ pub fn export_with_paths(project:&NestedCompositionProject,paths:&BTreeMap<Strin
    let grouped=super::concat_lane_groups::groups(&project.compositions[timeline["id"].as_str().unwrap()].content)?.iter().any(|(video,image)|*video==native_index||*image==native_index);
    if grouped && track["clips"].as_array().is_some_and(Vec::is_empty) && track["transitions"].as_array().map_or(true,Vec::is_empty){continue}
    let rebuilt_track=rebuilt["tracks"].as_array().unwrap().iter().find(|item|item["id"]==format!("lane-{source_index}-{}",track["kind"].as_str().unwrap())).context("Missing reconstructed media lane")?;
-   ensure!(track["clips"]==rebuilt_track["clips"],"Media lane {} has native controls that cannot be exported losslessly",track["id"]);
+   check_clip_roundtrip(track, &rebuilt_track["clips"])?;
    let normalize=|value:&Value|{let mut values=value.as_array().cloned().unwrap_or_default();for transition in &mut values{transition.as_object_mut().unwrap().remove("id");}values};
    ensure!(normalize(&track["transitions"])==normalize(&rebuilt_track["transitions"]),"Source transition timing/endpoints cannot be exported losslessly");
   }
@@ -168,7 +176,7 @@ pub fn export_with_paths(project:&NestedCompositionProject,paths:&BTreeMap<Strin
     let owner=groups.iter().find(|(_,image)|*image==index).map_or(track["id"].as_str().unwrap(),|(video,_)|content.tracks[*video].id().as_str());
     let source_index=timeline["tracks"].as_array().unwrap().iter().position(|item|item["id"]==owner).context("Merged source lane missing")?;
     let rebuilt_track=rebuilt["tracks"].as_array().unwrap().iter().find(|item|item["id"]==format!("lane-{source_index}-{}",track["kind"].as_str().unwrap())).context("Merged native lane missing")?;
-    ensure!(track["clips"]==rebuilt_track["clips"],"Merged source lane changes native clip controls");
+    check_clip_roundtrip(track, &rebuilt_track["clips"])?;
     let normalize=|value:&Value|{let mut values=value.as_array().cloned().unwrap_or_default();for value in &mut values{value.as_object_mut().unwrap().remove("id");}values};
     ensure!(normalize(&track["transitions"])==normalize(&rebuilt_track["transitions"]),"Merged source lane changes transitions");
    }
@@ -180,6 +188,124 @@ pub fn export_with_paths(project:&NestedCompositionProject,paths:&BTreeMap<Strin
  document["video"] = active["video"].clone();
  ensure!(serde_json::to_vec(&document)?.len() <= 4 * 1024 * 1024, "Concat JSON exceeds the import budget");
  Ok(document)
+}
+
+fn check_clip_roundtrip(track: &Value, rebuilt: &Value) -> Result<()> {
+    let lane = &track["id"];
+    let original = &track["clips"];
+    if original == rebuilt {
+        return Ok(());
+    }
+    let mut original = original.clone();
+    let before = original.as_array_mut().context("Original clip list missing")?;
+    // Concat has no boundary-key provenance. Only the gain keys expressly
+    // admitted by media_controls may lose that marker on a round trip.
+    let transition_clips = transition_clip_ids(track);
+    for clip in before.iter_mut() {
+        strip_gain_key_provenance(clip);
+        if clip["id"].as_str().is_some_and(|id| !transition_clips.contains(id)) {
+            canonicalize_forward_window(clip);
+        }
+    }
+    let after = rebuilt.as_array().context("Reconstructed clip list missing")?;
+    if before == after {
+        return Ok(());
+    }
+    let (track, clip, fields) = match before.iter().zip(after).find(|(a, b)| a != b) {
+        Some((a, b)) if a["id"] == b["id"] => {
+            let a_fields = a.as_object().context("Original clip fields missing")?;
+            let b_fields = b.as_object().context("Reconstructed clip fields missing")?;
+            let mut fields = std::collections::BTreeSet::new();
+            for field in a_fields.keys().chain(b_fields.keys()) {
+                if a.get(field) != b.get(field) {
+                    if field == "transform" {
+                        let before = a[field].as_object().context("Original transform missing")?;
+                        let after = b[field].as_object().context("Reconstructed transform missing")?;
+                        for key in before.keys().chain(after.keys()) {
+                            if before.get(key) != after.get(key) {
+                                fields.insert(format!("transform.{key}"));
+                            }
+                        }
+                    } else {
+                        fields.insert(field.clone());
+                    }
+                }
+            }
+            (lane, a["id"].clone(), fields.into_iter().take(8).collect::<Vec<_>>().join(", "))
+        }
+        Some((a, _)) => (lane, a["id"].clone(), "clip order".into()),
+        None => (lane, Value::Null, "clip count".into()),
+    };
+    bail!("Media lane {track}, clip {clip} has native controls that cannot be exported losslessly ({fields})")
+}
+
+pub(super) fn strip_gain_key_provenance(clip: &mut Value) {
+    if let Some(keys) = clip.get_mut("concatGainKeys").and_then(Value::as_array_mut) {
+        for key in keys.iter_mut().filter_map(Value::as_object_mut) {
+            key.remove("derived");
+        }
+    }
+}
+
+pub(super) fn transition_clip_ids(track: &Value) -> BTreeSet<&str> {
+    track["transitions"].as_array().into_iter().flatten()
+        .flat_map(|transition| [transition["fromClipId"].as_str(), transition["toClipId"].as_str()])
+        .flatten().collect()
+}
+
+fn canonicalize_forward_window(clip: &mut Value) {
+    if clip["reversed"] == true
+        || (!clip["playbackMode"].is_null() && clip["playbackMode"]["mode"] != "forward")
+    {
+        return;
+    }
+    let muted_video = clip["sourceAudioEnabled"] == false;
+    let Some(placement) = clip.get_mut("placement").and_then(Value::as_object_mut) else {
+        return;
+    };
+    if ["concatRetime", "speedRamp", "concatSourceEof"]
+        .iter().any(|key| placement.contains_key(*key))
+    {
+        return;
+    }
+    let Some(speed) = placement.get("speed").and_then(Value::as_f64) else { return; };
+    let offset = placement.get("sourceTimelineOffsetTick").and_then(Value::as_i64).unwrap_or(0);
+    let head = placement.get("sourceHeadTimelineTick").and_then(Value::as_u64).unwrap_or(0);
+    let Some(source_in) = placement.get("sourceInTick").and_then(Value::as_u64) else {
+        return;
+    };
+    let Some(duration) = placement.get("timelineDurationTick").and_then(Value::as_u64) else { return; };
+    if speed != 1.0 {
+        // A shifted pitch-preserving tempo graph can change audio samples.
+        // For muted video, prove the native caption clock's multiplication
+        // exact using the reduced numerator of speed's binary fraction.
+        let significand = (speed.to_bits() & ((1_u64 << 52) - 1)) | (1_u64 << 52);
+        let numerator = significand >> significand.trailing_zeros();
+        let clock_limit = (1_u64 << 53) / numerator
+            / super::caption_time::SOURCE_TICKS_PER_MICROSECOND as u64;
+        if !muted_video || offset.unsigned_abs().saturating_add(duration) > clock_limit {
+            return;
+        }
+    }
+    if (head as f64 * speed).ceil() as u64 > source_in {
+        return;
+    }
+    let source_offset = offset as f64 * speed;
+    let source_duration = duration as f64 * speed;
+    if source_offset.fract() != 0.0 || source_duration.fract() != 0.0 {
+        return;
+    }
+    let Some(start) = source_in.checked_add_signed(source_offset as i64) else { return; };
+    let Some(end) = start.checked_add(source_duration as u64) else { return; };
+    if placement.get("sourceOutTick").and_then(Value::as_u64).is_some_and(|source_out| end <= source_out) {
+        // Both clocks read the same source ticks over the same half-open
+        // interval. The discarded handle is outside every rendered tick.
+        placement.insert("sourceInTick".into(), json!(start));
+        placement.insert("sourceOutTick".into(), json!(end));
+        placement.remove("timelineDurationTick");
+        placement.remove("sourceTimelineOffsetTick");
+        placement.remove("sourceHeadTimelineTick");
+    }
 }
 
 fn media_timing(clip:&Value)->Result<(u64,u64)>{
@@ -196,11 +322,27 @@ fn media_controls(clip:&Value,kind:&str,out:&mut Value)->Result<()>{
   return Ok(())
  }
  let placement=&clip["placement"];out["sourceStart"]=json!(placement["sourceInTick"].as_u64().context("Media source start missing")? as f64/1e6);out["speed"]=placement["speed"].clone();out["preservePitch"]=json!(true);
+ if let Some(raw) = placement.get("concatRetime").and_then(|clock| clock.get("documentClock")) {
+  ensure!(matches!(kind, "video" | "audio"), "Source edit clock needs an audio or video clip");
+  out["start"] = raw["start"].clone();
+  out["duration"] = raw["duration"].clone();
+  out["sourceStart"] = raw["sourceStart"].clone();
+  // Preserve the exact Concat clock even after the curve is cleared.
+  // The original renderer treats an empty array as constant speed.
+  out["speedCurve"] = if raw["speedCurve"].is_null() {json!([])} else {raw["speedCurve"].clone()};
+ }
  let audio=kind=="audio";out["volume"]=json!(constant(&clip[if audio{"gain"}else{"audioGain"}])?);out["muted"]=json!(if audio{clip["enabled"]==false}else{clip["sourceAudioEnabled"]==false});
  out["fadeIn"]=json!(clip[if audio{"fadeInTicks"}else{"audioFadeInTicks"}].as_u64().unwrap_or(0) as f64/1e6);out["fadeOut"]=json!(clip[if audio{"fadeOutTicks"}else{"audioFadeOutTicks"}].as_u64().unwrap_or(0) as f64/1e6);
  if let Some(stream)=clip.get("audioStream"){out["audioStream"]=stream.clone();}if let Some(origin)=clip.get("detachedFrom"){out["detachedFrom"]=origin.clone();}
  let keys=out.as_object_mut().unwrap().entry("keys").or_insert(json!([])).as_array_mut().context("Invalid property keys")?;
- for key in clip["concatGainKeys"].as_array().into_iter().flatten(){let mut key=source_keys(key)?;key["property"]=json!("volume");keys.push(key);}
+ for key in clip["concatGainKeys"].as_array().into_iter().flatten() {
+  let mut key = key.as_object().context("Invalid volume key")?.clone();
+  ensure!(key.get("value").and_then(Value::as_f64).is_some_and(|gain| gain >= 0.0),
+      "Negative boundary gain would be clamped by Concat");
+  key.remove("derived");
+  key.insert("property".into(), json!("volume"));
+  keys.push(Value::Object(key));
+ }
  let specs:Vec<super::filmcraft_dsp::EffectSpec>=serde_json::from_value(clip.get("dspEffects").cloned().unwrap_or(json!([])))?;
  let links=specs.iter().map(|spec|super::concat_effect_upgrade::AppliedFilter{id:spec.id.clone(),params:spec.params.iter().map(|(name,value)|(name.clone(),*value as f64)).collect(),enabled:!spec.bypass,keys:spec.concat_source_keys.clone()}).collect::<Vec<_>>();
  ensure!(super::concat_audio_import::convert(&links)?==specs,"Native DSP animation cannot be exported losslessly");let mut filters=serde_json::to_value(links)?;for link in filters.as_array_mut().unwrap(){if let Some(keys)=link.get_mut("keys"){*keys=source_keys(keys)?;}}out["filters"]=filters;Ok(())

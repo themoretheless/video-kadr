@@ -16,10 +16,8 @@ pub async fn generate(state:&AppState,actor:&str,project:&str,revision:u64,origi
   let root=crate::services::tts_model_download::directory(&state.sources_dir(),&std::path::Path::new("spaces").join(&space)).await?;
   let filename=format!("{id}.png");let path=root.join(&filename);
   ensure!(!path.try_exists()?,"smart region output collision");
-  let(tx,_rx)=tokio::sync::mpsc::unbounded_channel();
-  let metadata=crate::services::local_sam::region(&state.process_runtime,&config,crate::services::local_sam::Input{source,source_hash,points},&path,cancel,std::time::Duration::from_secs(1800),&tx).await?;
-  owned_path=Some(path.clone());
-  let attachment=RegionAttachment{source_id:original.id.as_str().into(),mask_source_id:id.clone(),source_hash:metadata.source_hash,mask_hash:metadata.mask_hash,mask_file_hash:metadata.output_hash,encoder_hash:metadata.encoder_hash,decoder_hash:metadata.decoder_hash,runtime_hash:metadata.runtime_hash,prompt_hash:metadata.prompt_hash,points:points.to_vec()};attachment.validate()?;
+  let (attachment, descriptor) = stage(state, &config, original, source, source_hash,
+   points, &path, &id, cancel, &mut owned_path).await?;
   super::cutout_assets::authorize(state,project,actor).await.map_err(|_|anyhow::anyhow!("project access revoked"))?;
   let current=state.db.get_composition_project_for(project,actor).await?.ok_or_else(||anyhow::anyhow!("project unavailable"))?;
   ensure!(current.revision==revision&&current.document==saved.document,"smart region project/binding changed");
@@ -27,9 +25,52 @@ pub async fn generate(state:&AppState,actor:&str,project:&str,revision:u64,origi
   let entry=MediaEntry::from_result("source",&serde_json::json!({"id":id,"filename":filename,"url":format!("/files/sources/{filename}"),"storageKey":format!("spaces/{space}/{filename}"),"mediaType":"image","width":256,"height":256}));
   ensure!(state.library.get(&id).await.is_none(),"smart region library collision");ensure!(state.library.add(entry.clone()).await,"smart region library persistence failed");
   state.index_media(&entry).await;
-  let mut descriptor=original.clone();descriptor.id=SourceId::parse(id.clone())?;descriptor.width=256;descriptor.height=256;
   Ok((attachment,descriptor,path))
  }.await;
  if result.is_err()&&state.library.get(&id).await.is_none(){if let Some(path)=owned_path{let _=tokio::fs::remove_file(path).await;}let _=state.db.release_space_source_claim(&id).await;}
  result
+}
+
+/// Build one SAM image region at a caller-owned staging path.
+pub(super) async fn stage(
+    state: &AppState,
+    config: &crate::services::local_sam::Config,
+    original: &CompositionSource,
+    source: &std::path::Path,
+    source_hash: &str,
+    points: &[[f64; 2]],
+    path: &std::path::Path,
+    id: &str,
+    cancel: &CancellationToken,
+    owned_path: &mut Option<std::path::PathBuf>,
+) -> Result<(RegionAttachment, CompositionSource)> {
+    let (progress, _) = tokio::sync::mpsc::unbounded_channel();
+    let metadata = crate::services::local_sam::region(
+        &state.process_runtime,
+        config,
+        crate::services::local_sam::Input { source, source_hash, points },
+        path,
+        cancel,
+        std::time::Duration::from_secs(1800),
+        &progress,
+    ).await?;
+    *owned_path = Some(path.to_owned());
+    let attachment = RegionAttachment {
+        source_id: original.id.as_str().into(),
+        mask_source_id: id.into(),
+        source_hash: metadata.source_hash,
+        mask_hash: metadata.mask_hash,
+        mask_file_hash: metadata.output_hash,
+        encoder_hash: metadata.encoder_hash,
+        decoder_hash: metadata.decoder_hash,
+        runtime_hash: metadata.runtime_hash,
+        prompt_hash: metadata.prompt_hash,
+        points: points.to_vec(),
+    };
+    attachment.validate()?;
+    let mut descriptor = original.clone();
+    descriptor.id = SourceId::parse(id)?;
+    descriptor.width = 256;
+    descriptor.height = 256;
+    Ok((attachment, descriptor))
 }

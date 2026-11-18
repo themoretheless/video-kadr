@@ -231,6 +231,114 @@ async fn saved_native_template_download_excludes_missing_slot_files_and_cleans_s
         assert!(poster.width() <= 320 && poster.height() <= 180);
         assert_eq!(poster.get_pixel(poster.width() / 2, poster.height() / 2).0, [0, 0, 0]);
     }
+    let native_cover_uri = format!("/api/composition-projects/{}/template?useSavedCover=true", concat.id);
+    let response = app.clone().oneshot(
+        Request::post(&native_cover_uri)
+            .header(header::AUTHORIZATION, format!("Bearer {}", owner.token))
+            .body(Body::empty()).unwrap(),
+    ).await.unwrap();
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let entry: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), 1 << 20).await.unwrap()).unwrap();
+    assert_eq!(entry["hasPoster"], true);
+    let response = app.clone().oneshot(
+        Request::get(format!("{native_cover_uri}&posterTimeUs=0"))
+            .header(header::AUTHORIZATION, format!("Bearer {}", owner.token))
+            .body(Body::empty()).unwrap(),
+    ).await.unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let response = app.clone().oneshot(
+        Request::get(format!("/api/template-library/{}/poster", entry["id"].as_str().unwrap()))
+            .header(header::AUTHORIZATION, format!("Bearer {}", owner.token))
+            .body(Body::empty()).unwrap(),
+    ).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = to_bytes(response.into_body(), 1 << 20).await.unwrap();
+    let cover = image::load_from_memory_with_format(&bytes, image::ImageFormat::Png)
+        .unwrap().to_rgb8();
+    assert_eq!(cover.dimensions(), (16, 8));
+    let original = STANDARD.decode(portable["coverJpeg"].as_str().unwrap()).unwrap();
+    assert_eq!(cover, image::load_from_memory(&original).unwrap().to_rgb8());
+
+    let upload_cover = |uri: &str, image: &[u8]| {
+        let mut body = b"--cover\r\nContent-Disposition: form-data; name=\"poster\"; filename=\"cover.png\"\r\nContent-Type: image/png\r\n\r\n".to_vec();
+        body.extend_from_slice(image);
+        body.extend_from_slice(b"\r\n--cover--\r\n");
+        Request::post(uri)
+            .header(header::COOKIE, format!("video_kadr_session={}", owner.token))
+            .header(header::CONTENT_TYPE, "multipart/form-data; boundary=cover")
+            .body(Body::from(body)).unwrap()
+    };
+    let normalization_uri = "/api/composition-projects/concat-template-cover";
+    let mut large_jpeg = original[..2].to_vec();
+    let marker = [0xff, 0xef, 0xff, 0xff];
+    for _ in 0..7 {
+        large_jpeg.extend_from_slice(&marker);
+        large_jpeg.resize(large_jpeg.len() + 65_533, 0);
+    }
+    large_jpeg.extend_from_slice(&original[2..]);
+    assert!(large_jpeg.len() > 384 * 1024);
+    let mut normalize = upload_cover(normalization_uri, &large_jpeg);
+    normalize.headers_mut().insert(header::AUTHORIZATION, format!("Bearer {}", owner.token).parse().unwrap());
+    let response = app.clone().oneshot(normalize).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let normalized: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), 1 << 20).await.unwrap()).unwrap();
+    let jpeg = STANDARD.decode(normalized["coverJpeg"].as_str().unwrap()).unwrap();
+    assert!(jpeg.len() <= 384 * 1024);
+    let normalized = image::load_from_memory_with_format(&jpeg, image::ImageFormat::Jpeg).unwrap().to_rgb8();
+    assert_eq!(normalized.dimensions(), cover.dimensions());
+    assert!(normalized.as_raw().iter().zip(cover.as_raw()).all(|(left, right)| left.abs_diff(*right) <= 3));
+
+    let png = std::fs::read(&path).unwrap();
+    let response = app.clone().oneshot(upload_cover(&concat_uri, &png)).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers()[header::CONTENT_TYPE], "application/zip");
+    let bytes = to_bytes(response.into_body(), 1 << 20).await.unwrap();
+    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+    let mut jpeg = Vec::new();
+    std::io::Read::read_to_end(&mut zip.by_name("poster.jpg").unwrap(), &mut jpeg).unwrap();
+    let poster = image::load_from_memory_with_format(&jpeg, image::ImageFormat::Jpeg)
+        .unwrap().to_rgb8();
+    assert_eq!(poster.dimensions(), (16, 8));
+    for (actual, expected) in poster.get_pixel(8, 4).0.into_iter().zip([25_u8, 50, 75]) {
+        assert!(actual.abs_diff(expected) <= 3);
+    }
+    assert_eq!(
+        app.clone().oneshot(upload_cover(&format!("{concat_uri}?useSavedCover=true"), &png))
+            .await.unwrap().status(),
+        StatusCode::BAD_REQUEST,
+    );
+    let native_upload_uri = format!("/api/composition-projects/{}/template-cover", saved.id);
+    let response = app.clone().oneshot(upload_cover(&format!("{native_upload_uri}?download=true&name=Custom"), &png)).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(response.headers()[header::CONTENT_DISPOSITION].to_str().unwrap().contains("custom.vktemplate"));
+    let bytes = to_bytes(response.into_body(), 1 << 20).await.unwrap();
+    let upload_stage = dir.path().join("uploaded-cover");
+    std::fs::create_dir(&upload_stage).unwrap();
+    let uploaded = video_kadr_backend::template_bundle::read(std::io::Cursor::new(bytes), &upload_stage).unwrap();
+    assert_eq!(uploaded.manifest.name, "Custom");
+    assert_eq!(
+        image::load_from_memory(uploaded.poster_png.as_ref().unwrap()).unwrap().to_rgba8(),
+        image::load_from_memory(&png).unwrap().to_rgba8(),
+    );
+    drop(uploaded);
+    assert_eq!(
+        app.clone().oneshot(upload_cover(&format!("{native_upload_uri}?download=true"), b"invalid PNG")).await.unwrap().status(),
+        StatusCode::BAD_REQUEST,
+    );
+    assert_eq!(
+        app.clone().oneshot(upload_cover(&native_upload_uri, &png)).await.unwrap().status(),
+        StatusCode::UNAUTHORIZED,
+    );
+    let mut save_cover = upload_cover(&format!("{native_upload_uri}?name=Custom+library+cover"), &png);
+    save_cover.headers_mut().insert(header::AUTHORIZATION, format!("Bearer {}", owner.token).parse().unwrap());
+    let response = app.clone().oneshot(save_cover).await.unwrap();
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let uploaded_entry: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), 1 << 20).await.unwrap()).unwrap();
+    assert_eq!(uploaded_entry["hasPoster"], true);
+
     let uri = format!("/api/composition-projects/{}/template", saved.id);
     let request = |token: Option<&str>| {
         let mut r = Request::get(&uri);
@@ -321,8 +429,52 @@ async fn saved_native_template_download_excludes_missing_slot_files_and_cleans_s
             .status(),
         StatusCode::CONFLICT
     );
+    let auto_report = video_kadr_backend::domain::concat_project_import::import(
+        serde_json::from_value(json!({
+            "schemaVersion": 1,
+            "document": {
+                "version": 1, "activeTimelineId": "poster",
+                "media": [{"id":"picture","kind":"image","path":"picture.png"}],
+                "timelines": [{"id":"poster","video":{"width":16,"height":8,"rateNum":24,"rateDen":1},
+                    "tracks":[{"id":"visual"}],
+                    "clips":[{"id":"still","kind":"image","mediaId":"picture","trackId":"visual","start":0,"duration":2}]}]
+            },
+            "mediaBindings": {"picture": source("missing-original")},
+            "preserveMediaIds": true
+        })).unwrap(),
+    ).unwrap();
+    assert_eq!(auto_report.status, "converted", "{:?}", auto_report.diagnostics);
+    let mut auto_project = auto_report.project.unwrap();
+    auto_project.project_media.values_mut().next().unwrap().placeholder = true;
+    let auto_root = auto_project.root.clone();
+    let auto_saved = state.db.create_owned_composition_project(
+        "Automatic cover", &serde_json::to_value(auto_project).unwrap(),
+        &["missing-original".into()], &owner.user.username,
+    ).await.unwrap();
+    let native_auto_uri = format!("/api/composition-projects/{}/template?autoPoster=true&posterCompositionId={auto_root}", auto_saved.id);
+    let response = app.clone().oneshot(
+        Request::get(&native_auto_uri)
+            .header(header::AUTHORIZATION, format!("Bearer {}", owner.token))
+            .body(Body::empty()).unwrap(),
+    ).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let data = to_bytes(response.into_body(), 1 << 20).await.unwrap();
+    let parsed = video_kadr_backend::template_bundle::read(std::io::Cursor::new(data), &stage).unwrap();
+    assert!(parsed.poster_png.is_none());
+    drop(parsed);
+
+    let automatic = || Request::get(format!("/api/composition-projects/{}/concat-template?autoPoster=true&posterCompositionId={auto_root}", auto_saved.id))
+        .header(header::AUTHORIZATION, format!("Bearer {}", owner.token))
+        .body(Body::empty()).unwrap();
+    let response = app.clone().oneshot(automatic()).await.unwrap();
+    let status = response.status();
+    let zip = to_bytes(response.into_body(), 1 << 20).await.unwrap();
+    assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&zip));
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(zip)).unwrap();
+    assert!(archive.by_name("poster.jpg").is_err());
+
     let original_path = state.sources_dir().join("original.png");
-    image::RgbaImage::from_pixel(16, 8, image::Rgba([12, 90, 160, 255]))
+    image::RgbaImage::from_pixel(16, 8, image::Rgba([0, 0, 0, 255]))
         .save(&original_path)
         .unwrap();
     let mut original_entry = state.library.get("design-file").await.unwrap();
@@ -331,6 +483,107 @@ async fn saved_native_template_download_excludes_missing_slot_files_and_cleans_s
     original_entry.url = "/files/sources/original.png".into();
     original_entry.size_bytes = Some(std::fs::metadata(&original_path).unwrap().len());
     assert!(state.library.add(original_entry).await);
+    let response = app.clone().oneshot(automatic()).await.unwrap();
+    let status = response.status();
+    let zip = to_bytes(response.into_body(), 1 << 20).await.unwrap();
+    assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&zip));
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(zip)).unwrap();
+    assert!(archive.by_name("poster.jpg").is_err());
+
+    image::RgbaImage::from_pixel(16, 8, image::Rgba([12, 90, 160, 255]))
+        .save(&original_path)
+        .unwrap();
+    let response = app.clone().oneshot(automatic()).await.unwrap();
+    let status = response.status();
+    let zip = to_bytes(response.into_body(), 1 << 20).await.unwrap();
+    assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&zip));
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(zip)).unwrap();
+    let mut jpeg = Vec::new();
+    std::io::Read::read_to_end(&mut archive.by_name("poster.jpg").unwrap(), &mut jpeg).unwrap();
+    let image = image::load_from_memory_with_format(&jpeg, image::ImageFormat::Jpeg)
+        .unwrap().to_rgb8();
+    assert_eq!(image.dimensions(), (480, 240));
+    for (actual, expected) in image.get_pixel(240, 120).0.into_iter().zip([12, 90, 160]) {
+        assert!(actual.abs_diff(expected) <= 3);
+    }
+
+    let response = app.clone().oneshot(
+        Request::get(&native_auto_uri)
+            .header(header::AUTHORIZATION, format!("Bearer {}", owner.token))
+            .body(Body::empty()).unwrap(),
+    ).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let data = to_bytes(response.into_body(), 1 << 20).await.unwrap();
+    let parsed = video_kadr_backend::template_bundle::read(std::io::Cursor::new(data), &stage).unwrap();
+    let poster = parsed.poster_png.as_ref().unwrap();
+    let frame = image::load_from_memory_with_format(poster, image::ImageFormat::Png).unwrap().to_rgba8();
+    assert_eq!(frame.dimensions(), (320, 160));
+    assert_eq!(frame.get_pixel(160, 80).0, [12, 90, 160, 255]);
+    let response = app.clone().oneshot(
+        Request::post(&native_auto_uri)
+            .header(header::AUTHORIZATION, format!("Bearer {}", owner.token))
+            .body(Body::empty()).unwrap(),
+    ).await.unwrap();
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let entry: serde_json::Value = serde_json::from_slice(&to_bytes(response.into_body(), 1 << 20).await.unwrap()).unwrap();
+    assert_eq!(entry["hasPoster"], true);
+    let response = app.clone().oneshot(
+        Request::get(format!("/api/template-library/{}/poster", entry["id"].as_str().unwrap()))
+            .header(header::AUTHORIZATION, format!("Bearer {}", owner.token))
+            .body(Body::empty()).unwrap(),
+    ).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(to_bytes(response.into_body(), 1 << 20).await.unwrap().as_ref(), poster);
+    drop(parsed);
+
+    let video_path = state.sources_dir().join("automatic-video.mkv");
+    let generated = std::process::Command::new("ffmpeg")
+        .args(["-nostdin", "-v", "error", "-f", "lavfi",
+            "-i", "color=black:s=16x8:r=24:d=2",
+            "-vf", "drawbox=color=red:t=fill:enable='gte(t,0.4)'",
+            "-c:v", "ffv1"])
+        .arg(&video_path).output().unwrap();
+    assert!(generated.status.success(), "{}", String::from_utf8_lossy(&generated.stderr));
+    let mut video = state.library.get("design-file").await.unwrap();
+    video.id = "automatic-video".into();
+    video.filename = "automatic-video.mkv".into();
+    video.url = "/files/sources/automatic-video.mkv".into();
+    video.media_type = Some("video".into());
+    video.duration = Some(2.0);
+    video.size_bytes = Some(std::fs::metadata(&video_path).unwrap().len());
+    assert!(state.library.add(video).await);
+    let report = video_kadr_backend::domain::concat_project_import::import(
+        serde_json::from_value(json!({
+            "schemaVersion": 1,
+            "document": {
+                "version": 1, "activeTimelineId": "video",
+                "media": [{"id":"video","kind":"video","path":"automatic-video.mkv"}],
+                "timelines": [{"id":"video","video":{"width":16,"height":8,"rateNum":24,"rateDen":1},
+                    "tracks":[{"id":"visual"}],
+                    "clips":[{"id":"moving","kind":"video","mediaId":"video","trackId":"visual","start":0,"duration":2}]}]
+            },
+            "mediaBindings": {"video": {"id":"automatic-video","kind":"video","durationTicks":2000000,"width":16,"height":8,"hasAudio":false}},
+            "preserveMediaIds": true
+        })).unwrap(),
+    ).unwrap();
+    assert_eq!(report.status, "converted", "{:?}", report.diagnostics);
+    let video_project = state.db.create_owned_composition_project(
+        "Automatic video cover", &serde_json::to_value(report.project.unwrap()).unwrap(),
+        &["automatic-video".into()], &owner.user.username,
+    ).await.unwrap();
+    let response = app.clone().oneshot(
+        Request::get(format!("/api/composition-projects/{}/template?autoPoster=true", video_project.id))
+            .header(header::AUTHORIZATION, format!("Bearer {}", owner.token))
+            .body(Body::empty()).unwrap(),
+    ).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let data = to_bytes(response.into_body(), 1 << 20).await.unwrap();
+    let parsed = video_kadr_backend::template_bundle::read(std::io::Cursor::new(data), &stage).unwrap();
+    let frame = image::load_from_memory(parsed.poster_png.as_ref().unwrap()).unwrap().to_rgb8();
+    let [red, green, blue] = frame.get_pixel(160, 80).0;
+    assert!(red > 240 && green < 10 && blue < 10);
+    drop(parsed);
+
     let response = app.clone().oneshot(poster_request()).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
     let bytes = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
@@ -381,7 +634,7 @@ async fn saved_native_template_download_excludes_missing_slot_files_and_cleans_s
         std::fs::read_dir(state.storage.join("template-library"))
             .unwrap()
             .count(),
-        1
+        4
     );
     assert_eq!(std::fs::read_dir(state.staging_dir()).unwrap().count(), 0);
     std::fs::remove_file(&path).unwrap();
@@ -403,4 +656,247 @@ async fn saved_native_template_download_excludes_missing_slot_files_and_cleans_s
             .document,
         document
     );
+}
+
+#[tokio::test]
+async fn concat_template_exports_authored_cutout_for_a_replaceable_video() {
+    use video_kadr_backend::domain::{
+        concat_cutout_import,
+        concat_project_import::{import, ImportRequest},
+        cutout::SELFIE_MODEL_HASH,
+    };
+    let (state, _dir) = support::make_state(false, false).await;
+    let owner = state.db.register_auth_user("concat-cutout", "concat mask password")
+        .await.unwrap().unwrap();
+    let input: ImportRequest = serde_json::from_value(json!({
+        "schemaVersion":1, "preserveMediaIds":true,
+        "document":{"version":1,"media":[{"id":"slot","name":"Replacement","kind":"video","placeholder":true}],
+            "timelines":[{"id":"main","video":{"width":16,"height":8,"rateNum":10,"rateDen":1},
+                "tracks":[{"id":"video"}],"clips":[{"id":"cut","trackId":"video","mediaId":"slot",
+                    "kind":"video","sourceStart":0.2,"duration":0.4}]}]},
+        "mediaBindings":{"slot":{"id":"unavailable-original","kind":"video","durationTicks":1000000,
+            "width":16,"height":8,"hasAudio":false}}
+    })).unwrap();
+    let report = import(input).unwrap();
+    assert_eq!(report.status, "converted", "{:?}", report.diagnostics);
+    let project = report.project.unwrap();
+    let root = project.root.clone();
+    let mut document = serde_json::to_value(project).unwrap();
+    document["compositions"][&root]["content"]["tracks"][0]["clips"][0]["concatCutout"] = json!({
+        "sourceHash":"1".repeat(64), "runtimeHash":"2".repeat(64), "modelHash":SELFIE_MODEL_HASH,
+        "subject":"person", "correction":{"custom":true,"feather":0.04,"strokes":[
+            {"tool":"brush","size":0.1,"points":[[0.25,0.5]],"at":0.45},
+            {"tool":"eraser","size":0.08,"points":[[0.75,0.5]]}
+        ]}
+    });
+    let saved = state.db.create_owned_composition_project(
+        "Masked Concat slot", &document, &["unavailable-original".into()], &owner.user.username,
+    ).await.unwrap();
+    let response = support::router(state).oneshot(Request::get(format!(
+        "/api/composition-projects/{}/concat-template", saved.id,
+    )).header(header::AUTHORIZATION, format!("Bearer {}", owner.token))
+        .body(Body::empty()).unwrap()).await.unwrap();
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), 1 << 20).await.unwrap();
+    assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&bytes));
+    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+    assert_eq!(zip.len(), 1);
+    let template: serde_json::Value = serde_json::from_reader(zip.by_name("template.json").unwrap()).unwrap();
+    assert_eq!(template["media"][0]["path"], "");
+    assert_eq!(template["media"][0]["placeholder"], true);
+    let cutout = &template["timelines"][0]["clips"][0]["cutout"];
+    let settings = concat_cutout_import::plan(cutout).unwrap();
+    assert_eq!(settings.subject, concat_cutout_import::Subject::Person);
+    assert!(settings.correction.custom);
+    assert_eq!(settings.correction.feather, 0.04);
+    assert_eq!(settings.correction.strokes[0].at, Some(0.25));
+    assert_eq!(settings.correction.strokes[0].points, vec![[0.25, 0.5]]);
+    assert_eq!(settings.correction.strokes[1].at, None);
+    assert!(cutout.get("sourceHash").is_none());
+    assert!(cutout.get("runtimeHash").is_none());
+    let filled = video_kadr_backend::domain::concat_media_slots::fill(
+        &template, "slot", &json!({
+            "path":"library:replacement","name":"New video","kind":"video",
+            "duration":0.3,"width":16,"height":8,"hasAudio":false,
+        }),
+    ).unwrap();
+    let clip = &filled["timelines"][0]["clips"][0];
+    assert_eq!(clip["sourceStart"], 0.0);
+    assert_eq!(clip["cutout"], *cutout);
+}
+
+#[tokio::test]
+async fn templates_package_retimed_video_masks_and_dissolve() {
+    use video_kadr_backend::domain::{
+        concat_cutout_import::plan,
+        concat_project_import::{import, ImportRequest},
+        cutout::SELFIE_MODEL_HASH,
+    };
+    let (state, _dir) = support::make_state(false, false).await;
+    let owner = state.db.register_auth_user("fixed-cutout", "fixed mask password").await.unwrap().unwrap();
+    let file = b"fixed video asset";
+    std::fs::write(state.sources_dir().join("fixed.mkv"), file).unwrap();
+    assert!(state.library.add(MediaEntry::from_result("source", &json!({
+        "id":"fixed-file","filename":"fixed.mkv","url":"/files/sources/fixed.mkv","mediaType":"video",
+    }))).await);
+    let request: ImportRequest = serde_json::from_value(json!({
+        "schemaVersion":1, "preserveMediaIds":true,
+        "document":{"version":1,"media":[{"id":"fixed","name":"Video","kind":"video"}],
+            "timelines":[{"id":"main","video":{"width":16,"height":8,"rateNum":10,"rateDen":1},
+                "tracks":[{"id":"video"}],"clips":[
+                    {"id":"cut","trackId":"video","mediaId":"fixed","kind":"video",
+                     "sourceStart":0.2,"duration":0.4,"speedCurve":[{"at":0.0,"speed":0.5},{"at":1.0,"speed":1.5}]},
+                    {"id":"next","trackId":"video","mediaId":"fixed","kind":"video","start":0.4,
+                     "sourceStart":0.3,"duration":0.4,"speedCurve":[{"at":0.0,"speed":1.5},{"at":1.0,"speed":0.5}],
+                     "transitionIn":{"id":"concat.dissolve","duration":0.2}}
+                ]}]},
+        "mediaBindings":{"fixed":{"id":"fixed-file","kind":"video","durationTicks":1000000,
+            "width":16,"height":8,"hasAudio":false}}
+    })).unwrap();
+    let project = import(request).unwrap().project.unwrap();
+    let root = project.root.clone();
+    let mut document = serde_json::to_value(project).unwrap();
+    document["compositions"][&root]["content"]["tracks"][0]["clips"][0]["concatCutout"] = json!({
+        "sourceHash":"1".repeat(64), "runtimeHash":"2".repeat(64), "modelHash":SELFIE_MODEL_HASH,
+        "subject":"person", "correction":{"custom":true,"feather":0.04,"strokes":[
+            {"tool":"brush","size":0.1,"points":[[0.25,0.5]],"at":0.45}
+        ]}
+    });
+    let mut slot_document = document.clone();
+    slot_document["projectMedia"]["fixed"]["placeholder"] = json!(true);
+    let slot_project = serde_json::from_value(slot_document).unwrap();
+    let native = video_kadr_backend::template_bundle::write(
+        std::io::Cursor::new(Vec::new()), "Masked retimed slot", &slot_project, &[],
+    ).unwrap();
+    let stage = tempfile::tempdir().unwrap();
+    let parsed = video_kadr_backend::template_bundle::read(
+        std::io::Cursor::new(native.into_inner()), stage.path(),
+    ).unwrap();
+    assert!(parsed.assets.is_empty());
+    assert!(parsed.video_caches.is_empty());
+    assert_eq!(parsed.manifest.slot_masks.len(), 1);
+    let recipe = serde_json::to_value(&parsed.manifest.slot_masks[0].recipe).unwrap();
+    assert_eq!(recipe["correction"]["strokes"][0]["at"], 0.45);
+    let native = serde_json::to_value(&parsed.manifest.project).unwrap();
+    let track = &native["compositions"][&root]["content"]["tracks"][0];
+    assert!(track["clips"][0]["concatCutout"].is_null());
+    assert_eq!(track["clips"][0]["placement"]["concatRetime"]["documentClock"]["speedCurve"],
+        json!([{"at":0.0,"speed":0.5},{"at":1.0,"speed":1.5}]));
+    assert_eq!(track["transitions"][0]["toClipId"], "next");
+
+    let saved = state.db.create_owned_composition_project(
+        "Masked fixed video", &document, &["fixed-file".into()], &owner.user.username,
+    ).await.unwrap();
+    let response = support::router(state).oneshot(Request::get(format!(
+        "/api/composition-projects/{}/concat-template", saved.id,
+    )).header(header::AUTHORIZATION, format!("Bearer {}", owner.token)).body(Body::empty()).unwrap()).await.unwrap();
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), 1 << 20).await.unwrap();
+    assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&bytes));
+    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+    assert_eq!(zip.len(), 2);
+    let template: serde_json::Value = serde_json::from_reader(zip.by_name("template.json").unwrap()).unwrap();
+    let clip = &template["timelines"][0]["clips"][0];
+    assert_eq!(clip["sourceStart"], 0.2);
+    assert_eq!(clip["speedCurve"], json!([{"at":0.0,"speed":0.5},{"at":1.0,"speed":1.5}]));
+    assert_eq!(plan(&clip["cutout"]).unwrap().correction.strokes[0].at, Some(0.45));
+    let incoming = &template["timelines"][0]["clips"][1];
+    assert_eq!(incoming["id"], "next");
+    assert_eq!(incoming["transitionIn"], json!({"id":"concat.dissolve","duration":0.2}));
+    assert_eq!(template["media"][0]["placeholder"], false);
+    let mut packaged = Vec::new();
+    std::io::Read::read_to_end(&mut zip.by_name(template["media"][0]["path"].as_str().unwrap()).unwrap(), &mut packaged).unwrap();
+    assert_eq!(packaged, file);
+
+}
+
+#[tokio::test]
+async fn concat_template_exports_image_cutout_without_shipping_old_mask_assets() {
+    use video_kadr_backend::domain::{
+        composition::CompositionClipId,
+        concat_cutout_binding::{bind_still, StillAssets},
+        concat_cutout_import::{plan, Subject},
+        concat_project_import::{import, ImportRequest},
+        cutout::SELFIE_MODEL_HASH,
+    };
+    let (state, _dir) = support::make_state(false, false).await;
+    let owner = state.db.register_auth_user("concat-image-mask", "concat image mask password")
+        .await.unwrap().unwrap();
+    let source = |id: &str, width, height| json!({
+        "id":id,"kind":"image","durationTicks":0,"width":width,"height":height,"hasAudio":false,
+    });
+    let input: ImportRequest = serde_json::from_value(json!({
+        "schemaVersion":1, "preserveMediaIds":true,
+        "document":{"version":1,"media":[{"id":"slot","name":"Portrait","kind":"image","placeholder":true}],
+            "timelines":[{"id":"main","video":{"width":16,"height":8,"rateNum":10,"rateDen":1},
+                "tracks":[{"id":"image"}],"clips":[{"id":"cut","trackId":"image","mediaId":"slot",
+                    "kind":"image","duration":0.4}]}]},
+        "mediaBindings":{"slot":source("unavailable-original",16,8)}
+    })).unwrap();
+    let mut project = import(input).unwrap().project.unwrap();
+    let settings = plan(&json!({"mode":"custom","subject":"person","feather":0.04,"strokes":[
+        {"tool":"smartBrush","size":0.1,"points":[[0.25,0.5]],"at":0.2},
+        {"tool":"eraser","size":0.08,"points":[[0.75,0.5]]}
+    ]})).unwrap();
+    use sha2::{Digest, Sha256};
+    let prompt_hash = format!("{:x}", Sha256::digest(b"[[0.25,0.5]]"));
+    let mut correction = settings.correction.clone();
+    correction.strokes[0].region = Some(serde_json::from_value(json!({
+        "sourceId":"slot","maskSourceId":"old-sam","sourceHash":"1".repeat(64),
+        "maskHash":"3".repeat(64),"maskFileHash":"4".repeat(64),
+        "encoderHash":"5".repeat(64),"decoderHash":"6".repeat(64),"runtimeHash":"7".repeat(64),
+        "promptHash":prompt_hash,
+        "points":[[0.25,0.5]]
+    })).unwrap());
+    let node = project.compositions.get_mut(&project.root).unwrap();
+    let assets = StillAssets {
+        original: serde_json::from_value(source("slot",16,8)).unwrap(),
+        copy: serde_json::from_value(source("old-copy",16,8)).unwrap(),
+        mask: serde_json::from_value(source("old-mask",256,256)).unwrap(),
+        regions: vec![serde_json::from_value(source("old-sam",256,256)).unwrap()],
+        snapshot: serde_json::from_value(json!({
+            "sourceId":"slot","maskSourceId":"old-mask","sourceHash":"1".repeat(64),
+            "maskHash":"2".repeat(64),"maskFileHash":"3".repeat(64),
+            "modelHash":SELFIE_MODEL_HASH,"runtimeHash":"4".repeat(64),
+            "subject":"person","correction":correction,
+        })).unwrap(),
+    };
+    node.content = bind_still(
+        &node.content, &CompositionClipId::parse("cut").unwrap(), &settings, &assets,
+        &assets.snapshot.source_hash, SELFIE_MODEL_HASH, &assets.snapshot.runtime_hash,
+    ).unwrap();
+    let original = serde_json::to_value(project).unwrap();
+    let saved = state.db.create_owned_composition_project(
+        "Masked image slot", &original,
+        &["old-copy".into(),"old-mask".into(),"old-sam".into(),"unavailable-original".into()],
+        &owner.user.username,
+    ).await.unwrap();
+    let response = support::router(state.clone()).oneshot(Request::get(format!(
+        "/api/composition-projects/{}/concat-template", saved.id,
+    )).header(header::AUTHORIZATION, format!("Bearer {}", owner.token))
+        .body(Body::empty()).unwrap()).await.unwrap();
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), 1 << 20).await.unwrap();
+    assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&bytes));
+    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+    assert_eq!(zip.len(), 1);
+    let template: serde_json::Value = serde_json::from_reader(zip.by_name("template.json").unwrap()).unwrap();
+    assert_eq!(template["media"].as_array().unwrap().len(), 1);
+    assert_eq!(template["media"][0]["path"], "");
+    let clip = &template["timelines"][0]["clips"][0];
+    assert_eq!(clip["mediaId"], "slot");
+    let restored = plan(&clip["cutout"]).unwrap();
+    assert_eq!(restored, settings);
+    assert_eq!(restored.subject, Subject::Person);
+    assert_eq!(restored.region_source_seconds, vec![0.2]);
+    assert!(clip["cutout"]["strokes"][0].get("region").is_none());
+    let filled = video_kadr_backend::domain::concat_media_slots::fill(
+        &template, "slot", &json!({
+            "path":"library:portrait","name":"New portrait","kind":"image",
+            "width":16,"height":8,"hasAudio":false,
+        }),
+    ).unwrap();
+    assert_eq!(plan(&filled["timelines"][0]["clips"][0]["cutout"]).unwrap(), settings);
+    assert_eq!(state.db.get_composition_project_for(&saved.id, &owner.user.username)
+        .await.unwrap().unwrap().document, original);
 }

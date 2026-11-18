@@ -5,7 +5,7 @@ import { speedRampTimelineDurationTicks } from './speedRamp'
 import type { NativeNestedProject } from '$lib/api'
 import { MAX_COMPOSITION_DURATION_TICKS, MAX_COMPOSITION_CLIPS, MAX_COMPOSITION_SOURCES, type CompositionSource, type WireCompositionTrack, type WireTransform } from './types'
 import { isStableId } from './validation'
-export interface NativeMediaInsert { trackId: string; clipId: string; startUs: number; sourceInUs: number; durationUs: number; videoAudio?: boolean; automatic?: boolean; newTrackId?: string }
+export interface NativeMediaInsert { trackId: string; clipId: string; startUs: number; sourceInUs: number; durationUs: number; videoAudio?: boolean; concatFit?: boolean; automatic?: boolean; newTrackId?: string }
 export function nativeClipEnd(clip: WireCompositionTrack['clips'][number]): number {
   if ('placement' in clip) {
     const p = clip.placement
@@ -32,11 +32,16 @@ export function insertNativeMedia(project: NativeNestedProject, compositionId: s
   if (existing && (['id', 'kind', 'durationTicks', 'width', 'height', 'hasAudio', 'audioChannels'] as const).some(key => existing[key] !== wire[key])) throw new Error('Метаданные источника отличаются от зарегистрированных')
   if (!existing && Object.keys(node.content.sources).length >= MAX_COMPOSITION_SOURCES) throw new Error('Достигнут предел источников')
   const constant = (value: number) => ({ mode: 'constant' as const, value })
-  const fit = source.kind === 'audio' ? 1 : Math.min(node.content.canvas.width / source.width, node.content.canvas.height / source.height)
-  const transform: WireTransform = { x: constant(0), y: constant(0), scaleX: constant(fit), scaleY: constant(fit), rotationDegrees: constant(0), anchorX: 0.5, anchorY: 0.5 }
+  const { width, height } = node.content.canvas
+  const concatFit = track.kind !== 'audio' && request.concatFit === true
+  if (concatFit && (width > 3840 || height > 2160)) throw new Error('Подгонка Concat поддерживает холст до 3840 × 2160')
+  const fit = concatFit || source.kind === 'audio' ? 1 : Math.min(width / source.width, height / source.height)
+  const transform: WireTransform = { x: constant(0), y: constant(0), scaleX: constant(fit), scaleY: constant(fit), rotationDegrees: constant(0), anchorX: 0.5, anchorY: 0.5,
+    ...(concatFit ? { concatPreparation: { crop: [0, 0, 0, 0], canvas: [width, height] } } : {}),
+  }
   const placement = { timelineStartTick: startUs, sourceInTick: sourceInUs, sourceOutTick: sourceInUs + durationUs, speed: 1 }
   let changed: WireCompositionTrack
-  if (track.kind === 'video') changed = { ...track, clips: [...track.clips, { id: request.clipId, sourceId: source.id, placement, transform, opacity: constant(1), blendMode: 'normal', effects: [], enabled: true, sourceAudioEnabled: source.hasAudio && (request.videoAudio ?? true), audioGain: constant(1), audioPan: constant(0), playbackMode: { mode: 'forward' }, frameInterpolation: 'duplicate', stabilization: { mode: 'disabled' } }] }
+  if (track.kind === 'video') changed = { ...track, clips: [...track.clips, { id: request.clipId, sourceId: source.id, placement, transform, opacity: constant(1), blendMode: 'normal', effects: [], enabled: true, sourceAudioEnabled: request.videoAudio ?? true, ...(concatFit ? { independentAudio: true } : {}), audioGain: constant(1), audioPan: constant(0), playbackMode: { mode: 'forward' }, frameInterpolation: 'duplicate', stabilization: { mode: 'disabled' } }] }
   else if (track.kind === 'audio') changed = { ...track, clips: [...track.clips, { id: request.clipId, sourceId: source.id, placement, gain: constant(1), pan: constant(0), reversed: false, fadeInTicks: 0, fadeOutTicks: 0, voiceEffect: 'none', pitchSemitones: 0, toneDb: 0, crossfadeCurve: 'constant_gain', crossfadeInTicks: 0, enabled: true }] }
   else if (track.kind === 'image') changed = { ...track, clips: [...track.clips, { id: request.clipId, sourceId: source.id, timelineStartTick: startUs, durationTicks: durationUs, transform, opacity: constant(1), blendMode: 'normal', effects: [], enabled: true }] }
   else throw new Error('Неподдерживаемая дорожка')
@@ -60,8 +65,8 @@ export function insertNativeMediaAtFirstFree(project: NativeNestedProject, compo
     }
     return insertNativeMedia(document, compositionId, source, { ...request, trackId: target.id, clipId, videoAudio, automatic: false })
   }
-  const separateAudio = source.kind === 'video' && source.hasAudio && (request.videoAudio ?? true)
-  let result = insert(project, source.kind, request.clipId, request.newTrackId, false)
+  const separateAudio = !request.concatFit && source.kind === 'video' && source.hasAudio && (request.videoAudio ?? true)
+  let result = insert(project, source.kind, request.clipId, request.newTrackId, !separateAudio && (request.videoAudio ?? true))
   if (separateAudio) {
     const node = result.compositions[compositionId]!
     const reserve = (prefix: string, ids: ReadonlySet<string>): string => { const base = `${prefix.slice(0, 110)}-audio`; let candidate = base, serial = 0; while (ids.has(candidate)) candidate = `${base}-${serial++}`; return candidate }

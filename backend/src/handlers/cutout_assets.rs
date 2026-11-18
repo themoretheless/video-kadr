@@ -19,6 +19,14 @@ pub struct Target {
     project_id: String,
 }
 pub(super) async fn authorize(state: &AppState, project: &str, actor: &str) -> AppResult<()> {
+    if !can_edit(state, project, actor).await? {
+        return Err(AppError::forbidden(
+            "Для сохранения копии нужен доступ редактора к проекту",
+        ));
+    }
+    Ok(())
+}
+pub(super) async fn can_edit(state: &AppState, project: &str, actor: &str) -> AppResult<bool> {
     let role: Option<String> = sqlx::query_scalar(
         "SELECT role FROM composition_project_members WHERE project_id=? AND actor=?",
     )
@@ -27,12 +35,7 @@ pub(super) async fn authorize(state: &AppState, project: &str, actor: &str) -> A
     .fetch_optional(state.db.pool())
     .await
     .map_err(|e| AppError::internal("authorize cutout media project", e))?;
-    if !matches!(role.as_deref(), Some("owner" | "editor")) {
-        return Err(AppError::forbidden(
-            "Для сохранения копии нужен доступ редактора к проекту",
-        ));
-    }
-    Ok(())
+    Ok(matches!(role.as_deref(), Some("owner" | "editor")))
 }
 struct Staged(std::path::PathBuf);
 impl Drop for Staged {

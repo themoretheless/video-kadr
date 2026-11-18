@@ -7,6 +7,7 @@ use crate::{
     process_control::{stream_with_progress, ProcessRuntime, ProcessStatus},
 };
 use anyhow::{ensure, Context, Result};
+use serde::{Deserialize, Serialize};
 use std::{
     future::Future,
     path::{Path, PathBuf},
@@ -15,10 +16,64 @@ use std::{
 use tokio::{io::AsyncWriteExt, process::Command, sync::mpsc::UnboundedSender};
 use tokio_util::sync::CancellationToken;
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AudioCodec {
+    Aac,
+    Opus,
+}
+
+impl AudioCodec {
+    pub(crate) fn encoder(self) -> &'static str {
+        match self {
+            Self::Aac => "aac",
+            Self::Opus => "libopus",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AudioCompression {
+    pub codec: AudioCodec,
+    pub bitrate_kbps: u32,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PcmDepth {
+    S16,
+    S24,
+}
+
+impl PcmDepth {
+    pub(crate) fn encoder(self) -> &'static str {
+        match self {
+            Self::S16 => "pcm_s16le",
+            Self::S24 => "pcm_s24le",
+        }
+    }
+
+    pub(crate) fn bytes(self) -> u16 {
+        match self {
+            Self::S16 => 2,
+            Self::S24 => 3,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct RasterAudioSettings {
+    pub compression: Option<AudioCompression>,
+    pub pcm_depth: Option<PcmDepth>,
+    pub channels: u16,
+    pub sample_rate: u32,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub enum RasterEncoding {
     NativeHevc { target_kbps:u32,max_kbps:u32,keyint:u32,cbr:bool,multiplexer:Multiplexer,audio:H264AudioSettings },
-    Ffv1,
+    Ffv1(Option<RasterAudioSettings>),
     Mjpeg {
         quality: u8,
     },
@@ -95,7 +150,7 @@ impl RasterEncoding {
             Self::ImageSequence { .. } | Self::MxfAtom { .. } => "zip",
             Self::MxfH264 { .. } | Self::Mxf { .. } => "mxf",
             Self::Gif => "gif",
-            Self::Ffv1 => "mkv",
+            Self::Ffv1(_) => "mkv",
             Self::Mjpeg { .. } | Self::Apv { .. } | Self::ProRes { .. } | Self::DnxHr { .. } => {
                 "mov"
             }
@@ -247,7 +302,7 @@ where
         cancel,
         progress,
         audio,
-        RasterEncoding::Ffv1,
+        RasterEncoding::Ffv1(None),
         frame,
     )
     .await
@@ -528,7 +583,7 @@ where
     let pixel_aspect = pixel_aspect.or_else(|| {
         if matches!(
             encoding,
-            RasterEncoding::Ffv1
+            RasterEncoding::Ffv1(_)
                 | RasterEncoding::Mjpeg { .. }
                 | RasterEncoding::NativeHevc { .. }
         | RasterEncoding::NativeH264 { .. }
@@ -814,7 +869,7 @@ where
             | RasterEncoding::ProRes { .. } => {
                 anyhow::bail!("intra formats require native export path")
             }
-            RasterEncoding::Ffv1 => surface.rgba,
+            RasterEncoding::Ffv1(_) => surface.rgba,
 
             RasterEncoding::H264 { .. } | RasterEncoding::H264TwoPass { .. } => {
                 tokio::task::spawn_blocking(move || {
@@ -872,7 +927,7 @@ where
                 | RasterEncoding::ProRes { .. } => {
                     anyhow::bail!("intra formats require native export path")
                 }
-                RasterEncoding::Ffv1 => "rgba",
+                RasterEncoding::Ffv1(_) => "rgba",
                 _ => "yuv420p",
             },
             "-s",
@@ -880,7 +935,7 @@ where
         .arg(format!("{}x{}", spec.width, spec.height))
         .arg("-r")
         .arg(spec.frame_rate.to_string());
-    if !matches!(encoding, RasterEncoding::Ffv1) {
+    if !matches!(encoding, RasterEncoding::Ffv1(_)) {
         command.args([
             "-color_range",
             "tv",
@@ -905,15 +960,29 @@ where
                 "1:a:0",
                 "-c:a",
                 match encoding {
-                    RasterEncoding::Ffv1 => "pcm_f32le",
+                    RasterEncoding::Ffv1(settings) => settings.map_or("pcm_f32le", |audio| {
+                        audio.compression.map(|compression| compression.codec.encoder())
+                            .or_else(|| audio.pcm_depth.map(PcmDepth::encoder))
+                            .unwrap_or("pcm_f32le")
+                    }),
                     _ => "aac",
                 },
             ]);
-        if matches!(
-            encoding,
-            RasterEncoding::H264 { .. } | RasterEncoding::H264TwoPass { .. }
-        ) {
-            command.args(["-b:a", "320k"]);
+        match encoding {
+            RasterEncoding::Ffv1(Some(settings)) => {
+                if let Some(compression) = settings.compression {
+                    command.args(["-b:a", &format!("{}k", compression.bitrate_kbps)]);
+                }
+                if let Some(filter) = super::native_audio_export::output_audio_filter(
+                    settings.channels, settings.sample_rate, audio.frames,
+                ) {
+                    command.args(["-af", &filter]);
+                }
+            }
+            RasterEncoding::H264 { .. } | RasterEncoding::H264TwoPass { .. } => {
+                command.args(["-b:a", "320k"]);
+            }
+            _ => {}
         }
         inputs.push(audio.path.to_path_buf());
     } else {
@@ -936,7 +1005,7 @@ where
         | RasterEncoding::ProRes { .. } => {
             anyhow::bail!("intra formats require native export path")
         }
-        RasterEncoding::Ffv1 => {
+        RasterEncoding::Ffv1(_) => {
             command.args(["-c:v", "ffv1", "-pix_fmt", "bgra", "-f", "matroska"]);
         }
         RasterEncoding::H264 {
@@ -1209,6 +1278,8 @@ pub async fn encode_project_with_source_filter(
         progress,
         audio,
         filter,
+        None,
+        None,
     )
     .await
 }
@@ -1245,6 +1316,8 @@ pub async fn encode_project_with_clip_filter(
     progress: &UnboundedSender<f64>,
     audio: Option<RasterAudio<'_>>,
     filter: Option<SharedClipFilter>,
+    frame_range: Option<std::ops::Range<u64>>,
+    audio_settings: Option<RasterAudioSettings>,
 ) -> Result<()> {
     use std::sync::{
         atomic::{AtomicBool, Ordering},
@@ -1271,7 +1344,11 @@ pub async fn encode_project_with_clip_filter(
     let numerator = u128::from(range.end - range.start) * u128::from(rate.numerator);
     let denominator = 1_000_000 * u128::from(rate.denominator);
     ensure!(denominator > 0, "invalid native export frame rate");
-    let count = numerator.div_ceil(denominator);
+    let count = match &frame_range {
+        Some(frames) => u128::from(frames.end.checked_sub(frames.start).context("invalid native frame range")?),
+        None => numerator.div_ceil(denominator),
+    };
+    let first_frame = frame_range.map(|frames| frames.start);
     ensure!(
         count <= u64::MAX as u128,
         "native export frame count overflow"
@@ -1310,7 +1387,7 @@ pub async fn encode_project_with_clip_filter(
     let remaining = deadline
         .checked_duration_since(std::time::Instant::now())
         .context("native export timeout")?;
-    encode_frames_with_audio(
+    encode_frames_with_options(
         runtime,
         ffmpeg,
         output,
@@ -1319,6 +1396,7 @@ pub async fn encode_project_with_clip_filter(
         cancel,
         progress,
         audio,
+        RasterEncoding::Ffv1(audio_settings),
         move |index, local_time| {
             let project = project.clone();
             let rendered = rendered.clone();
@@ -1331,19 +1409,22 @@ pub async fn encode_project_with_clip_filter(
                 let remaining = deadline
                     .checked_duration_since(std::time::Instant::now())
                     .context("native export timeout")?;
-                let time = range
-                    .start
-                    .checked_add(local_time)
-                    .context("native export clock overflow")?;
+                let (sample_index, origin) = match first_frame {
+                    Some(first) => (first.checked_add(index).context("native export frame overflow")?, 0),
+                    None => (index, range.start),
+                };
                 let sample = crate::domain::caption_frame_clock::CaptionFrameSample::new(
-                    index,
+                    sample_index,
                     filmcraft_time::FrameRate::new(
                         spec.frame_rate.numerator as i64,
                         spec.frame_rate.denominator as i64,
                     ),
-                    range.start,
+                    origin,
                 )
                 .map_err(anyhow::Error::msg)?;
+                let time = if first_frame.is_some() { sample.host_us } else {
+                    range.start.checked_add(local_time).context("native export clock overflow")?
+                };
                 tokio::task::spawn_blocking(move || {
                     let mut guard = filter
                         .as_ref()

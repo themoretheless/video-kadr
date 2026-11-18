@@ -1,7 +1,11 @@
 use super::*;
 use crate::{
     domain::{
+        composition::{CompositionClipId, CompositionTrack, SourceId},
+        concat_cutout_import::Subject,
+        concat_video_binding::Recipe,
         concat_project_export::export_with_paths, concat_project_fonts,
+        cutout::Correction,
         nested_composition::NestedCompositionProject,
     },
     project_archive::MAX_ARCHIVE_TOTAL_MEDIA_BYTES,
@@ -9,6 +13,7 @@ use crate::{
     template_bundle,
 };
 use base64::{engine::general_purpose::STANDARD, Engine};
+use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::io::{Read, Write};
 
@@ -17,6 +22,8 @@ use std::io::{Read, Write};
 pub struct Options {
     #[serde(default)]
     use_saved_cover: bool,
+    #[serde(default)]
+    auto_poster: bool,
     poster_time_us: Option<u64>,
     poster_composition_id: Option<String>,
 }
@@ -28,6 +35,36 @@ pub async fn export(
     axum::extract::Query(options): axum::extract::Query<Options>,
 ) -> AppResult<Response> {
     let actor = archive_actor(&state, &headers, true).await?;
+    build_export(state, id, headers, options, actor, None).await
+}
+
+pub async fn with_uploaded_cover(
+    State(state): State<AppState>,
+    AxPath(id): AxPath<String>,
+    headers: HeaderMap,
+    axum::extract::Query(options): axum::extract::Query<Options>,
+    ApiMultipart(multipart): ApiMultipart,
+) -> AppResult<Response> {
+    let actor = archive_actor(&state, &headers, true).await?;
+    if options.use_saved_cover
+        || options.auto_poster
+        || options.poster_time_us.is_some()
+        || options.poster_composition_id.is_some()
+    {
+        return Err(AppError::bad_request("Выберите один источник обложки"));
+    }
+    let cover = super::template_frame::receive(multipart, template_bundle::MAX_POSTER_BYTES).await?;
+    build_export(state, id, headers, options, actor, Some(cover)).await
+}
+
+async fn build_export(
+    state: AppState,
+    id: String,
+    headers: HeaderMap,
+    options: Options,
+    actor: String,
+    uploaded_cover: Option<Vec<u8>>,
+) -> AppResult<Response> {
     let slot = state.try_acquire_upload_slot().ok_or_else(|| {
         AppError::too_many_requests("слишком много операций с локальными файлами")
     })?;
@@ -39,9 +76,30 @@ pub async fn export(
         .ok_or_else(|| AppError::not_found("Проект не найден"))?;
     let native: NestedCompositionProject = serde_json::from_value(project.document.clone())
         .map_err(|_| AppError::bad_request("Шаблоны требуют нативный проект с таймлайнами"))?;
+    let mut portable = native.clone();
+    let still_cutouts = detach_still_cutouts(&mut portable)
+        .map_err(|error| AppError::bad_request(format!("{error:#}")))?;
+    let video_cutouts = detach_video_cutouts(&mut portable)
+        .map_err(|error| AppError::bad_request(format!("{error:#}")))?;
     let plan =
-        template_bundle::plan(&native).map_err(|error| AppError::bad_request(error.to_string()))?;
-    let poster = if options.use_saved_cover {
+        template_bundle::plan(&portable).map_err(|error| AppError::bad_request(error.to_string()))?;
+    let poster = if let Some(cover) = uploaded_cover {
+        Some(
+            tokio::task::spawn_blocking(move || {
+                super::template_frame::encode_cover(cover, image::ImageFormat::Jpeg)
+            })
+            .await
+            .map_err(|error| AppError::internal("join Concat cover encoder", error))??,
+        )
+    } else if options.auto_poster {
+        if options.use_saved_cover || options.poster_time_us.is_some() {
+            return Err(AppError::bad_request("Выберите один источник обложки"));
+        }
+        let composition = options.poster_composition_id.as_deref().unwrap_or(&native.root);
+        super::template_frame::automatic_concat_cover(
+            &state, &headers, &project, &native, composition, image::ImageFormat::Jpeg,
+        ).await?
+    } else if options.use_saved_cover {
         if options.poster_time_us.is_some() || options.poster_composition_id.is_some() {
             return Err(AppError::bad_request("Выберите один источник обложки"));
         }
@@ -175,6 +233,8 @@ pub async fn export(
                 .map_err(|error| AppError::internal("encode template subtitle documents", error))?)
         };
         let mut document = export_with_paths(&native, &paths)
+            .map_err(|error| AppError::bad_request(format!("{error:#}")))?;
+        write_cutouts(&mut document, still_cutouts, video_cutouts)
             .map_err(|error| AppError::bad_request(format!("{error:#}")))?;
         document["name"] = Value::String(title);
         let mut font_files = Vec::new();
@@ -335,4 +395,147 @@ pub async fn export(
             archive.into_reader(file),
         )))
         .map_err(|error| AppError::internal("Concat template response", error))
+}
+
+struct StillCutout {
+    source_id: SourceId,
+    subject: Subject,
+    correction: Correction,
+}
+
+type ClipKey = (String, CompositionClipId);
+
+fn detach_still_cutouts(
+    project: &mut NestedCompositionProject,
+) -> anyhow::Result<BTreeMap<ClipKey, StillCutout>> {
+    project.dependency_order()?;
+    let mut detached = BTreeMap::new();
+    let mut retired = std::collections::BTreeSet::new();
+    for (timeline, node) in &mut project.compositions {
+        let Some(metadata) = &mut node.content.metadata else { continue };
+        for track in &mut node.content.tracks {
+            let CompositionTrack::Image { clips, .. } = track else { continue };
+            for clip in clips {
+                let Some(pair) = metadata.media_versions.get(&clip.id) else { continue };
+                let Some(mask) = &pair.cutout else { continue };
+                anyhow::ensure!(
+                    clip.source_id == pair.copy_source_id || clip.source_id == pair.original_source_id,
+                    "Concat image mask destination changed"
+                );
+                if clip.source_id == pair.copy_source_id {
+                    let subject = match mask.subject {
+                        Some(subject) => subject,
+                        None => match crate::services::concat_video_selection::model_from_hash(&mask.model_hash)? {
+                            crate::services::concat_cutout_selection::Model::Object => Subject::Object,
+                            _ => Subject::Person,
+                        },
+                    };
+                    detached.insert((timeline.clone(), clip.id.clone()), StillCutout {
+                        source_id: pair.original_source_id.clone(),
+                        subject,
+                        correction: mask.correction.clone(),
+                    });
+                }
+                clip.source_id = pair.original_source_id.clone();
+                retired.insert(pair.copy_source_id.clone());
+                retired.insert(SourceId::parse(&mask.mask_source_id)?);
+                for region in mask.correction.strokes.iter().filter_map(|stroke| stroke.region.as_ref()) {
+                    retired.insert(SourceId::parse(&region.mask_source_id)?);
+                }
+                metadata.media_versions.remove(&clip.id);
+            }
+        }
+    }
+    if !retired.is_empty() {
+        crate::domain::project_media::prune_retired_regions(project, &retired)?;
+    }
+    Ok(detached)
+}
+
+struct VideoCutout {
+    source_id: SourceId,
+    recipe: Recipe,
+    slot: bool,
+}
+
+fn detach_video_cutouts(
+    project: &mut NestedCompositionProject,
+) -> anyhow::Result<BTreeMap<ClipKey, VideoCutout>> {
+    let mut detached = BTreeMap::new();
+    let mut retired = std::collections::BTreeSet::new();
+    for (timeline, node) in &mut project.compositions {
+        for track in &mut node.content.tracks {
+            let CompositionTrack::Video { clips, .. } = track else { continue };
+            for clip in clips {
+                let Some(binding) = clip.concat_cutout.take() else { continue };
+                for region in &binding.region_tracks {
+                    retired.insert(SourceId::parse(&region.snapshot.mask_source_id)?);
+                }
+                let slot = project.project_media.get(&clip.source_id).is_some_and(|item| item.placeholder);
+                detached.insert((timeline.clone(), clip.id.clone()), VideoCutout {
+                    source_id: clip.source_id.clone(),
+                    recipe: Recipe::from_binding(binding)?,
+                    slot,
+                });
+            }
+        }
+    }
+    if !retired.is_empty() {
+        crate::domain::project_media::prune_retired_regions(project, &retired)?;
+    }
+    Ok(detached)
+}
+
+/// Concat stores authored mask settings on the clip.
+fn write_cutouts(
+    document: &mut Value,
+    mut stills: BTreeMap<ClipKey, StillCutout>,
+    mut videos: BTreeMap<ClipKey, VideoCutout>,
+) -> anyhow::Result<()> {
+    if stills.is_empty() && videos.is_empty() {
+        return Ok(());
+    }
+    for timeline in document["timelines"].as_array_mut().into_iter().flatten() {
+        let id = timeline["id"].as_str().unwrap_or_default().to_owned();
+        for clip in timeline["clips"].as_array_mut().into_iter().flatten() {
+            let key = (id.clone(), CompositionClipId::parse(clip["id"].as_str().unwrap_or_default())?);
+            if let Some(still) = stills.remove(&key) {
+                anyhow::ensure!(
+                    clip["kind"] == "image" && clip["mediaId"] == still.source_id.as_str(),
+                    "Concat image mask destination changed"
+                );
+                clip["cutout"] = cutout_wire(json!(still.subject), Some(&still.correction), 0.0, 0.0);
+            } else if let Some(mask) = videos.remove(&key) {
+                anyhow::ensure!(
+                    clip["kind"] == "video" && clip["mediaId"] == mask.source_id.as_str(),
+                    "Concat video mask destination changed"
+                );
+                clip["cutout"] = cutout_wire(
+                    json!(mask.recipe.subject),
+                    mask.recipe.correction.as_ref(),
+                    mask.recipe.feather.unwrap_or_default(),
+                    if mask.slot { clip["sourceStart"].as_f64().unwrap_or_default() } else { 0.0 },
+                );
+            }
+        }
+    }
+    anyhow::ensure!(videos.is_empty() && stills.is_empty(), "Concat mask destination missing");
+    Ok(())
+}
+
+fn cutout_wire(subject: Value, correction: Option<&Correction>, feather: f64, source_start: f64) -> Value {
+    let strokes: Vec<_> = correction.into_iter().flat_map(|value| &value.strokes)
+        .map(|stroke| json!({
+            "tool": stroke.tool,
+            "size": stroke.size,
+            "points": stroke.points,
+            "at": stroke.at.map(|at| (at - source_start).max(0.0)),
+        }))
+        .collect();
+    json!({
+        "mode": if correction.is_some_and(|value| value.custom) { "custom" } else { "auto" },
+        "subject": subject,
+        "feather": correction.map_or(feather, |value| value.feather),
+        "strokes": strokes,
+    })
 }

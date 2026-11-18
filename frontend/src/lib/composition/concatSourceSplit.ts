@@ -44,7 +44,9 @@ export function applyConcatSourcePart(clip: PlannedSourceClip, part: ConcatSourc
   }
   if (!('placement' in next)) {
     const animation=next.transform.concatAnimation
-    return {...next,timelineStartTick:part.placement.timelineStartTick,durationTicks:part.placement.timelineDurationTick!,concatSourceTiming:{sourceStart:part.clock.sourceStart,speed:part.clock.speed,...(part.clock.speedCurve?{speedCurve:part.clock.speedCurve}:{})},
+    // Keep an empty array when a previously authored curve becomes constant.
+    const speedCurve = part.clock.speedCurve ?? (next.concatSourceTiming?.speedCurve !== undefined ? [] : undefined)
+    return {...next,timelineStartTick:part.placement.timelineStartTick,durationTicks:part.placement.timelineDurationTick!,concatSourceTiming:{sourceStart:part.clock.sourceStart,speed:part.clock.speed,...(speedCurve ? { speedCurve } : {})},
       effects:effectRuns(next.effects,'video',path=>required(part.tracks.video,path)) as WireImageClip['effects'],
       transform:animation?{...next.transform,concatAnimation:{...animation,durationTicks:part.placement.timelineDurationTick!,keys:Object.fromEntries(Object.keys(animation.keys).map(name=>[name,required(part.tracks.clip,name)]))}}:next.transform}
   }
@@ -87,7 +89,7 @@ export function concatSourceEditInput(clip: PlannedSourceClip, canvas: import('.
   if (!('placement' in clip)) {
     const timing=clip.concatSourceTiming??{sourceStart:0,speed:1}
     const rate=canvas.fpsRate??{numerator:canvas.fpsMilli,denominator:1000}
-    return {clock:{start:clip.timelineStartTick/1e6,duration:clip.durationTicks/1e6,sourceStart:timing.sourceStart,speed:timing.speed,...(timing.speedCurve?{speedCurve:timing.speedCurve}:{})},rateNum:rate.numerator,rateDen:rate.denominator,tracks:tracksOf(clip),fadeIn:0,fadeOut:0}
+    return {clock:{start:clip.timelineStartTick/1e6,duration:clip.durationTicks/1e6,sourceStart:timing.sourceStart,speed:timing.speed,...(timing.speedCurve?.length ? { speedCurve: timing.speedCurve } : {})},rateNum:rate.numerator,rateDen:rate.denominator,tracks:tracksOf(clip),fadeIn:0,fadeOut:0}
   }
   const source = clip as SourceClip, retained = source.placement.concatRetime!, clock = retained.documentClock
   if (!clock) throw new Error('Нужны исходные часы документа Concat')

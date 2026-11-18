@@ -1,4 +1,4 @@
-//! Saved native-project template download with an optional rendered poster.
+//! Saved native-project template download with an optional poster.
 
 use super::*;
 use crate::{
@@ -6,11 +6,16 @@ use crate::{
     services::filmcraft_video_preview::SourceVideoRevision,
     template_bundle,
 };
+use base64::{engine::general_purpose::STANDARD, Engine};
 
 #[derive(Default, serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Options {
     name: Option<String>,
+    #[serde(default)]
+    use_saved_cover: bool,
+    #[serde(default)]
+    auto_poster: bool,
     poster_time_us: Option<u64>,
     poster_composition_id: Option<String>,
 }
@@ -21,7 +26,12 @@ pub async fn export(
     axum::extract::Query(options): axum::extract::Query<Options>,
 ) -> AppResult<Response> {
     let actor = archive_actor(&state, &headers, true).await?;
-    let (archive, name) = Box::pin(build_package(&state, &headers, &actor, &id, options)).await?;
+    let (archive, name) =
+        Box::pin(build_package(&state, &headers, &actor, &id, options, None)).await?;
+    download(archive, &name).await
+}
+
+async fn download(archive: TemporaryFile, name: &str) -> AppResult<Response> {
     let file = tokio::fs::File::open(archive.path())
         .await
         .map_err(|e| AppError::internal("open template package", e))?;
@@ -30,7 +40,7 @@ pub async fn export(
         .await
         .map_err(|e| AppError::internal("stat template package", e))?
         .len();
-    let base = archive_download_filename(&name);
+    let base = archive_download_filename(name);
     let filename = format!("{}.vktemplate", base.trim_end_matches(".veproj"));
     let disposition = HeaderValue::from_str(&format!("attachment; filename=\"{filename}\""))
         .map_err(|e| AppError::internal("template disposition", e))?;
@@ -53,12 +63,65 @@ pub async fn save_to_library(
     axum::extract::Query(options): axum::extract::Query<Options>,
 ) -> AppResult<(StatusCode, Json<crate::db::NativeTemplateEntry>)> {
     let actor = archive_actor(&state, &headers, false).await?;
-    let (archive, _) = Box::pin(build_package(&state, &headers, &actor, &id, options)).await?;
+    let space = archive_space_id(&headers)?;
+    super::template_library::require_space_editor(&state, &actor, space.as_deref()).await?;
+    let (archive, _) =
+        Box::pin(build_package(&state, &headers, &actor, &id, options, None)).await?;
+    publish(state, actor, space, archive).await
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CoverOptions {
+    name: Option<String>,
+    #[serde(default)]
+    download: bool,
+}
+
+pub async fn with_uploaded_cover(
+    State(state): State<AppState>,
+    AxPath(id): AxPath<String>,
+    headers: HeaderMap,
+    axum::extract::Query(query): axum::extract::Query<CoverOptions>,
+    ApiMultipart(multipart): ApiMultipart,
+) -> AppResult<Response> {
+    let actor = archive_actor(&state, &headers, query.download).await?;
+    let space = if query.download { None } else { archive_space_id(&headers)? };
+    super::template_library::require_space_editor(&state, &actor, space.as_deref()).await?;
+    let cover =
+        super::template_frame::receive(multipart, template_bundle::MAX_POSTER_BYTES).await?;
+    let options = Options {
+        name: query.name,
+        ..Options::default()
+    };
+    let (archive, name) = Box::pin(build_package(
+        &state,
+        &headers,
+        &actor,
+        &id,
+        options,
+        Some(cover),
+    ))
+    .await?;
+    if query.download {
+        download(archive, &name).await
+    } else {
+        use axum::response::IntoResponse;
+        Ok(publish(state, actor, space, archive).await?.into_response())
+    }
+}
+
+async fn publish(
+    state: AppState,
+    actor: String,
+    space: Option<String>,
+    archive: TemporaryFile,
+) -> AppResult<(StatusCode, Json<crate::db::NativeTemplateEntry>)> {
     let permit = state.try_acquire_upload_slot().ok_or_else(|| {
         AppError::too_many_requests("слишком много операций с локальными файлами")
     })?;
     let entry =
-        super::template_library::publish_package(state, actor, archive, Some(permit)).await?;
+        super::template_library::publish_package(state, actor, space, archive, Some(permit)).await?;
     Ok((StatusCode::CREATED, Json(entry)))
 }
 
@@ -68,6 +131,7 @@ async fn build_package(
     actor: &str,
     id: &str,
     options: Options,
+    uploaded_cover: Option<Vec<u8>>,
 ) -> AppResult<(TemporaryFile, String)> {
     let slot = state.try_acquire_upload_slot().ok_or_else(|| {
         AppError::too_many_requests("слишком много операций с локальными файлами")
@@ -93,6 +157,14 @@ async fn build_package(
     };
     let native: NestedCompositionProject = serde_json::from_value(project.document.clone())
         .map_err(|_| AppError::bad_request("Шаблоны требуют нативный проект с таймлайнами"))?;
+    if (options.use_saved_cover
+        && (options.auto_poster
+            || options.poster_time_us.is_some()
+            || options.poster_composition_id.is_some()))
+        || (options.auto_poster && options.poster_time_us.is_some())
+    {
+        return Err(AppError::bad_request("Выберите один источник обложки"));
+    }
     let plan = template_bundle::plan(&native).map_err(|e| AppError::bad_request(e.to_string()))?;
     let mut inputs = Vec::new();
     let mut originals = Vec::new();
@@ -106,7 +178,7 @@ async fn build_package(
             .frame_image_sources(composition, time, &Default::default())
             .map_err(|e| AppError::bad_request(e.to_string()))?;
         required.extend(ids.iter().map(|id| native.library_source_id(id).clone()));
-    } else if options.poster_composition_id.is_some() {
+    } else if !options.auto_poster && options.poster_composition_id.is_some() {
         return Err(AppError::bad_request("Укажите время кадра обложки"));
     }
     for source in &required {
@@ -136,7 +208,25 @@ async fn build_package(
         }
         originals.push((source.clone(), entry, path, revision));
     }
-    let poster = if let Some(time) = options.poster_time_us {
+    let poster = if let Some(cover) = uploaded_cover {
+        Some(
+            tokio::task::spawn_blocking(move || {
+                super::template_frame::encode_cover(cover, image::ImageFormat::Png)
+            })
+            .await
+            .map_err(|e| AppError::internal("join uploaded cover encoder", e))??,
+        )
+    } else if options.auto_poster {
+        super::template_frame::automatic_concat_cover(
+            state,
+            headers,
+            &project,
+            &native,
+            composition,
+            image::ImageFormat::Png,
+        )
+        .await?
+    } else if let Some(time) = options.poster_time_us {
         Some(
             Box::pin(super::template_frame::render(
                 state.clone(),
@@ -151,6 +241,16 @@ async fn build_package(
                 image::ImageFormat::Png,
             ))
             .await?,
+        )
+    } else if options.use_saved_cover {
+        let cover = native
+            .cover_jpeg
+            .clone()
+            .ok_or_else(|| AppError::bad_request("У сохранённого проекта нет обложки"))?;
+        Some(
+            tokio::task::spawn_blocking(move || saved_cover_png(&cover))
+                .await
+                .map_err(|e| AppError::internal("join project cover encoder", e))??,
         )
     } else {
         None
@@ -167,8 +267,29 @@ async fn build_package(
     }
     let cancel = tokio_util::sync::CancellationToken::new();
     let _cancel_on_drop = cancel.clone().drop_guard();
+    let mut cache_project = project.clone();
+    if !plan.slot_masks.is_empty() {
+        let mut fixed = native.clone();
+        for node in fixed.compositions.values_mut() {
+            for track in &mut node.content.tracks {
+                if let crate::domain::composition::CompositionTrack::Video { clips, .. } = track {
+                    for clip in clips {
+                        if fixed
+                            .project_media
+                            .get(&clip.source_id)
+                            .is_some_and(|item| item.placeholder)
+                        {
+                            clip.concat_cutout = None;
+                        }
+                    }
+                }
+            }
+        }
+        cache_project.document =
+            serde_json::to_value(fixed).map_err(|e| AppError::bad_request(e.to_string()))?;
+    }
     let video = run_with_timeout(
-        video_export::collect(state, actor, &project, media_bytes, &cancel),
+        video_export::collect(state, actor, &cache_project, media_bytes, &cancel),
         ARCHIVE_IO_TIMEOUT,
         "Сбор видеомасок шаблона превысил лимит времени",
     )
@@ -240,4 +361,13 @@ async fn build_package(
         ));
     }
     Ok((archive, name))
+}
+
+fn saved_cover_png(cover: &str) -> AppResult<Vec<u8>> {
+    let invalid = || AppError::bad_request("Некорректная обложка проекта");
+    let bytes = STANDARD.decode(cover).map_err(|_| invalid())?;
+    if !bytes.starts_with(&[0xff, 0xd8, 0xff]) {
+        return Err(invalid());
+    }
+    super::template_frame::encode_cover(bytes, image::ImageFormat::Png)
 }

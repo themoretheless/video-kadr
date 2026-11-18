@@ -16,6 +16,18 @@ pub(super) struct Imported {
     committed: bool,
 }
 impl Imported {
+    pub(super) fn new() -> Self {
+        Self {
+            registrations: vec![],
+            directories: vec![],
+            committed: false,
+        }
+    }
+
+    pub fn track_directory(&mut self, path: PathBuf) {
+        self.directories.push(path);
+    }
+
     pub fn commit(&mut self) {
         self.committed = true;
     }
@@ -70,13 +82,10 @@ pub(super) fn prepare<'a>(
     entries: &'a [ArchivedVideoCache],
     payloads: &'a [StagedArchiveVideoCache],
     cancel: &'a CancellationToken,
+    permit_held: bool,
 ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Imported>> + Send + 'a>> {
     Box::pin(async move {
-        let mut imported = Imported {
-            registrations: vec![],
-            directories: vec![],
-            committed: false,
-        };
+        let mut imported = Imported::new();
         ensure!(
             entries.len() == payloads.len(),
             "archive cache payload count changed"
@@ -84,8 +93,11 @@ pub(super) fn prepare<'a>(
         if entries.is_empty() {
             return Ok(imported);
         }
-        let _permit =
-            crate::handlers::concat_cutout_analyse::acquire_analysis(state, cancel).await?;
+        let _permit = if permit_held {
+            None
+        } else {
+            Some(crate::handlers::concat_cutout_analyse::acquire_analysis(state, cancel).await?)
+        };
         if document.get("compositions").is_none() {
             serde_json::from_value::<crate::domain::composition::Composition>(document.clone())?
                 .validate_native_surface()?;

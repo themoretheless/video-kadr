@@ -13752,3 +13752,644 @@ comparison. Svelte typecheck reports zero errors/warnings; scoped lint,
 token/listener and diff checks pass. Production build passes in 19.67s with
 existing chunk warnings. Automatic frame capture and the remaining poster authoring
 workflow stay open rather than being implied by portable poster display.
+
+### Authoring and restoring template covers
+
+Both native and Concat template exports can use the current frame of the saved
+timeline, the saved project cover, or an uploaded PNG/JPEG. Downloads still stream
+their package to disk. A supplied image is encoded as PNG in a native template
+and as `poster.jpg` in a Concat ZIP. Export does not edit the saved project.
+
+A native template's PNG poster becomes the JPEG cover of a new project from
+either direct import or the library. With no poster, the project keeps its
+existing cover. Concat ZIP import preserves JPEG bytes up to 384 KiB. Larger
+posters within the ZIP import limit are resized by the Rust image decoder
+before saving the project cover.
+
+A real Chromium export and re-import through the HTTP server verified the
+small-cover round trip and the oversized-cover normalization path. Native
+HTTP tests check both creation paths and verify the saved cover after reopening.
+The Selfie video-mask round trip also verifies the cover and compares the
+restored frame in a separate storage instance with inference disabled there.
+The four model-enabled SAM/RVM tests passed using SHA-256-verified weights.
+The logical VFR test exports one package with the cover, video mask and tracked
+region data. It checks direct and library imports, region references, rollback,
+and exact restored frame bytes.
+
+Concat ZIP export also offers automatic cover selection. It follows the source
+frame order and near-black threshold from Concat commit
+`a7cda105c55cf4a5413dd747e16b0980ff2555c1`, tries up to twelve frames and exports
+without artwork if none is usable. Native template download and library save
+use the same selection and write PNG thumbnails. The HTTP tests read the
+generated images, check missing sources and all-black stills, skip the black
+start of an actual video, and compare the library poster to the downloaded PNG.
+Full application parity remains open.
+
+Native template creation now accepts a local file per slot from a downloaded
+package or a library entry. The existing media upload registers the file and
+selects it for the slot immediately. A Chromium test with the real backend
+verified that both paths persist the new physical binding for a Concat-derived
+slot. For image-to-image FillSlot, native clip controls now survive directly.
+The replacement retains placement, transforms, opacity, blending and masks,
+while resetting the source in-point. Audio-to-audio FillSlot likewise retains
+native mixing controls and the authored timeline duration. It resets the source
+in-point and the old file's stream selection. A short forward replacement uses
+existing silence padding. Reverse playback and fades that require source handles
+still require sufficient media. Video-to-video replacement keeps native picture
+and audio controls. It rebases the held-frame offset and checks that the new
+file contains that frame. A shorter forward video uses existing last-frame
+hold and audio padding. Source-owned mask and derived-media bindings still
+require rebinding. Cross-kind fills continue to use the Concat conversion.
+
+Cutout analysis, solo source preview and SAM cursor operations use the
+physical presentation time for a slot's held tail. A model-enabled HTTP test
+fills a slot with a different, shorter video and analyses that file. It
+compares the image and mask previews at the last real sample and in the held
+tail. The SAM HTTP test starts on that tail, selects the last decoded frame,
+and attaches the tracked region to the correct logical source. All four
+model-enabled SAM tests pass with the default stack after moving the combined
+test scenario's async state to the heap.
+
+In a saved project, the media panel can now replace a source carrying an
+automatic video mask. It computes a cache from the replacement with the
+same model family, preserves feathering, and commits the project and cache
+registration together. The real Selfie HTTP test checks the new source hash,
+forced database rollback, and loading both the old and new caches for Undo.
+Chromium verifies the media-panel action and Undo against the real server.
+Ordinary brush and eraser strokes retain normalized coordinates and ordering.
+Timed strokes are rebased from the previous source in-point and bounded by
+the replacement duration. The HTTP test compares the resulting mask with
+and without strokes. Chromium verifies the rebased stroke time and Undo.
+Tracked SAM strokes reuse the original prompt points and run the current SAM
+model on the new footage. The server stages the resulting region assets,
+verifies their source and clock, and rolls back both the cache and region
+publication if the project save fails. The model-enabled HTTP test covers
+replacement with a shorter file and verifies both source generations for Undo.
+Unused retired region declarations are removed from the current project,
+while their registered files remain available to Undo.
+Native templates now store video-mask settings for replaceable video slots.
+The package keeps the model family, feathering, correction strokes and SAM
+prompts. Region movies used only by those slots are omitted. Fixed video assets
+still carry their verified mask data.
+
+Direct import and creation from the private template library rebuild the mask
+against the selected video before saving the project. Automatic masks, timed
+corrections and new SAM region files are registered with the new project.
+A failed save rolls back the new cache and region publication.
+
+Concat ZIP export writes image and video masks as standard clip cutout settings.
+It preserves the subject, mode, feathering and strokes. Fixed video keeps the
+original source times. Times on video slots are relative to the in-point because
+Concat resets that in-point when filling a slot. Concat chooses its own model
+from the subject. In Video Kadr, fill the slots
+and use “Создать проект и восстановить видеомаски” to analyse the selected videos
+and open the saved project. The rebuild also preserves the template cover and
+subtitle documents. Projects with image cutouts can build the masks on the
+selected images, including SAM regions from the recorded prompts. A selected
+saved image mask can be reused in the same import. The new mask assets and the
+project are published together and rolled back on a failed save. For an audio
+replacement, the Concat source document still carries the cutout settings and
+native playback uses the audio clip. The import report preserves that source
+document.
+
+Chromium verified the masked video-slot round trip against the real server
+and Selfie model. The workspace downloaded the Concat ZIP from a saved
+project. The ZIP carried the clip's cutout settings, including feather and
+the timed brush stroke relative to the in-point, and omitted the old video.
+Filling the slot from the media library and creating the project restored
+the stroke and bound a fresh mask to the replacement video's SHA-256.
+The workspace opened the imported project and its preview canvas matched
+the masked native RGBA frame. Removing the mask changed the frame pixels
+with the same footage and composition settings. This check uses clips
+representable in Concat ZIP and covers the Selfie video-slot path.
+
+A Space viewer can now render the current saved revision with its owned video
+masks. This path reads the project's current source bindings and verified cache
+without registering retained source history. Editors can still preview draft
+changes and use historical bindings. The preview checks project access and
+revision again before returning the frame.
+
+With three Space roles and a separate outsider account, Chromium downloaded
+the owner's Concat ZIP as an editor, filled it with Space media, and opened the
+newly saved masked project. The viewer's preview returned the same RGBA bytes
+as the editor's. The viewer's import request and the outsider's preview
+request were both denied.
+The real Selfie HTTP regression also rejects a viewer's modified mask request.
+All four real-model SAM integration tests passed after the preview change.
+
+### Native template catalogue in a shared Space
+
+The template library now lets users choose their personal catalogue or the
+selected Space. Installing a package and saving a project as a template both
+support the Space catalogue. Existing entries remain in the personal catalogue.
+Names and storage limits apply separately to each catalogue.
+
+Space members can list and download packages, including their covers. Space
+owners and editors can publish, remove and create projects from those packages.
+A shared template creates projects in its own Space. Membership is checked
+when opening, instantiating or removing the package.
+
+Chromium saved a native template with a replaceable Selfie mask to the Space
+catalogue, filled its slot from Space media and opened the resulting project.
+The new mask matched the replacement video's digest and preserved feather
+and the rebased brush timing. The viewer could list the package and render
+the same masked frame as the editor. Instantiation was refused for the
+viewer, and package access was refused for an outsider. Preview accepts
+equivalent integer spellings in retained JSON metadata sent by the browser.
+Nine template HTTP tests and 27 frontend tests passed.
+
+### Retired video mask caches
+
+Deleting a project records its retired video cache generations in SQLite.
+The server processes the queue at startup and periodically. It verifies
+the manifests of registered generations and follows incremental parent
+links before reclaiming any directory. A generation remains available
+while another project references it directly or through a child cache.
+Replacing a source retains the old cache for Undo while the project exists.
+The cleanup does not scan unregistered directories, which may belong to
+an in-progress publication.
+
+### Concat ZIP with a tracked SAM video mask
+
+Chromium exported a saved project with a replaceable video and a timed
+SAM smart brush stroke. The ZIP contained the Concat template document
+without the original video or the generated mask movie. The document
+preserved the prompt points and the stroke time relative to the slot in-point.
+
+Filling the slot with another video and creating the project through the
+import panel ran the real Selfie and SAM models. The restored SAM region
+uses the replacement video's SHA-256 and a new mask source, retains the
+prompt points, and starts from frame 2 of the replacement at 24 fps. The
+browser opened the imported project and rendered the same RGBA bytes as
+the backend. The combined mask changed the rendered frame compared with
+the same project with its cutout disabled. The local Chromium check used
+half-second clips and a test wait that covers model inference.
+
+Cross-application exchange passed against the pinned Concat revision
+`78e4be101c2d3c41a7dc73c112c6b1f11b9ce170`. The original
+`concat-host` template loader opened the unpacked Video Kadr ZIP. Concat's
+media probe and template instantiation filled the slot with replacement
+footage, reset the in-point and preserved the complete cutout settings,
+including the timed SAM stroke.
+
+The original Concat host then marked the replacement as a slot and saved
+a new template folder with its own manifest and poster. Those files were
+packed into a ZIP for transport. Chromium imported the package into Video
+Kadr, filled the slot, rebuilt the SAM region and displayed the backend
+preview. The Concat-side check exercised its host API and project engine.
+The mask inference and comparison of preview pixels ran in Video Kadr.
+
+When a replacement's audio stream outlasts its video, the container duration
+can place a retained SAM prompt beyond the last picture. Template import
+and saved-source replacement now bound that prompt by the decoded video
+clock and persist the adjusted time with the new region. In Chromium,
+a template saved by Concat previously failed to import with a two-frame
+24 fps replacement and a half-second audio stream. The same import now
+builds the region from the second picture, opens the saved project and
+renders the masked preview.
+The real-model native template regression also passed with two video frames
+and a longer audio stream, while retaining the existing rollback checks.
+
+The saved mask renderer also uses the verified SAM video clock during a held
+tail. The automatic mask and all SAM planes are sampled at the same bounded
+source time. In Chromium, the imported two-frame clip previously returned a
+preview error at 110 ms. It now returns the same RGBA bytes at 110 ms as it
+does at 70 ms, within the last picture.
+
+The saved video-mask editor uses the same decoded clock. Starting a new
+smart brush at 110 ms on that clip now submits a SAM job on its second
+picture. Attaching the finished job saves the bounded source time. The
+solo source mask preview returns the same RGBA bytes at 70 and 110 ms
+after the new stroke is saved. This was verified through the real server
+from Chromium after importing the original Concat template.
+
+Chromium also exported and downloaded the imported held-tail clip as
+FFV1/MKV with PCM. The 125 ms export contained three video frames at 24 fps
+and 6000 stereo samples at 48 kHz. The final decoded RGBA frame exactly
+matched the preview during the held tail.
+With the clip unmuted in a separate copy of the template, a 997 Hz test tone
+remained audible after the final video picture. The real-model server
+regression also compares an exported held frame byte for byte with preview
+after attaching another SAM stroke.
+
+### Embedded audio intent in reusable video slots
+
+Import now retains Concat's authored clip mute setting independently of
+whether the creator's source has an audio stream. Filling a native slot
+with silent video also retains that setting. The old stream index is
+removed, and audio planning still checks the actual replacement source
+for a stream. A later fill with audio can therefore play it unless the
+clip was explicitly muted. Existing saved mute values remain authoritative.
+
+Import/export round-trip tests cover both mute values on a silent
+placeholder. A native refill test covers both values after replacement
+with a silent file and then a file with audio.
+Chromium exported a new SAM template from an unmuted silent creator clip.
+The archive retained `muted: false`. After filling it with two video frames
+and a longer 997 Hz tone, Chromium downloaded FFV1/MKV. Decoded PCM contained
+the tone in the held tail, and the last masked frame matched preview.
+
+Video Kadr's native timeline insertion now also preserves the audio
+checkbox when the new video has no audio stream. Automatic placement
+creates a separate audio clip only for video that actually carries audio.
+Chromium created a silent clip using automatic placement, marked it as a
+slot, and downloaded the native template. Filling the slot with a file
+that carries audio preserved the enabled setting. Native-created clips
+still require representable controls to export to Concat ZIP.
+
+Concat export now reports the clip ID and the fields that change during the
+reverse conversion. In Chromium, a video created with Video Kadr's automatic
+placement reported `independentAudio` and `transform.concatPreparation`.
+Concat uses its own fit step and independently mixes the embedded sound.
+This clip still requires conversion before it can be exported as Concat ZIP
+without changing native behavior. The 13-test Concat export suite passed.
+
+### Authoring a Concat-compatible video clip
+
+The native timeline can insert video using Concat's source-aware fit and
+independent embedded audio. Automatic placement keeps the audio in that
+clip for this mode. Chromium inserted a silent video with the option enabled,
+marked it as a slot and downloaded the Concat ZIP. The editor then filled
+the slot with square video on a 2:1 canvas, confirmed the side bars in the
+native preview, and downloaded FFV1/MKV with the replacement's audible PCM.
+This option is applied at insertion time.
+
+The same source-aware fit is available when inserting still images. In
+Chromium, an image inserted with Concat fit became an editable Concat ZIP
+slot. Filling it with a square PNG on a 2:1 canvas recomputed the fit and
+produced the expected side bars without stretching the replacement.
+
+Existing video and image clips can also adopt Concat fit from the effects
+section. A constant native scale is converted to a multiplier relative to
+the source fit. Video also adopts Concat's embedded mix, retaining the
+clip's mute setting. The conversion is one undoable edit. Chromium
+converted a previously inserted clip, restored the old clip with Undo,
+reapplied the conversion and downloaded the Concat ZIP. After filling the
+slot with square video, preview showed side bars and the FFV1/MKV export
+contained the replacement's audible PCM.
+
+The existing-clip conversion also carries synchronized linear scale keys
+to the editable Concat scale run when both axes maintain a fixed ratio.
+Position, rotation and opacity must be constant in this conversion.
+Chromium converted a two-key zoom, verified Undo, and checked both
+key times and values in the downloaded Concat ZIP.
+
+Linear position, rotation and opacity keys now convert alongside scale.
+Offset keys are normalized by the corresponding canvas dimension. Each
+property retains its own key times and constant channels retain their rest
+values. Chromium checked all five editable runs in the downloaded ZIP and
+verified that Undo restores the native animation.
+
+The conversion now carries custom cubic Bézier handles and native cubic
+ease-in/ease-out. Native segments store their curve on the departing key;
+Concat stores it on the arriving key. Native cubic ease-in-out is represented
+by two Concat segments split at the midpoint. Tests compare sampled values
+on both sides of that split and preserve custom per-key tangents. Chromium
+checked the Bézier controls in the downloaded Concat ZIP after conversion.
+
+Bounce-in, bounce-out and bounce-in-out now convert to editable Concat
+segments. Each parabolic arc is split at its turning point so it can
+survive Concat's interpolation between distinct endpoints. Tests compare
+each direction with the native animation at 1,001 sample times, including
+the regions before and after its keys. Chromium verified the times, values
+and quadratic easing controls in the downloaded Concat ZIP.
+
+The native Continue extrapolation is now preserved inside the clip by adding
+editable linear keys at the clip boundaries. Their values come from the
+native channel sampler, including the Bézier endpoint slopes. Tests
+compare the complete converted run against native samples. Chromium
+checked both added boundary keys in a downloaded Concat ZIP.
+
+Ping-pong extrapolation now expands to editable mirrored runs within the
+clip. Each reverse leg reverses the timing curve, and partial legs use an
+exact cubic subinterval at the clip boundary. Tests compare asymmetric
+Bézier runs against native samples through both boundaries and multiple
+turns. Chromium checked the editable boundary and turn keys in the ZIP.
+
+Offset cycles and loops with matching endpoint values also expand into
+editable Concat keys. Offset cycles carry each repetition's cumulative
+value shift, including the cycles before the authored keys. The converter
+checks the expanded curves against each property's range and retains the
+shape of partial boundary legs. This initial implementation covered continuous cycle boundaries. Tests
+compare both modes with native samples. Chromium verified offset cycle
+values and times in the downloaded ZIP.
+
+Native Hold segments now export as editable keys on the native microsecond
+grid. The old value is retained through the microsecond before the change
+and the new value starts on its authored tick. This is a one-microsecond
+transition in Concat's continuous curve model. Tests compare both sides of
+the step, including adjacent authored keys. Chromium verified the two
+keys bracketing the change in the downloaded ZIP.
+
+Loops with different endpoint values now also export on the native
+microsecond grid. The last authored key keeps its own value. At other
+wraps, the next cycle starts at the corresponding tick, and the previous
+curve is preserved through the preceding tick. Concat represents the
+jump in the intervening microsecond. Tests cover Bézier samples around
+the wraps and a one-microsecond loop. Chromium verified both jumps in a
+downloaded Concat ZIP.
+
+Elastic in, out and in-out now convert to editable linear segments with a
+bounded approximation on the native microsecond grid. Subdivision uses
+the damped sine's second-derivative bound. The target error is 0.01% of
+the difference between the two authored values. The original endpoints
+remain exact on that grid. Conversions that exceed Concat's key count or
+property range are refused. Tests each compare more than 10,000 samples
+with native Elastic. Chromium verified the overshoot and endpoints in the
+downloaded ZIP.
+
+Proportional linear X and Y scale curves can use different key placements.
+The conversion ignores collinear intermediate keys when comparing the two
+curves and retains the original horizontal run in the archive. A curve that
+changes the ratio between the axes is still refused because the Concat clip
+format has one animated scale and two constant stretch factors. Chromium
+verified the two editable scale keys in a downloaded ZIP, plus Undo.
+
+The clip gain inspector can convert native gain animation into editable
+Concat volume keys, including when a linear segment crosses the clip
+boundary. The conversion is an undoable edit for audio clips and for video
+clips with independent embedded mixing enabled. The actual Concat export
+path builds the gain track from the full animation, including each arriving
+key's Bézier handles. Its audio mixer then samples that track internally.
+Video Kadr preserves the handles in the ZIP, with the existing approximation
+for Elastic and the 4096-key limit. Chromium checked a three-key cubic
+gain curve in the downloaded ZIP, plus Undo and rendered replacement audio.
+The pinned original Concat host loaded that ZIP's template, filled the slot,
+retained all three keys, matched the curve at five test times and rendered
+0.5 seconds of AAC at 48 kHz. In the decoded result the late RMS was
+3.93 times the early RMS.
+
+The pinned Concat host also resaved that project as an editable template.
+Chromium loaded the returned archive in Video Kadr, filled its slot and
+opened the imported project with all three gain keys and their Bézier
+handles intact. Editing the middle key's first Y handle changed only that
+coordinate. Undo restored the imported curve. The backend Concat export
+suite additionally checks a custom audio gain curve with overshooting
+handles through export and reimport.
+
+Concat v1 accepts computed boundary gain keys when their values are
+nonnegative. Export removes the native provenance marker and reverse
+validation compares the key's time, gain and easing. Negative boundary
+values still fail export because the original reader clamps them to zero.
+The backend suite covers both cases. Chromium also exposed an omitted
+empty transition list when trimming a saved video lane, now handled by
+both trim directions. The browser's complete native tail-trim to ZIP
+scenario initially failed the placement round trip because native trim
+retained a longer source window.
+
+For a forward 1× clip on a lane without transitions, reverse validation
+now accepts an equivalent half-open source range ending at the trimmed
+timeline duration. Both clocks read the same source tick throughout that
+range. The exporter leaves the saved Video Kadr placement intact.
+Chromium trimmed a 0.5-second video slot to 0.375 seconds, downloaded the
+ZIP with three editable gain keys, filled the slot and decoded the
+replacement audio. Importing the downloaded ZIP and filling its slot
+restored the 375,000 µs source end and the last gain key. Retained head
+offsets, reverse playback and speed ramps still require separate mappings.
+
+The same forward 1× mapping now handles a positive retained head offset.
+The archive's source in-point is the original in-point plus that offset.
+Chromium trimmed 125 ms from a 0.5-second clip and verified a timeline
+start and source in-point of 125 ms, a 375 ms duration, and all three
+volume keys in the ZIP. Filling the downloaded template preserved its
+timeline start and duration and reset the replacement source in-point to
+zero. The decoded export had silence before the clip and an audible gain
+rise within it.
+
+The 1× mapping also handles a negative retained offset when the earlier
+source window is inside the media. Chromium extended a clip by 125 ms
+from a 250 ms in-point. The ZIP preserved the new 125 ms in-point,
+375 ms duration and the three shifted gain keys. Video Kadr imported the
+ZIP with replacement media, and the decoded export showed the expected
+silence and gain rise.
+
+Transitions on other clips on the same lane no longer block this mapping.
+The exporter checks the transition endpoints and retains strict placement
+validation on those clips. The integration test exports and reimports a
+head-trimmed clip on a lane with an earlier dissolve and verifies that
+the transition descriptor, timing and endpoints survive intact. Reverse
+playback, ramps and rewindowing clips that participate in a transition
+still need separate mappings.
+
+The forward-window mapping accepts muted video at constant playback rates
+whose binary numerator and retained window keep native clock arithmetic
+exact. The shifted source in-point and duration must also land on whole
+source microseconds. Tests cover 0.5×, 0.75×, 1.25×, 1.5× and 2×, as well
+as a half-microsecond misalignment, a 1.1× window outside the precision
+proof and embedded sound. Chromium trimmed 125 ms from a muted 1.5× clip,
+downloaded a ZIP with a 187.5 ms source in-point and 125 ms duration, then
+imported two-colour replacement media and checked decoded preview pixels
+on both sides of the colour change. Retimed audible clips still require
+tempo-processing phase equivalence.
+
+Filling a forward 1× audio or video slot in the open project now uses
+the visible clip duration after trimming or extending its head. The
+replacement starts at source time zero, with the same timeline position
+and gain keys. Chromium compared direct filling with ZIP import on the
+same trimmed slot. For saved video with a Selfie mask, timed strokes
+rebase from the old visible in-point, including the retained trim offset.
+Chromium replaced a head-trimmed masked clip and verified the new source
+interval, the 100 ms brush time, a fresh mask source hash and Undo.
+
+Direct slot filling and saved-mask replacement now also support forward
+constant rates when the retained source interval lands on whole
+microseconds. Filling starts the replacement at source zero and keeps
+the authored rate, gain and timeline duration. For example, a 125 ms
+clip at 1.5× consumes 187.5 ms of the replacement. Chromium checked
+the replacement's preview pixels and decoded sound, then separately
+rebuilt a real Selfie mask on a trimmed 1.5× clip, verified the rebased
+brush time and restored the previous source with Undo. This new-source
+operation does not require preserving the old file's audio tempo phase.
+
+The same source-window calculation now covers cross-kind replacement
+between audio and video. The source conversion checks the visible window
+and the full authored controls, then resets the replacement in-point to
+zero. Native gain keys retain their boundary provenance across the edit.
+Tests cover both directions after trimming and extending at 1× and 1.5×.
+Chromium filled a trimmed 1.5× video slot with a WAV and decoded the
+resulting export to verify silence before the clip and sound within it.
+
+Native video slots with a source-progress speed ramp now accept shorter
+replacement footage when the clip has no active ramp audio. The clip
+keeps its complete speed ramp and timeline duration, and the native
+renderer holds the last available picture. Chromium filled a 625 ms
+ramped slot with 250 ms of two-colour footage and decoded all 15 frames
+of the FFV1 result. The last frames matched and showed the held red
+picture.
+
+Shorter replacements now retain pitch-preserving audio on native speed
+ramps. Missing source audio is padded before dividing it into ramp
+segments, and each processed segment keeps its authored duration before
+the mixer joins them. Chromium decoded 15 video frames and 30,000 stereo
+PCM samples at 48 kHz from a 625 ms slot filled with a 250 ms file. The
+render contained sound in the first segment, silence in the tail and the
+same held last picture.
+
+The production importer now retains original Concat timeline-fraction
+speed curves for muted forward video without masks or transitions. The
+native renderer samples the retained frame clock, and the Concat
+exporter writes the original curve and timing. Filling an imported slot
+resets its source in-point in both the native placement and the saved
+source clock. Chromium imported a Concat JSON slot with a 0.5×–1.5×
+curve, filled it with a shorter two-colour source, and checked decoded
+pixels during the slow section and the held tail in a 15-frame export.
+
+Video clips with original Concat curves now also pass audio export
+preflight and use whole decoder frames in the source-curve mixer.
+When a Matroska seek lands before the probed audio frame, capture skips
+the earlier packets and verifies the remaining packet boundaries.
+For short slot replacements, fully exhausted pieces contribute silence.
+Chromium imported an audible curve, filled it with a 250 ms file and
+decoded a 625 ms result with sound, a silent audio tail and a held last
+picture. The Matroska packet regression ran with actual FFmpeg and
+FFprobe.
+
+Standalone audio clips now import and export the same original Concat
+speed curve and retain it when their slot is filled. Chromium imported
+a 625 ms audio slot, filled it with a 250 ms WAV and decoded the native
+WAV export. It contained 30,000 stereo samples at 48 kHz, audible sound
+in the clip and silence in the tail.
+
+Slot replacement between audio and video now converts the original
+speed curve with the timeline's frame rate. Server tests check both
+directions, including a shorter replacement and a zero in-point.
+Chromium imported a retimed video, marked it as a slot, filled it
+with a WAV and decoded the result. That scenario also exposed a strict
+JSON binding error. The import panel now omits local codec and frame-rate
+metadata from media bindings.
+
+Original retimed clips can now carry video masks through both Concat ZIP
+and native .vktemplate packaging. Mask analysis uses the presented
+interval from the original frame clock. Native templates and saved-mask
+replacement use the presented in-point to rebase the timed strokes.
+Chromium exercised real Selfie inference and compared masked and
+unmasked pixels after both archive imports. The native template fixture
+used a 260 ms authored in-point that snaps to 250 ms, and retained the
+expected 100 ms stroke time on the replacement.
+
+Original Concat fades through black and white now round-trip on
+source-retimed video. Colour span validation uses the original
+document clock, and the colour transition leaves both audio windows
+untouched. Server tests verify both fades and their audio plans.
+Chromium imported a white fade between two clips with 0.5×–1.5× curves
+and decoded FFV1 frames with the white cut and the incoming picture.
+Packaged Concat dissolves now also retain the original speed curves.
+The incoming curve supplies no head handle and the outgoing curve
+supplies no tail handle. The hold uses total consumed source time minus
+one frame at the curve's final rate before source quantization. Incoming
+audio fades in across the transition and the held copy stays silent.
+Server tests check the held source tick, audio plan and JSON round trip.
+Chromium decoded the hold and the mixed frame from a real FFV1 export.
+Supported packaged shaders now share this retained-curve overlap path.
+Server tests round-trip fades, wipes, zoom, cube and glitch-warp with
+both clips retimed. Chromium imported the packaged linear wipe and
+verified the held source picture followed by red and blue regions on
+opposite sides of the decoded FFV1 frame.
+
+Legacy cross-fade, push, zoom, wipe-left and wipe-right also accept
+original retimed clips. A held outgoing picture makes push and zoom
+fall back to a dissolve, as in Concat. The backend tests verify the
+round trip for every legacy ID and the actual push motion when only
+the incoming clip is retimed. Chromium decoded the held-frame push
+fallback and both sides of a legacy left wipe.
+
+The combined template case now has an export regression for fixed video
+with a mask, original speed curves and a dissolve. Chromium also exported
+the same combination on a replaceable slot, filled and reimported the
+ZIP, rebuilt the Selfie mask and verified that the mask changed decoded
+pixels inside the dissolve. A second browser run rebuilt a tracked SAM
+region on the replacement, verified seed frame 2 and a fresh mask asset,
+and compared masked and unmasked preview pixels inside the transition.
+
+The native .vktemplate path passed the same real SAM round trip.
+The template manifest retains the curve, dissolve and timed mask
+recipe without copying the original slot footage or mask cache. Filling
+the reopened template created a new SAM asset, preserved seed frame 2
+and retained the transition endpoints. The browser compared the
+masked canvas with the backend preview and with the cutout disabled.
+
+Original Concat curves also survive a moving slot's intermediate
+replacement with a still image. The image keeps the curve in its
+source timing and portable Concat document. The server regression
+round-trips the still template and fills it again with video or audio.
+Chromium switched video to a PNG and back, then checked the restored
+curve and held preview frame from the shorter replacement video.
+
+Clearing a Concat speed curve now keeps the exact constant-speed clock
+through ZIP export and reimport. The exporter writes an empty
+`speedCurve` array for this case. Server tests verify the retained source
+in-point for both audio and video. Chromium removed the curve through
+the editor and reopened the exported ZIP with replacement footage.
+The pinned original Concat implementation also opened and filled that
+ZIP at constant speed. An original Concat save may omit the empty
+array, which removes the marker used to recover the exact clock.
+
+The empty curve also survives a temporary still image in the slot,
+including a template exported while the image is in place. Replacing
+that image with audio or video restores the retained Concat
+constant-speed clock at the start of the new source. Splitting the
+still preserves the marker in both fragments. The server regression
+exports and reimports the intermediate still template for both media
+kinds. Chromium switched from video to a PNG and back, then checked
+the restored constant-speed clock and the held frame in preview.
+
+The current worktree was rechecked across Concat import/export, native
+template packaging, import, library and poster suites. Server tests
+passed 48 cases with one ignored, and seven frontend suites passed 55
+cases with two skipped. Chromium reopened both Concat ZIP and native
+`.vktemplate` with replacement footage, rebuilt the Selfie mask and
+compared masked and unmasked preview pixels. A separate browser run
+cleared the curve on the intermediate still and checked the restored
+constant-speed clock and held preview frame after filling with video.
+
+A Chromium run reopened a native `.vktemplate` with replacement video
+and regenerated the Selfie mask. The decoded FFV1 frame at 42 ms
+matched the preview byte for byte, both with the mask and with it
+disabled. The Concat ZIP Selfie run likewise matched the decoded
+FFV1 frame and preview byte for byte at 208334 µs, inside the dissolve,
+with the restored mask enabled and disabled.
+The Concat ZIP SAM run also rebuilt the tracked region on replacement
+footage and matched the decoded FFV1 frame to preview byte for byte at
+208334 µs, with the mask enabled and disabled. This run completed with
+the SAM analysis timeout raised to six minutes.
+
+The native `.vktemplate` SAM run passed the same FFV1 comparison at
+208334 µs. Reopening the template with replacement video created a
+fresh tracked mask with seed frame 2. The decoded masked and unmasked
+frames each matched their respective previews byte for byte.
+
+The opt-in `logical_video_cutout` HTTP integration test also passed
+with the native vision worker, Selfie model and ONNX Runtime configured.
+It covers fixed and replaceable Concat ZIP slots, native template
+round-trips, and rendering with the archived mask cache.
+
+An integration run on the same worktree passed eight additional
+server tests. They cover saved and rebuilt imports, ownership and
+request limits, retaining live mask cache generations during project
+deletion, export queue recovery, and native timecode boundaries.
+
+The full frontend run passed 3997 tests across 490 files, with seven
+skips, after guarding the Concat fit action for clips without a
+transform. The run used four workers and a 30-second test timeout.
+Svelte type checking reported zero errors and warnings.
+
+Quantized native key clocks now export as editable flat spans on the
+microsecond grid. Each change uses the native rational clock, including its
+signed phase and rounding rule. The run remains subject to the conversion's
+key and clock-step budgets. Tests check values immediately before, at and
+after 24000/1001 frame-clock changes. Chromium verified the first transition
+and final value in the downloaded Concat ZIP.
+
+Constant extrapolation before the first key and after the last key no
+longer consumes the clock-step budget. The exporter jumps directly to
+the active authored interval and retains only the transitions that change
+the value. A ten-minute 24 fps clip with ten changing samples exports with
+21 keys. Chromium checked a dense 48 kHz clock with two changes and long
+holds: the downloaded ZIP contained five keys at the expected microseconds.
+
+Authored keys outside the clip no longer block Concat export. The converter
+clips the animation to the visible interval and retains the appropriate
+Bézier subcurve. Cyclic extrapolation starts at the first visible cycle.
+Tests compare a curve with both authored keys outside the clip against
+native samples. Chromium checked the two visible boundary values in the
+downloaded ZIP.

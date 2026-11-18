@@ -8,6 +8,34 @@ fn extracted_aac(path:&Path)->Vec<u8>{
     let output=std::process::Command::new("ffmpeg").args(["-nostdin","-v","error","-i"]).arg(path).args(["-map","0:a:0","-c:a","copy","-f","adts","pipe:1"]).output().unwrap();assert!(output.status.success(),"{}",String::from_utf8_lossy(&output.stderr));output.stdout
 }
 #[tokio::test]
+#[ignore = "requires FFmpeg and FFprobe with FFV1 and Matroska support"]
+async fn video_container_capture_preserves_the_traced_audio_packet_boundaries() {
+    let (state, _dir) = support::make_state(true, false).await;
+    let input = state.sources_dir().join("curve-source.mkv");
+    let made = std::process::Command::new("ffmpeg").args([
+        "-nostdin", "-v", "error", "-f", "lavfi", "-i", "color=blue:s=8x8:r=24:d=0.25",
+        "-f", "lavfi", "-i", "sine=frequency=997:sample_rate=48000:duration=0.25",
+        "-c:v", "ffv1", "-c:a", "pcm_s16le",
+    ]).arg(&input).output().unwrap();
+    assert!(made.status.success(), "{}", String::from_utf8_lossy(&made.stderr));
+    let cancel = CancellationToken::new();
+    let timeout = Duration::from_secs(30);
+    let probe = probe_pcm_metadata(&state.process_runtime, Path::new("ffprobe"), &input, timeout, &cancel).await.unwrap();
+    let stream = probe.streams.iter().find(|stream| stream.sample_rate.is_some()).unwrap();
+    let piece = video_kadr_backend::domain::concat_retime::AudioPiece {
+        start_seconds: 0.0, duration_seconds: 0.1, source_start_seconds: 0.161133,
+        speed: 1.0, from: 0.0, to: 1.0, fade_in_seconds: 0.0, fade_out_seconds: 0.0,
+    };
+    let capture = video_kadr_backend::tools::concat_audio_frames::prepare_source_piece(
+        &state.process_runtime, Path::new("ffmpeg"), Path::new("ffprobe"), &input, stream,
+        &piece, &state.storage, 8 << 20, timeout, &cancel,
+    ).await.unwrap();
+    assert!(capture.span.source_exhausted);
+    assert_eq!(capture.span.frame_samples.last(), Some(&736));
+    assert!(capture.path().exists());
+}
+
+#[tokio::test]
 #[ignore="requires original pre-AAC PCM observation adapter and real FFmpeg"]
 async fn expanded_curve_waveform_matches_actual_original_mixer_before_aac(){
     compare_waveform(false,0).await;

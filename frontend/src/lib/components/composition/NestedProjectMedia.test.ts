@@ -6,7 +6,7 @@ import { closeNestedComposition, nestedComposition, nestedHistory, setNestedMedi
 import { createComposition } from '$lib/composition/commands'
 import { buildCompositionWireDocument } from '$lib/composition/payload'
 import Controls from './NestedProjectMedia.svelte'
-vi.mock('$lib/api', async original => ({ ...await original<typeof api>(), setNativeProjectMediaPlaceholder: vi.fn(), removeNativeProjectMedia: vi.fn(), fillNativeProjectMedia: vi.fn(), inspectNativeTemplate:vi.fn() }))
+vi.mock('$lib/api', async original => ({ ...await original<typeof api>(), setNativeProjectMediaPlaceholder: vi.fn(), removeNativeProjectMedia: vi.fn(), fillNativeProjectMedia: vi.fn(), inspectNativeTemplate:vi.fn(), getNestedCompositionProject:vi.fn(), replaceNestedMaskedVideo:vi.fn() }))
 const source = { id: 'source-a', kind: 'image' as const, durationTicks: 0, width: 16, height: 16, hasAudio: false }
 function project(): api.NativeNestedProject {
   const content = { ...buildCompositionWireDocument(createComposition({ width: 16, height: 16, fps: 24, backgroundColor: '#000000' })), sources: { [source.id]: source } }
@@ -158,5 +158,43 @@ it('keeps the slot checkbox and history unchanged when the server refuses markin
   await vi.waitFor(() => expect(nestedHistory.error).toContain('видеомаской'))
   expect(checkbox.checked).toBe(false)
   expect(nestedHistory.past).toHaveLength(0)
+  expect(nestedComposition.document).toEqual(initial)
+})
+
+it('replaces a saved masked video at the current revision and records one Undo', async () => {
+  const initial = project()
+  const video = { ...source, kind: 'video' as const, durationTicks: 1_000_000 }
+  initial.projectMedia = { [source.id]: { source: video, name: 'Masked', librarySourceId: 'old' } }
+  const content = initial.compositions.root!.content
+  const tracks = [{
+    kind: 'video', id: 'video', name: 'Video',
+    clips: [{ id: 'shot', sourceId: source.id, concatCutout: { subject: 'person' } }],
+  }] as unknown as typeof content.tracks
+  initial.compositions = { root: { content: { ...content, sources: { [source.id]: video }, tracks }, instances: [] } }
+  nestedComposition.document = initial
+  nestedComposition.projectId = 'saved'
+  nestedComposition.revision = 4
+  const updated = structuredClone(initial)
+  updated.projectMedia![source.id]!.librarySourceId = 'new'
+  vi.mocked(api.getNestedCompositionProject).mockResolvedValue({ id: 'saved', revision: 4, document: initial } as api.NestedCompositionProjectDto)
+  vi.mocked(api.replaceNestedMaskedVideo).mockResolvedValue({ id: 'saved', revision: 5, document: updated } as api.NestedCompositionProjectDto)
+  component = mount(Controls, {
+    target: document.body,
+    props: { token: 'owner', sources: [{ label: 'New footage', source: { ...video, id: 'new' } }] },
+  })
+  await tick()
+  const select = document.querySelector<HTMLSelectElement>('select[aria-label="Замена видео с маской: Masked"]')!
+  select.value = 'new'
+  select.dispatchEvent(new Event('change', { bubbles: true }))
+  await tick()
+  const button = [...document.querySelectorAll('button')].find(item =>
+    item.textContent?.includes('Заменить видео и пересчитать маску'),
+  )!
+  button.click()
+  await vi.waitFor(() => expect(nestedComposition.revision).toBe(5))
+  expect(api.replaceNestedMaskedVideo).toHaveBeenCalledExactlyOnceWith('saved', source.id, 'new', 4, 'owner', expect.any(AbortSignal))
+  expect(nestedComposition.document).toEqual(updated)
+  expect(nestedHistory.past).toHaveLength(1)
+  undoNestedComposition()
   expect(nestedComposition.document).toEqual(initial)
 })

@@ -99,8 +99,13 @@ impl ClipProcessor {
 /// Current export binding for source zero-preroll effects; remaining DSP stays explicit.
 pub fn validate_export_processing(layers: &[NestedAudioLayer]) -> Result<()> {
     for layer in layers {
-        ensure!(layer.concat_retime_piece.is_none()&&layer.concat_retime_owner.is_none(),"source curve audio piece needs whole-frame preparation before native DSP");
+        ensure!(layer.concat_retime_piece.is_none(),"source curve audio piece needs whole-frame preparation before native DSP");
         super::filmcraft_dsp::validate_specs(&layer.clip.dsp_effects)?;
+        if layer.concat_retime_owner.is_some() {
+            crate::tools::concat_retime_audio::validate_source_curve_effects(&layer.clip)?;
+            super::concat_retime::expand_audio(&layer.clip)?;
+            continue;
+        }
         if crate::tools::packet_clip::resolve_chain(&layer.clip.dsp_effects)?.is_some() {
             let mut packet=layer.clone();packet.clip.dsp_effects.clear();
             crate::tools::packet_clip::source_bounds(&packet,48000)?;

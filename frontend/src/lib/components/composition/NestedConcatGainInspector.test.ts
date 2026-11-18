@@ -36,6 +36,22 @@ it('does not replace the document when clip selection changes during validation'
  expect(nestedComposition.document).toBe(before);expect(nestedHistory.past).toHaveLength(0)
 })
 
+it('converts time-based gain into editable Concat keys and restores the native curve with Undo',async()=>{
+ const audio=clip()
+ if(!('gain'in audio))throw new Error('audio')
+ const gain={mode:'keyframes' as const,track:{timeBase:1_000_000,interpolation:'linear' as const,
+  keyframes:[{tick:-250_000,value:0},{tick:750_000,value:1}]}}
+ Object.assign(audio,{gain,concatGainKeys:undefined})
+ component=mount(Inspector,{target:document.body});await tick()
+ const convert=[...document.querySelectorAll('button')].find(button=>button.textContent==='Преобразовать ключи громкости для Concat')!
+ convert.click()
+ await vi.waitFor(()=>expect(nestedHistory.past).toHaveLength(1))
+ expect(clip()).toMatchObject({gain:{mode:'constant',value:0.25},concatGainKeys:[{at:0,value:0.25},{at:0.75,value:1}]})
+ undoNestedComposition()
+ expect(clip()).toMatchObject({gain})
+ expect(clip().concatGainKeys).toBeUndefined()
+})
+
 it('publishes a native gain cut after the editor unmounts while validation is pending',async()=>{
  const old=captureSourceRunClipboard([{at:0,value:7}],[0]);sourceRunClipboard.value=old;let finish!:(value:{entries:[]})=>void;vi.mocked(evaluateNestedFrame).mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve}))
  component=mount(Inspector,{target:document.body});await tick();const before=JSON.stringify(nestedComposition.document);document.querySelector('[aria-label="Громкость Concat исходный ключ 0"]')!.dispatchEvent(new KeyboardEvent('keydown',{key:'a',ctrlKey:true,bubbles:true}));await tick()

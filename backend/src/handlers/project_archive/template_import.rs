@@ -6,6 +6,7 @@ use crate::{
 };
 use axum::extract::Query;
 use axum::response::IntoResponse;
+use base64::{engine::general_purpose::STANDARD, Engine};
 use serde::Deserialize;
 use serde_json::json;
 #[derive(Deserialize)]
@@ -256,18 +257,127 @@ pub(super) async fn create(
         .collect();
     let entries = parsed.manifest.video_caches.clone();
     let payloads = parsed.video_caches;
-    let (project, old_document) = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
-        let project = template_bundle::instantiate(&parsed.manifest, &design, &fills)?;
-        let old_document = if !parsed.manifest.video_caches.is_empty() {
-            serde_json::to_value(&parsed.manifest.project)?
-        } else {
-            Value::Null
-        };
-        Ok((project, old_document))
-    })
-    .await
-    .map_err(|e| AppError::internal("join template assembly", e))?
-    .map_err(|e| AppError::bad_request(e.to_string()))?;
+    let (mut project, old_document, slot_masks) =
+        tokio::task::spawn_blocking(move || -> AppResult<_> {
+            let mut project = template_bundle::instantiate(&parsed.manifest, &design, &fills)
+                .map_err(|e| AppError::bad_request(e.to_string()))?;
+            if let Some(poster) = parsed.poster_png {
+                let jpeg = super::template_frame::encode_cover(poster, image::ImageFormat::Jpeg)?;
+                project.cover_jpeg = Some(STANDARD.encode(jpeg));
+            }
+            let old_document = if !parsed.manifest.video_caches.is_empty() {
+                serde_json::to_value(&parsed.manifest.project)
+                    .map_err(|e| AppError::bad_request(e.to_string()))?
+            } else {
+                Value::Null
+            };
+            let slot_masks = parsed
+                .manifest
+                .slot_masks
+                .into_iter()
+                .map(|mask| {
+                    let node = &parsed.manifest.project.compositions[&mask.timeline_id];
+                    let clip = node
+                        .content
+                        .tracks
+                        .iter()
+                        .filter_map(|track| match track {
+                            crate::domain::composition::CompositionTrack::Video {
+                                clips, ..
+                            } => Some(clips),
+                            _ => None,
+                        })
+                        .flatten()
+                        .find(|clip| clip.id == mask.clip_id)
+                        .expect("validated clip");
+                    let old_in = if clip.placement.concat_retime.is_some() {
+                        let source = &node.content.sources[&clip.source_id];
+                        crate::domain::video_clock::presented_source_bounds(
+                            &clip.placement, clip.playback_mode, source.duration_ticks,
+                        ).map_err(|error| AppError::bad_request(error.to_string()))?.0
+                    } else {
+                        clip.placement.source_in_tick
+                    };
+                    let source = fills[&mask.media_id].source.clone();
+                    Ok((mask, old_in, source))
+                })
+                .collect::<AppResult<Vec<_>>>()?;
+            Ok((project, old_document, slot_masks))
+        })
+        .await
+        .map_err(|e| AppError::internal("join template assembly", e))??;
+    use crate::handlers::concat_video_replace as masks;
+    let cancel = state.shutdown_token().child_token();
+    let _cancel_on_drop = cancel.clone().drop_guard();
+    let mut generated = Vec::new();
+    let mut model_guard = None;
+    let mut sam_guard = None;
+    let analysis_permit = if slot_masks.is_empty() {
+        None
+    } else {
+        Some(
+            crate::handlers::concat_cutout_analyse::acquire_analysis(&state, &cancel)
+                .await
+                .map_err(import_slot_mask_error)?,
+        )
+    };
+    if analysis_permit.is_some() {
+        model_guard = Some(tokio::select! {
+            guard = state.cutout_model_ops.lock() => guard,
+            _ = cancel.cancelled() => return Err(AppError::conflict("Анализ отменён")),
+        });
+        if slot_masks
+            .iter()
+            .any(|(mask, _, _)| mask.recipe.tracked_strokes().next().is_some())
+        {
+            sam_guard = Some(tokio::select! {
+                guard = state.sam_model_ops.lock() => guard,
+                _ = cancel.cancelled() => return Err(AppError::conflict("Анализ отменён")),
+            });
+        }
+        let mut groups = BTreeMap::new();
+        for (mask, old_in, source) in slot_masks {
+            if source.kind != crate::domain::composition::SourceKind::Video {
+                return Err(AppError::bad_request(
+                    "Для слота с видеомаской требуется видео",
+                ));
+            }
+            groups
+                .entry((mask.media_id, mask.recipe.model_hash.clone()))
+                .or_insert_with(|| (source, BTreeMap::new()))
+                .1
+                .insert((mask.timeline_id, mask.clip_id), (mask.recipe, old_in));
+        }
+        for ((media_id, _), (source, bindings)) in groups {
+            let path = originals
+                .iter()
+                .find(|(id, ..)| *id == source.id)
+                .map(|(_, _, path, _, _)| path)
+                .ok_or_else(|| AppError::conflict("Файл для видеомаски недоступен"))?;
+            let (_, hash) =
+                crate::project_archive::fingerprint_file_with_limit(path, masks::CACHE_BUDGET)
+                    .await
+                    .map_err(import_slot_mask_error)?;
+            let (cache, regions) = Box::pin(masks::rebuild(
+                &state,
+                &actor,
+                &mut project,
+                bindings,
+                &source,
+                path,
+                &hash,
+                &cancel,
+            ))
+            .await
+            .map_err(import_slot_mask_error)?;
+            generated.push(super::generated_video::Generated {
+                media_id,
+                original: path.clone(),
+                cache,
+                regions,
+            });
+        }
+    }
     let document =
         serde_json::to_value(project).map_err(|e| AppError::bad_request(e.to_string()))?;
     for (id, entry, path, revision, metadata) in originals {
@@ -295,8 +405,6 @@ pub(super) async fn create(
     }
     let source_ids = crate::db::extract_document_source_ids(&document)
         .map_err(|e| AppError::bad_request(e.to_string()))?;
-    let cancel = tokio_util::sync::CancellationToken::new();
-    let _cancel_on_drop = cancel.clone().drop_guard();
     let mut video = run_with_timeout(
         video_import::prepare(
             &state,
@@ -308,12 +416,24 @@ pub(super) async fn create(
             &entries,
             &payloads,
             &cancel,
+            analysis_permit.is_some(),
         ),
         ARCHIVE_IO_TIMEOUT,
         "Проверка видеомасок шаблона превысила лимит времени",
     )
     .await?
     .map_err(|error| AppError::bad_request(error.to_string()))?;
+    super::generated_video::prepare(
+        &state,
+        &actor,
+        &document,
+        &mut generated,
+        &mut prepared,
+        &mut video,
+        &cancel,
+    )
+    .await
+    .map_err(import_slot_mask_error)?;
     let saved = publish_with_rollback(
         &state,
         &prepared,
@@ -326,6 +446,9 @@ pub(super) async fn create(
     )
     .await?;
     video.commit();
+    drop(sam_guard);
+    drop(model_guard);
+    drop(analysis_permit);
     for source in &prepared {
         if let Some(entry) = state.library.get(&source.new_id).await {
             state.index_media(&entry).await;
@@ -338,6 +461,10 @@ pub(super) async fn create(
 }
 
 /// Verify a package and expose only gallery/slot metadata, without publication.
+fn import_slot_mask_error(error: impl std::fmt::Display) -> AppError {
+    AppError::conflict(format!("Не удалось восстановить видеомаску: {error:#}"))
+}
+
 pub async fn inspect(
     State(state): State<AppState>,
     headers: HeaderMap,

@@ -213,3 +213,19 @@ async fn filled_image_slot_import_preserves_placements_and_retained_image_timing
         }
     }
 }
+
+#[test]
+fn masked_slot_keeps_authored_cutout_for_every_replacement_kind() {
+    let mut original = document();
+    let mask = json!({"mode":"custom","subject":"person","strokes":[
+        {"tool":"brush","size":0.1,"points":[[0.5,0.5]]}
+    ]});
+    // A masked clip on an inactive timeline must also survive the replacement.
+    original["timelines"][1]["clips"][0]["cutout"] = mask.clone();
+    let replacement = |kind| json!({"path":"/new","name":"Replacement","kind":kind});
+    for kind in ["image", "video", "audio"] {
+        let filled = fill(&original, "slot", &replacement(kind)).unwrap();
+        assert_eq!(filled["timelines"][1]["clips"][0]["cutout"], mask);
+        assert_eq!(filled["timelines"][1]["clips"][0]["kind"], kind);
+    }
+}

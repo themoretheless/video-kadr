@@ -1,4 +1,4 @@
-//! Private durable native-template catalogue. Package bytes live in immutable files.
+//! Durable personal and Space native-template catalogue. Package bytes live in immutable files.
 use super::Db;
 use anyhow::{ensure, Result};
 use serde::Serialize;
@@ -8,6 +8,8 @@ use sqlx::{Row, SqlitePool};
 #[serde(rename_all = "camelCase")]
 pub struct NativeTemplateEntry {
     pub has_poster: bool,
+    pub space_id: Option<String>,
+    pub can_manage: bool,
     pub id: String,
     pub name: String,
     pub info: Value,
@@ -30,11 +32,19 @@ pub(super) async fn migrate(pool: &SqlitePool) -> Result<()> {
             .execute(&mut *tx)
             .await?;
     }
+    if !columns.iter().any(|row| row.get::<String, _>("name") == "space_id") {
+        sqlx::query("ALTER TABLE native_template_library ADD COLUMN space_id TEXT REFERENCES collaboration_spaces(id) ON DELETE CASCADE")
+            .execute(&mut *tx).await?;
+    }
+    sqlx::query("CREATE INDEX IF NOT EXISTS native_template_space_name ON native_template_library(space_id,name,id)")
+        .execute(&mut *tx).await?;
     tx.commit().await?;
     Ok(())
 }
 fn entry(row: sqlx::sqlite::SqliteRow) -> Result<NativeTemplateEntry> {
     Ok(NativeTemplateEntry {
+        space_id: row.try_get("space_id")?,
+        can_manage: row.try_get::<i64, _>("can_manage")? != 0,
         has_poster: row.try_get::<i64, _>("has_poster")? != 0,
         id: row.try_get("id")?,
         name: row.try_get("name")?,
@@ -45,27 +55,30 @@ fn entry(row: sqlx::sqlite::SqliteRow) -> Result<NativeTemplateEntry> {
     })
 }
 impl Db {
-    pub(crate) async fn native_templates(&self, owner: &str) -> Result<Vec<NativeTemplateEntry>> {
-        sqlx::query("SELECT id,owner,name,info_json,bytes,sha256,created_at,CASE WHEN poster_png IS NULL THEN 0 ELSE 1 END AS has_poster FROM native_template_library WHERE owner=? ORDER BY name,id")
-            .bind(owner)
-            .fetch_all(&self.pool)
-            .await?
-            .into_iter()
-            .map(entry)
-            .collect()
+    pub(crate) async fn native_templates(&self, actor: &str, space: Option<&str>) -> Result<Vec<NativeTemplateEntry>> {
+        sqlx::query("SELECT t.id,t.name,t.info_json,t.bytes,t.sha256,t.created_at,t.space_id,
+            t.poster_png IS NOT NULL AS has_poster,
+            CASE WHEN t.space_id IS NULL OR m.role IN ('owner','editor') THEN 1 ELSE 0 END AS can_manage
+            FROM native_template_library t
+            LEFT JOIN collaboration_space_members m ON m.space_id=t.space_id AND m.actor=?1
+            WHERE ((?2 IS NULL AND t.space_id IS NULL AND t.owner=?1)
+                OR (t.space_id=?2 AND m.actor IS NOT NULL)) ORDER BY t.name,t.id")
+            .bind(actor).bind(space)
+            .fetch_all(&self.pool).await?.into_iter().map(entry).collect()
     }
     pub(crate) async fn native_template(
         &self,
-        owner: &str,
+        actor: &str,
         id: &str,
     ) -> Result<Option<NativeTemplateEntry>> {
-        sqlx::query("SELECT id,owner,name,info_json,bytes,sha256,created_at,CASE WHEN poster_png IS NULL THEN 0 ELSE 1 END AS has_poster FROM native_template_library WHERE owner=? AND id=?")
-            .bind(owner)
-            .bind(id)
-            .fetch_optional(&self.pool)
-            .await?
-            .map(entry)
-            .transpose()
+        sqlx::query("SELECT t.id,t.name,t.info_json,t.bytes,t.sha256,t.created_at,t.space_id,
+            t.poster_png IS NOT NULL AS has_poster,
+            CASE WHEN t.space_id IS NULL OR m.role IN ('owner','editor') THEN 1 ELSE 0 END AS can_manage
+            FROM native_template_library t
+            LEFT JOIN collaboration_space_members m ON m.space_id=t.space_id AND m.actor=?1
+            WHERE t.id=?2 AND ((t.space_id IS NULL AND t.owner=?1) OR m.actor IS NOT NULL)")
+            .bind(actor).bind(id)
+            .fetch_optional(&self.pool).await?.map(entry).transpose()
     }
     pub(crate) async fn insert_native_template(
         &self,
@@ -90,17 +103,24 @@ impl Db {
         let info = serde_json::to_string(&record.info)?;
         ensure!(info.len() <= 1024 * 1024, "Template metadata too large");
         let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
+        if let Some(space) = record.space_id.as_deref() {
+            let can_manage: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM collaboration_space_members WHERE space_id=? AND actor=? AND role IN ('owner','editor'))")
+                .bind(space).bind(owner).fetch_one(&mut *tx).await?;
+            ensure!(can_manage, "Template Space editor access required");
+        }
         let exists: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM native_template_library WHERE owner=? AND name=?)",
+            "SELECT EXISTS(SELECT 1 FROM native_template_library WHERE ((space_id IS NULL AND ?1 IS NULL AND owner=?2) OR space_id=?1) AND name=?3)",
         )
+        .bind(record.space_id.as_deref())
         .bind(owner)
         .bind(&record.name)
         .fetch_one(&mut *tx)
         .await?;
         ensure!(!exists, "Template name already exists");
         let (count, bytes): (i64, i64) = sqlx::query_as(
-            "SELECT COUNT(*),COALESCE(SUM(bytes+COALESCE(length(poster_png),0)),0) FROM native_template_library WHERE owner=?",
+            "SELECT COUNT(*),COALESCE(SUM(bytes+COALESCE(length(poster_png),0)),0) FROM native_template_library WHERE (space_id IS NULL AND ?1 IS NULL AND owner=?2) OR space_id=?1",
         )
+        .bind(record.space_id.as_deref())
         .bind(owner)
         .fetch_one(&mut *tx)
         .await?;
@@ -110,7 +130,7 @@ impl Db {
                     <= 16 * 1024 * 1024 * 1024,
             "Template library quota exceeded"
         );
-        sqlx::query("INSERT INTO native_template_library(id,owner,name,info_json,bytes,sha256,created_at,poster_png) VALUES(?,?,?,?,?,?,?,?)").bind(&record.id).bind(owner).bind(&record.name).bind(info).bind(record.bytes as i64).bind(&record.sha256).bind(record.created_at as i64).bind(poster).execute(&mut *tx).await?;
+        sqlx::query("INSERT INTO native_template_library(id,owner,name,info_json,bytes,sha256,created_at,poster_png,space_id) VALUES(?,?,?,?,?,?,?,?,?)").bind(&record.id).bind(owner).bind(&record.name).bind(info).bind(record.bytes as i64).bind(&record.sha256).bind(record.created_at as i64).bind(poster).bind(record.space_id.as_deref()).execute(&mut *tx).await?;
         tx.commit().await?;
         Ok(())
     }
@@ -120,7 +140,8 @@ impl Db {
         id: &str,
     ) -> Result<Option<Vec<u8>>> {
         Ok(sqlx::query_scalar::<_, Option<Vec<u8>>>(
-            "SELECT poster_png FROM native_template_library WHERE owner=? AND id=?",
+            "SELECT poster_png FROM native_template_library t WHERE id=?2 AND
+             ((space_id IS NULL AND owner=?1) OR EXISTS(SELECT 1 FROM collaboration_space_members m WHERE m.space_id=t.space_id AND m.actor=?1))",
         )
         .bind(owner)
         .bind(id)
@@ -130,7 +151,8 @@ impl Db {
     }
     pub(crate) async fn delete_native_template(&self, owner: &str, id: &str) -> Result<bool> {
         Ok(
-            sqlx::query("DELETE FROM native_template_library WHERE owner=? AND id=?")
+            sqlx::query("DELETE FROM native_template_library AS t WHERE id=?2 AND
+                ((space_id IS NULL AND owner=?1) OR EXISTS(SELECT 1 FROM collaboration_space_members m WHERE m.space_id=t.space_id AND m.actor=?1 AND m.role IN ('owner','editor')))")
                 .bind(owner)
                 .bind(id)
                 .execute(&self.pool)

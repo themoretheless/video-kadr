@@ -609,6 +609,20 @@ impl AppState {
             .map(JobPermit::new)
     }
 
+    pub(crate) fn try_acquire_export_execution(&self, with_video: bool) -> Option<crate::jobs::ExecutionGuards> {
+        let render = if with_video {
+            Some(JobPermit::new(self.render_semaphore.clone().try_acquire_owned().ok()?))
+        } else {
+            None
+        };
+        let export = self.resource_semaphore(ResourceClass::Export).clone().try_acquire_owned().ok()?;
+        Some(crate::jobs::ExecutionGuards {
+            _render_lock: None,
+            _render_permit: render,
+            _job_permit: JobPermit::new(export),
+        })
+    }
+
     /// Stop admitting queued jobs; this is the queue-level shutdown boundary.
     pub fn close_job_queue(&self) {
         self.ingest_semaphore.close();

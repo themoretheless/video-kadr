@@ -1,11 +1,28 @@
 //! Pure native FillSlot planning. Physical source access/probing belongs to the handler.
 use super::{
-    composition::{CompositionSource, SourceId},
+    composition::{ClipPlacement, CompositionSource, SourceId},
     nested_composition::NestedCompositionProject,
 };
 use anyhow::{ensure, Context, Result};
 use serde_json::{json, Value};
-use std::collections::BTreeMap;
+use std::{collections::{BTreeMap, BTreeSet}, ops::Range};
+
+/// The whole-microsecond source interval visible after a forward constant-speed trim.
+pub(crate) fn visible_constant_speed_window(placement: &ClipPlacement) -> Option<Range<u64>> {
+    if placement.speed_ramp.is_some() || placement.concat_retime.is_some() {
+        return None;
+    }
+    let head = placement.source_head_ticks().ok()?;
+    let offset = placement.source_timeline_offset_tick.unwrap_or(0) as f64 * placement.speed;
+    let span = placement.timeline_duration_tick? as f64 * placement.speed;
+    if offset.fract() != 0.0 || span.fract() != 0.0 {
+        return None;
+    }
+    let start = placement.source_in_tick.checked_add_signed(offset as i64)?;
+    let end = start.checked_add(span as u64)?;
+    (head <= placement.source_in_tick && end <= placement.source_out_tick).then_some(start..end)
+}
+
 fn normalized(value: Value, kind: &str) -> Result<Value> {
     Ok(match kind {
         "video" => serde_json::to_value(serde_json::from_value::<super::composition::VideoClip>(
@@ -131,6 +148,8 @@ pub fn fill(
     for (node_id, node) in &project.compositions {
         let width = node.content.canvas.width as f64;
         let height = node.content.canvas.height as f64;
+        let rate = node.content.canvas.frame_rate();
+        let rate = (rate.numerator, rate.denominator);
         let content = &mut wire["compositions"][node_id]["content"];
         let existing_groups = super::concat_lane_groups::groups(&node.content)?;
         let mut insertions = Vec::<(String, bool, Value)>::new();
@@ -237,6 +256,8 @@ pub fn fill(
                     );
                 }
             }
+            let transition_clips: BTreeSet<String> = super::concat_project_export::transition_clip_ids(track)
+                .into_iter().map(str::to_owned).collect();
             for clip in track["clips"].as_array_mut().unwrap() {
                 if clip["sourceId"] != id.as_str() {
                     continue;
@@ -251,28 +272,99 @@ pub fn fill(
                             .any(|key| key.as_str() == clip["id"].as_str().unwrap_or(""))),
                     "FillSlot needs derived-media asset rebinding"
                 );
+                // The logical source ID and track stay the same for stills.
+                // Preserve native transforms, keyframes and effects directly.
+                if old_kind == "image" && kind == "image" {
+                    if let Some(timing) = clip.get_mut("concatSourceTiming") {
+                        if timing["speed"].as_f64() == Some(1.0)
+                            && timing.get("speedCurve").is_none()
+                        {
+                            clip.as_object_mut().unwrap().remove("concatSourceTiming");
+                        } else {
+                            timing["sourceStart"] = json!(0.0);
+                        }
+                    }
+                    continue;
+                }
+                let forward = clip["reversed"] != true
+                    && (clip["playbackMode"].is_null() || clip["playbackMode"]["mode"] == "forward");
+                if old_kind == kind {
+                    let mut placement: ClipPlacement =
+                        serde_json::from_value(clip["placement"].clone())?;
+                    let duration = placement.timeline_duration_ticks()?;
+                    if clip["playbackMode"]["mode"] == "freeze" {
+                        let frame = clip["playbackMode"]["sourceTick"]
+                            .as_u64()
+                            .and_then(|tick| tick.checked_sub(placement.source_in_tick))
+                            .context("Invalid held-frame position")?;
+                        ensure!(
+                            frame < physical.duration_ticks,
+                            "Replacement video does not contain the held frame"
+                        );
+                        clip["playbackMode"]["sourceTick"] = json!(frame);
+                    }
+                    let visible = visible_constant_speed_window(&placement).filter(|_| {
+                        forward && clip["id"].as_str().is_some_and(|id| !transition_clips.contains(id))
+                    });
+                    if let Some(window) = visible {
+                        placement.source_out_tick = window.end - window.start;
+                        placement.source_timeline_offset_tick = None;
+                        placement.source_head_timeline_tick = None;
+                    } else {
+                        placement.source_out_tick = placement.source_span_ticks();
+                    }
+                    placement.source_in_tick = 0;
+                    if let Some(raw) = placement.concat_retime.as_mut().and_then(|clock| clock.document_clock.as_mut()) {
+                        raw.source_start = 0.0;
+                    }
+                    placement.concat_source_eof =
+                        placement.source_out_tick > physical.duration_ticks;
+                    ensure!(
+                        placement.timeline_duration_ticks()? == duration,
+                        "Slot replacement changes the timeline duration"
+                    );
+                    clip["placement"] = serde_json::to_value(placement)?;
+                    // An explicit stream index refers to the old file.
+                    clip.as_object_mut().unwrap().remove("audioStream");
+                    continue;
+                }
+                let mut canonical = clip.clone();
+                if forward && old_kind != "image" {
+                    let mut placement: ClipPlacement = serde_json::from_value(clip["placement"].clone())?;
+                    if let Some(window) = visible_constant_speed_window(&placement) {
+                        placement.source_in_tick = window.start;
+                        placement.source_out_tick = window.end;
+                        placement.source_timeline_offset_tick = None;
+                        placement.source_head_timeline_tick = None;
+                        placement.timeline_duration_tick = None;
+                        placement.concat_source_eof = window.end > old.source.duration_ticks;
+                        canonical["placement"] = serde_json::to_value(placement)?;
+                    }
+                }
+                super::concat_project_export::strip_gain_key_provenance(&mut canonical);
                 let mut source =
-                    super::concat_project_export::media_clip(clip, &old_kind, width, height)?;
+                    super::concat_project_export::media_clip(&canonical, &old_kind, width, height)?;
                 let original_bindings =
                     BTreeMap::from([(id.as_str().to_owned(), old.source.clone())]);
                 let reconstructed = normalized(
-                    super::concat_project_import::convert_clip(
+                    super::concat_project_import::convert_clip_at_rate(
                         &source,
                         &original_bindings,
                         width,
                         height,
+                        rate,
                     )?,
                     &old_kind,
                 )?;
                 ensure!(
-                    reconstructed == *clip,
+                    reconstructed == canonical,
                     "Native clip controls cannot yet be retained by FillSlot"
                 );
                 source["kind"] = json!(kind);
                 source["sourceStart"] = json!(0.);
                 source.as_object_mut().unwrap().remove("audioStream");
-                let changed = normalized(
-                    super::concat_project_import::convert_clip(&source, &bindings, width, height)?,
+                let mut changed = normalized(
+                    super::concat_project_import::convert_clip_at_rate(&source, &bindings, width, height, rate)?,
                     &kind,
                 )?;
                 let restored =
@@ -286,6 +378,11 @@ pub fn fill(
                         &actual == value,
                         "Cross-kind FillSlot cannot retain authored {key}"
                     );
+                }
+                if kind != "image" {
+                    if let Some(keys) = clip.get("concatGainKeys") {
+                        changed["concatGainKeys"] = keys.clone();
+                    }
                 }
                 *clip = changed;
             }

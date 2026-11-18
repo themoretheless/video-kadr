@@ -715,11 +715,22 @@ pub async fn template_round_trip(
     expected: &[u8],
     regions: bool,
 ) {
+    use base64::{engine::general_purpose::STANDARD, Engine};
+
+    let color = [34, 85, 144, 255];
+    let mut png = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(16, 8, image::Rgba(color)))
+        .write_to(&mut png, image::ImageFormat::Png)
+        .unwrap();
+    let mut cover_upload = b"--COVER\r\nContent-Disposition: form-data; name=\"poster\"; filename=\"cover.png\"\r\n\r\n".to_vec();
+    cover_upload.extend_from_slice(png.get_ref());
+    cover_upload.extend_from_slice(b"\r\n--COVER--\r\n");
     let response = super::router(original.clone())
         .oneshot(
-            Request::get(format!("/api/composition-projects/{project_id}/template"))
+            Request::post(format!("/api/composition-projects/{project_id}/template-cover?download=true"))
                 .header("authorization", format!("Bearer {token}"))
-                .body(Body::empty())
+                .header("content-type", "multipart/form-data; boundary=COVER")
+                .body(Body::from(cover_upload))
                 .unwrap(),
         )
         .await
@@ -753,6 +764,8 @@ pub async fn template_round_trip(
     )
     .unwrap();
     assert_eq!(parsed.video_caches.len(), 1);
+    let poster = image::load_from_memory(parsed.poster_png.as_ref().unwrap()).unwrap().to_rgba8();
+    assert_eq!(poster.get_pixel(8, 4).0, color);
     let identity = parsed.manifest.video_caches[0].identity.clone();
     drop(parsed);
     let upload = |uri: &str| {
@@ -824,6 +837,13 @@ pub async fn template_round_trip(
         let saved = &imported["project"];
         let id = saved["id"].as_str().unwrap();
         let mut document = saved["document"].clone();
+        let cover = STANDARD.decode(document["coverJpeg"].as_str().unwrap()).unwrap();
+        let cover = image::load_from_memory_with_format(&cover, image::ImageFormat::Jpeg)
+            .unwrap().to_rgb8();
+        assert_eq!(cover.dimensions(), (16, 8));
+        for (actual, expected) in cover.get_pixel(8, 4).0.into_iter().zip(color) {
+            assert!(actual.abs_diff(expected) <= 3);
+        }
         let clip = &mut document["compositions"][node]["content"]["tracks"][0]["clips"][0];
         clip["enabled"] = json!(true);
         let source = clip["sourceId"].as_str().unwrap().to_owned();

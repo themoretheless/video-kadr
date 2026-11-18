@@ -362,7 +362,7 @@
                 >Proxy</button>
               {/if}
             {:else}
-              <a class="btn ghost sm" href={entry.url} download={entry.filename}>Скачать</a>
+              <a class="btn ghost sm" href={entry.url} download={entry.originalFilename || entry.filename}>Скачать</a>
             {/if}
             <button class="btn ghost sm" type="button" onclick={() => beginEdit(entry)}>Данные</button>
             <button class="btn ghost sm danger" title="Удалить" onclick={() => void deleteEntry(entry.id)}>✕</button>

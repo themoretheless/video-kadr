@@ -4246,6 +4246,12 @@ fn speed_ramp_audio_filter(
         ),
         "asetpts=PTS-STARTPTS".to_owned(),
     ];
+    if placement.concat_source_eof {
+        input_filters.push(format!(
+            "apad=whole_dur={}",
+            seconds(placement.source_span_ticks(), time_base)
+        ));
+    }
     if reverse {
         input_filters.push("areverse".to_owned());
     }
@@ -4280,6 +4286,13 @@ fn speed_ramp_audio_filter(
             format!(
                 "aformat=sample_fmts=fltp:sample_rates={AUDIO_SAMPLE_RATE}:channel_layouts=stereo"
             ),
+        ]);
+        if placement.concat_source_eof {
+            // Keep subsequent ramp segments on their authored output clock,
+            // including when the tempo filter emits a shorter final block.
+            filters.push(format!("apad=whole_dur={}", seconds(output_ticks, time_base)));
+        }
+        filters.extend([
             format!("atrim=duration={}", seconds(output_ticks, time_base)),
             "asetpts=PTS-STARTPTS".to_owned(),
         ]);

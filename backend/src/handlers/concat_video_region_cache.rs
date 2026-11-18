@@ -8,30 +8,32 @@ impl Drop for Lease{fn drop(&mut self){let _=std::fs::remove_dir_all(&self.stage
 pub(crate) fn declares_source(document:&serde_json::Value,id:&str)->bool{
  document.get("projectMedia").and_then(|v|v.get(id)).is_some()||document.get("sources").and_then(|v|v.get(id)).is_some()||document.get("compositions").and_then(serde_json::Value::as_object).is_some_and(|nodes|nodes.values().any(|node|node.get("content").and_then(|v|v.get("sources")).and_then(|v|v.get(id)).is_some()))
 }
-pub async fn load(state:&AppState,actor:&str,project:&str,revision:u64,snapshot:&Attachment,cancel:&CancellationToken)->Result<Lease>{load_inner(state,actor,project,revision,snapshot,None,cancel).await}
-pub(crate) async fn load_for_original(state:&AppState,actor:&str,project:&str,revision:u64,snapshot:&Attachment,physical:&str,cancel:&CancellationToken)->Result<Lease>{load_inner(state,actor,project,revision,snapshot,Some(physical),cancel).await}
-async fn load_inner(state:&AppState,actor:&str,project:&str,revision:u64,snapshot:&Attachment,original:Option<&str>,cancel:&CancellationToken)->Result<Lease>{
+pub async fn load(state:&AppState,actor:&str,project:&str,revision:u64,snapshot:&Attachment,cancel:&CancellationToken)->Result<Lease>{load_inner(state,actor,project,revision,snapshot,None,cancel,false).await}
+pub(crate) async fn load_for_original(state:&AppState,actor:&str,project:&str,revision:u64,snapshot:&Attachment,physical:&str,cancel:&CancellationToken,current_only:bool)->Result<Lease>{load_inner(state,actor,project,revision,snapshot,Some(physical),cancel,current_only).await}
+async fn load_inner(state:&AppState,actor:&str,project:&str,revision:u64,snapshot:&Attachment,original:Option<&str>,cancel:&CancellationToken,current_only:bool)->Result<Lease>{
  snapshot.validate()?;
- super::cutout_assets::authorize(state,project,actor).await.map_err(|_|anyhow::anyhow!("region editor access required"))?;
+ if !current_only { super::cutout_assets::authorize(state,project,actor).await.map_err(|_|anyhow::anyhow!("region editor access required"))?; }
  let saved=state.db.get_composition_project_for(project,actor).await?.ok_or_else(||anyhow::anyhow!("region project unavailable"))?;
  let physical=super::concat_cutout_access::library_id(&saved.document,&snapshot.source_id)?;
  ensure!(saved.revision==revision,"stale region project");
- if let Some(original)=original{ensure!(super::concat_video_source_access::allowed(state,actor,project,revision,&snapshot.source_id,&snapshot.source_hash,original).await?,"unrelated historical region original");}else{ensure!(saved.source_ids.contains(&physical),"unrelated region original");}
- // Undo followed by Save can remove the current mask reference. A verified
- // project-owned immutable SAM reservation remains authority for later Redo.
- // Actor ownership or source-space readability alone must not grant this.
- let shared:Option<String>=sqlx::query_scalar("SELECT library_source_id FROM concat_video_project_region_refs WHERE project_id=? AND source_id=? AND video_hash=? AND mask_source_id=? AND file_hash=?").bind(project).bind(&snapshot.source_id).bind(&snapshot.source_hash).bind(&snapshot.mask_source_id).bind(&snapshot.mask_file_hash).fetch_optional(state.db.pool()).await?;
+ if let Some(original)=original{ensure!(super::concat_video_source_access::original_allowed(state,actor,project,revision,&snapshot.source_id,&snapshot.source_hash,original,current_only).await?,"unrelated historical region original");}else{ensure!(saved.source_ids.contains(&physical),"unrelated region original");}
  let live=super::concat_cutout_access::library_id(&saved.document,&snapshot.mask_source_id)?;
- // Snapshot-specific ownership survives a later rebinding of the live bin slot.
- // Full render also checks the requested snapshot's explicit library mapping.
- let library_source_id=shared.clone().unwrap_or(live);
- let historical:bool=if saved.source_ids.contains(&library_source_id)||shared.as_ref()==Some(&library_source_id){true}else{
-  sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM person_video_project_resources WHERE project_id=? AND source_id=? AND role='sam-video-regions' AND file_hash=?)").bind(project).bind(&library_source_id).bind(&snapshot.mask_file_hash).fetch_one(state.db.pool()).await?
+ let library_source_id=if current_only {
+  ensure!(saved.source_ids.contains(&live),"unrelated region source");
+  live
+ } else {
+  let shared:Option<String>=sqlx::query_scalar("SELECT library_source_id FROM concat_video_project_region_refs WHERE project_id=? AND source_id=? AND video_hash=? AND mask_source_id=? AND file_hash=?").bind(project).bind(&snapshot.source_id).bind(&snapshot.source_hash).bind(&snapshot.mask_source_id).bind(&snapshot.mask_file_hash).fetch_optional(state.db.pool()).await?;
+  // Undo may preserve an immutable region after its live slot was rebound.
+  let library_source_id=shared.clone().unwrap_or(live);
+  let historical=if saved.source_ids.contains(&library_source_id)||shared.as_ref()==Some(&library_source_id){true}else{
+   sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM person_video_project_resources WHERE project_id=? AND source_id=? AND role='sam-video-regions' AND file_hash=?)").bind(project).bind(&library_source_id).bind(&snapshot.mask_file_hash).fetch_one(state.db.pool()).await?
+  };
+  ensure!(historical,"unrelated region source: no current reference or exact project reservation");
+  library_source_id
  };
- ensure!(historical,"unrelated region source: no current reference or exact project reservation");
  let movie=super::cutout_jobs::source(state,&library_source_id,actor).await?;
  let lease=verify_movie(state,&movie,snapshot,&library_source_id,cancel).await?;
-  super::cutout_assets::authorize(state,project,actor).await.map_err(|_|anyhow::anyhow!("region editor access revoked"))?;
+  if !current_only { super::cutout_assets::authorize(state,project,actor).await.map_err(|_|anyhow::anyhow!("region editor access revoked"))?; }
   let current=state.db.get_composition_project_for(project,actor).await?.ok_or_else(||anyhow::anyhow!("region project unavailable"))?;
   ensure!(current.revision==revision&&current.document==saved.document&&!cancel.is_cancelled(),"region project changed");ensure!(super::cutout_jobs::source(state,&library_source_id,actor).await?==movie,"region file access/path changed"); Ok(lease)
 

@@ -312,6 +312,228 @@ fn native_fill_resets_stream_selection_and_supports_a_slot_without_any_placement
     assert!(!changed.project_media[&SourceId::parse("slot").unwrap()].placeholder);
 }
 
+#[test]
+fn same_kind_audio_slot_preserves_native_mix_controls_and_resets_old_file_selection() {
+    let id = SourceId::parse("slot").unwrap();
+    let mut before = serde_json::to_value(fixture("audio")).unwrap();
+    for node in before["compositions"].as_object_mut().unwrap().values_mut() {
+        let clip = &mut node["content"]["tracks"][0]["clips"][0];
+        clip["audioStream"] = json!(1);
+        clip["pan"] = json!({"mode":"keyframes","track":{"timeBase":1000000,
+            "interpolation":"linear","keyframes":[{"tick":0,"value":-0.25},{"tick":2000000,"value":0.25}]}});
+        clip["roleGain"] = json!(0.8);
+        clip["fadeInTicks"] = json!(125000);
+        clip["fadeOutTicks"] = json!(200000);
+        clip["voiceEffect"] = json!("deep");
+        clip["toneDb"] = json!(2.5);
+        clip["ducking"] = json!({"thresholdDb":-24.0,"ratio":3.0,"attackMs":10.0,"releaseMs":200.0});
+    }
+    let original: NestedCompositionProject = serde_json::from_value(before).unwrap();
+    let (item, physical) = replacement("audio");
+    let changed = fill(&original, &id, &item, &physical).unwrap();
+    for (name, node) in &changed.compositions {
+        let original = serde_json::to_value(&original.compositions[name].content).unwrap();
+        let mut expected = original["tracks"][0]["clips"][0].clone();
+        expected.as_object_mut().unwrap().remove("audioStream");
+        expected["placement"]["sourceInTick"] = json!(0);
+        expected["placement"]["sourceOutTick"] = json!(3000000);
+        expected["placement"]["concatSourceEof"] = json!(true);
+        let actual = serde_json::to_value(&node.content).unwrap();
+        assert_eq!(actual["tracks"][0]["clips"][0], expected);
+        assert_eq!(actual["sources"]["slot"]["durationTicks"], 500000);
+    }
+    assert_eq!(changed.project_media[&id].library_source_id.as_ref(), Some(&physical.id));
+
+    let mut reverse = serde_json::to_value(&original).unwrap();
+    for node in reverse["compositions"].as_object_mut().unwrap().values_mut() {
+        node["content"]["tracks"][0]["clips"][0]["reversed"] = json!(true);
+    }
+    let reverse: NestedCompositionProject = serde_json::from_value(reverse).unwrap();
+    assert!(fill(&reverse, &id, &item, &physical).is_err());
+    let mut long = physical;
+    long.duration_ticks = 5_000_000;
+    let mut long_item = item;
+    long_item["duration"] = json!(5.0);
+    let changed = fill(&reverse, &id, &long_item, &long).unwrap();
+    for node in changed.compositions.values() {
+        let actual = serde_json::to_value(&node.content).unwrap();
+        let clip = &actual["tracks"][0]["clips"][0];
+        assert_eq!(clip["reversed"], true);
+        assert_eq!(clip["placement"]["sourceInTick"], 0);
+        assert_eq!(clip["placement"]["sourceOutTick"], 3000000);
+        assert!(clip["placement"].get("concatSourceEof").is_none());
+    }
+}
+
+#[test]
+fn same_kind_video_slot_preserves_native_controls_and_rebases_a_held_frame() {
+    let id = SourceId::parse("slot").unwrap();
+    let scalar = |value: f64| json!({"mode":"constant","value":value});
+    let mut wire = serde_json::to_value(fixture("video")).unwrap();
+    for (index, node) in wire["compositions"].as_object_mut().unwrap().values_mut().enumerate() {
+        let clip = &mut node["content"]["tracks"][0]["clips"][0];
+        clip["audioStream"] = json!(1);
+        clip["sourceAudioEnabled"] = json!(index == 0);
+        clip["audioPan"] = scalar(-0.3);
+        clip["transform"]["rotationDegrees"] = scalar(18.0);
+        clip["transform"]["x"] = scalar(5.0);
+        clip["opacity"] = scalar(0.7);
+        clip["blendMode"] = json!("multiply");
+        clip["effects"] = json!([{"kind":"mask","shape":"rectangle","x":scalar(0.5),"y":scalar(0.5),
+            "width":scalar(0.75),"height":scalar(0.5),"rotationDegrees":scalar(12.0),
+            "feather":0.2,"inverted":false}]);
+    }
+    let original: NestedCompositionProject = serde_json::from_value(wire.clone()).unwrap();
+    let (mut item, mut source) = replacement("video");
+    item["hasAudio"] = json!(false);
+    source.has_audio = false;
+    let changed = fill(&original, &id, &item, &source).unwrap();
+    for (node, content) in &changed.compositions {
+        let old = serde_json::to_value(&original.compositions[node].content).unwrap();
+        let mut expected = old["tracks"][0]["clips"][0].clone();
+        expected.as_object_mut().unwrap().remove("audioStream");
+        expected["placement"]["sourceInTick"] = json!(0);
+        expected["placement"]["sourceOutTick"] = json!(3000000);
+        expected["placement"]["concatSourceEof"] = json!(true);
+        let actual = serde_json::to_value(&content.content).unwrap();
+        assert_eq!(actual["tracks"][0]["clips"][0], expected);
+    }
+
+    let (marked, _) = video_kadr_backend::domain::project_media::set_placeholder(&changed, &id, true).unwrap();
+    let (audible_item, audible_source) = replacement("video");
+    let refilled = fill(&marked, &id, &audible_item, &audible_source).unwrap();
+    for (node, content) in &refilled.compositions {
+        let expected = serde_json::to_value(&original.compositions[node].content).unwrap();
+        let actual = serde_json::to_value(&content.content).unwrap();
+        assert_eq!(actual["tracks"][0]["clips"][0]["sourceAudioEnabled"],
+            expected["tracks"][0]["clips"][0]["sourceAudioEnabled"]);
+    }
+
+    for node in wire["compositions"].as_object_mut().unwrap().values_mut() {
+        node["content"]["tracks"][0]["clips"][0]["playbackMode"] =
+            json!({"mode":"freeze","sourceTick":490000});
+    }
+    let frozen: NestedCompositionProject = serde_json::from_value(wire).unwrap();
+    let changed = fill(&frozen, &id, &item, &source).unwrap();
+    for node in changed.compositions.values() {
+        let content = serde_json::to_value(&node.content).unwrap();
+        assert_eq!(content["tracks"][0]["clips"][0]["playbackMode"],
+            json!({"mode":"freeze","sourceTick":240000}));
+    }
+    source.duration_ticks = 200000;
+    item["duration"] = json!(0.2);
+    assert!(fill(&frozen, &id, &item, &source).unwrap_err().to_string()
+        .contains("does not contain the held frame"));
+}
+
+#[test]
+fn moving_fill_restarts_trimmed_and_extended_forward_slots_at_zero() {
+    let id = SourceId::parse("slot").unwrap();
+    for kind in ["video", "audio"] {
+        let (item, source) = replacement(kind);
+        for (phase, speed, replacement_end) in [
+            (125_000, 1.0, 375_000),
+            (-125_000, 1.0, 375_000),
+            (125_000, 1.5, 562_500),
+            (-125_000, 1.5, 562_500),
+        ] {
+            let mut wire = serde_json::to_value(fixture(kind)).unwrap();
+            let keys = json!([{"at":0.0,"value":0.25,"derived":true},{"at":1.0,"value":1.0}]);
+            for node in wire["compositions"].as_object_mut().unwrap().values_mut() {
+                let clip = &mut node["content"]["tracks"][0]["clips"][0];
+                clip["placement"] = json!({
+                    "timelineStartTick":1_000_000,"sourceInTick":250_000,"sourceOutTick":1_200_000,
+                    "speed":speed,"timelineDurationTick":375_000,"sourceTimelineOffsetTick":phase,
+                });
+                if phase < 0 {
+                    clip["placement"]["sourceHeadTimelineTick"] = json!(125_000);
+                }
+                clip["concatGainKeys"] = keys.clone();
+            }
+            let before: NestedCompositionProject = serde_json::from_value(wire).unwrap();
+            let after = fill(&before, &id, &item, &source).unwrap();
+            for node in after.compositions.values() {
+                let content = serde_json::to_value(&node.content).unwrap();
+                let clip = &content["tracks"][0]["clips"][0];
+                let mut expected = json!({
+                    "timelineStartTick":1_000_000,"sourceInTick":0,"sourceOutTick":replacement_end,
+                    "speed":speed,"timelineDurationTick":375_000,
+                });
+                if replacement_end > source.duration_ticks {
+                    expected["concatSourceEof"] = json!(true);
+                }
+                assert_eq!(clip["placement"], expected);
+                assert_eq!(clip["concatGainKeys"][0]["derived"], true);
+                assert_eq!(clip["concatGainKeys"][1]["value"], 1.0);
+            }
+
+            let other_kind = if kind == "video" { "audio" } else { "video" };
+            let (other_item, other_source) = replacement(other_kind);
+            let crossed = fill(&before, &id, &other_item, &other_source).unwrap();
+            for node in crossed.compositions.values() {
+                let content = serde_json::to_value(&node.content).unwrap();
+                let track = &content["tracks"][0];
+                let clip = &track["clips"][0];
+                assert_eq!(track["kind"], other_kind);
+                assert_eq!(clip["placement"]["timelineStartTick"], 1_000_000);
+                assert_eq!(clip["placement"]["sourceInTick"], 0);
+                assert_eq!(clip["placement"]["sourceOutTick"], replacement_end);
+                assert_eq!(clip["placement"]["speed"], speed);
+                assert!(clip["placement"].get("sourceTimelineOffsetTick").is_none());
+                assert_eq!(clip["concatGainKeys"][0]["derived"], true);
+                assert_eq!(clip["concatGainKeys"][1]["value"], 1.0);
+            }
+        }
+    }
+}
+
+#[test]
+fn shorter_replacement_keeps_the_video_speed_ramp_and_its_audio_policy() {
+    let id = SourceId::parse("slot").unwrap();
+    let (item, source) = replacement("video");
+    let mut wire = serde_json::to_value(fixture("video")).unwrap();
+    for node in wire["compositions"].as_object_mut().unwrap().values_mut() {
+        let clip = &mut node["content"]["tracks"][0]["clips"][0];
+        clip["placement"] = json!({
+            "timelineStartTick":1_000_000,"sourceInTick":250_000,"sourceOutTick":1_250_000,
+            "speed":0.5,"speedRamp":{"interpolation":"hold","audioPolicy":"mute","points":[
+                {"sourceProgressTick":0,"speed":0.5},{"sourceProgressTick":500_000,"speed":2.0},
+                {"sourceProgressTick":1_000_000,"speed":2.0}
+            ]}
+        });
+    }
+    let before: NestedCompositionProject = serde_json::from_value(wire.clone()).unwrap();
+    let after = fill(&before, &id, &item, &source).unwrap();
+    for (id, node) in &after.compositions {
+        use video_kadr_backend::domain::{composition::CompositionTrack, video_clock::presented_source_tick};
+        let CompositionTrack::Video { clips, .. } = &node.content.tracks[0] else { panic!("video lane") };
+        let clip = &clips[0];
+        assert!(clip.placement.concat_source_eof);
+        assert_eq!(clip.placement.source_in_tick, 0);
+        assert_eq!(clip.placement.timeline_duration_ticks().unwrap(), 1_250_000);
+        let old = serde_json::to_value(&before.compositions[id].content).unwrap();
+        assert_eq!(serde_json::to_value(&clip.placement.speed_ramp).unwrap(),
+            old["tracks"][0]["clips"][0]["placement"]["speedRamp"]);
+        let sample = |tick| presented_source_tick(&clip.placement, clip.playback_mode, tick, source.duration_ticks).unwrap();
+        assert_eq!(sample(1_500_000), Some(250_000));
+        assert_eq!(sample(2_100_000), Some(499_999));
+        assert_eq!(sample(2_250_000), None);
+    }
+    for node in wire["compositions"].as_object_mut().unwrap().values_mut() {
+        let clip = &mut node["content"]["tracks"][0]["clips"][0];
+        clip["sourceAudioEnabled"] = json!(true);
+        clip["placement"]["speedRamp"]["audioPolicy"] = json!("preserve_pitch");
+    }
+    let after = fill(&serde_json::from_value(wire).unwrap(), &id, &item, &source).unwrap();
+    for node in after.compositions.values() {
+        let clip = &serde_json::to_value(&node.content).unwrap()["tracks"][0]["clips"][0];
+        assert_eq!(clip["sourceAudioEnabled"], true);
+        assert_eq!(clip["placement"]["speedRamp"]["audioPolicy"], "preserve_pitch");
+        assert_eq!(clip["placement"]["sourceOutTick"], 1_000_000);
+        assert_eq!(clip["placement"]["concatSourceEof"], true);
+    }
+}
+
 fn run_ffmpeg(arguments: &[&str]) -> Vec<u8> {
     let result = std::process::Command::new("ffmpeg")
         .args(arguments)
@@ -915,16 +1137,13 @@ fn source_owned_automatic_video_mask_refuses_fill_before_rebinding_its_family() 
     let (fixed, changed) =
         video_kadr_backend::domain::project_media::set_placeholder(&bound, &id, false).unwrap();
     assert!(changed);
-    assert!(
-        video_kadr_backend::domain::project_media::set_placeholder(&fixed, &id, true)
-            .unwrap_err()
-            .to_string()
-            .contains("видеомаской")
-    );
+    let (marked, changed) =
+        video_kadr_backend::domain::project_media::set_placeholder(&fixed, &id, true).unwrap();
+    assert!(changed && marked.project_media[&id].placeholder);
     assert!(!fixed.project_media[&id].placeholder);
     let (item, source) = replacement("video");
     assert!(
-        fill(&bound, &SourceId::parse("slot").unwrap(), &item, &source)
+        fill(&marked, &id, &item, &source)
             .unwrap_err()
             .to_string()
             .contains("video cutout asset rebinding")

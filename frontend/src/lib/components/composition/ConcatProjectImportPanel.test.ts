@@ -2,20 +2,22 @@ import {readFileSync,writeFileSync} from 'node:fs'
 // @ts-expect-error Svelte client entry is required for mounted components under Vitest.
 import {mount,tick,unmount} from '../../../../node_modules/svelte/src/index-client.js'
 import {afterEach,beforeEach,expect,it,vi} from 'vitest'
-import {importConcatProject,importConcatProjectWithSavedStills,importConcatProjectWithSavedCutouts,getCompositionProjects,fillConcatMediaSlot,evaluateNestedFrame,type NativeNestedProject} from '$lib/api'
+import {importConcatProject,importConcatProjectAndRebuildMasks,updateNestedCompositionProject,importConcatProjectWithSavedStills,importConcatProjectWithSavedCutouts,getCompositionProjects,fillConcatMediaSlot,evaluateNestedFrame,normalizeConcatTemplateCover,type NativeNestedProject} from '$lib/api'
 import {closeNestedComposition,nestedComposition,nestedHistory,undoNestedComposition,redoNestedComposition} from '$lib/state/nestedComposition.svelte'
 import Panel from './ConcatProjectImportPanel.svelte'
-vi.mock('$lib/api',()=>({importConcatProject:vi.fn(),importConcatProjectWithSavedStills:vi.fn(),importConcatProjectWithSavedCutouts:vi.fn(),getCompositionProjects:vi.fn(),fillConcatMediaSlot:vi.fn(),evaluateNestedFrame:vi.fn()}))
+vi.mock('$lib/api',()=>({importConcatProject:vi.fn(),importConcatProjectAndRebuildMasks:vi.fn(),updateNestedCompositionProject:vi.fn(),importConcatProjectWithSavedStills:vi.fn(),importConcatProjectWithSavedCutouts:vi.fn(),getCompositionProjects:vi.fn(),fillConcatMediaSlot:vi.fn(),evaluateNestedFrame:vi.fn(),normalizeConcatTemplateCover:vi.fn()}))
 const original={version:1,name:'Original cut',media:[{id:'m1',name:'Camera.mov',kind:'video',path:'/never/open-this.mov'}],activeTimelineId:'TL1',timelines:[{id:'TL1',name:'Main',video:{width:16,height:16,rateNum:4,rateDen:1},tracks:[{id:'T1'}],clips:[{id:'clip',kind:'video',trackId:'T1',mediaId:'m1',start:1,duration:1,videoEffects:[{id:'concat.exposure',keys:{stops:[{at:0,value:0},{at:1,value:4,ease:[0.42,-0.5,0.58,1]}]}}]}]}]}
 const source={id:'source',kind:'video' as const,durationTicks:1000000,width:16,height:16,hasAudio:false}
 const project:NativeNestedProject={schemaVersion:1,root:'imported',compositions:{imported:{content:{schemaVersion:1,timeBase:1000000,canvas:{width:16,height:16,fpsMilli:4000,backgroundMode:'color',backgroundBlur:24,background:{red:0,green:0,blue:0,alpha:1}},sources:{},tracks:[]},instances:[]}}}
+const cover = '/9j/4AAQSkZJRgABAgAAAQABAAD//gAPTGF2YzYzLjEuMTAyAP/bAEMACAQEBAQEBQUFBQUFBgYGBgYGBgYGBgYGBgcHBwgICAcHBwYGBwcICAgICQkJCAgICAkJCgoKDAwLCw4ODhERFP/EAEsAAQEAAAAAAAAAAAAAAAAAAAAHAQEAAAAAAAAAAAAAAAAAAAAFEAEAAAAAAAAAAAAAAAAAAAAAEQEAAAAAAAAAAAAAAAAAAAAA/8AAEQgAEAAQAwEiAAIRAAMRAP/aAAwDAQACEQMRAD8AlYBIa//Z'
 let component:ReturnType<typeof mount>|undefined
 beforeEach(()=>{closeNestedComposition();vi.clearAllMocks();vi.mocked(getCompositionProjects).mockResolvedValue([]);vi.mocked(importConcatProjectWithSavedStills).mockResolvedValue({schemaVersion:1,status:'converted',project,diagnostics:[],sourceDocument:original,timelineIds:{TL1:'imported'}});vi.mocked(evaluateNestedFrame).mockResolvedValue({entries:[]});vi.mocked(importConcatProject).mockResolvedValue({schemaVersion:1,status:'converted',project,diagnostics:[],sourceDocument:original,timelineIds:{TL1:'imported'}})})
 afterEach(async()=>{if(component)await unmount(component);component=undefined;closeNestedComposition();document.body.innerHTML=''})
 function click(text:string){const button=[...document.querySelectorAll('button')].find(b=>b.textContent?.trim()===text)!;expect(button).toBeDefined();button.click()}
 async function read(value:unknown=original){const input=document.querySelector<HTMLInputElement>('input[type=file]')!;const file=new File([JSON.stringify(value)],'concat.json',{type:'application/json'});Object.defineProperty(file,'text',{value:async()=>JSON.stringify(value)});Object.defineProperty(input,'files',{configurable:true,value:[file]});input.dispatchEvent(new Event('change',{bubbles:true}));await vi.waitFor(()=>expect(document.querySelector('select[aria-label="Источник Concat m1"]')).not.toBeNull());await tick();const select=document.querySelector<HTMLSelectElement>('select[aria-label="Источник Concat m1"]')!;select.value='source';select.dispatchEvent(new Event('change',{bubbles:true}));await tick()}
 it('loads a file, binds registered media, reviews and adopts with undo/redo',async()=>{
- component=mount(Panel,{target:document.body,props:{token:'session',sources:[{label:'Library.mov',source}]}});await tick();await read();click('Проверить импорт Concat');await vi.waitFor(()=>expect(importConcatProject).toHaveBeenCalledWith(original,{m1:source},expect.any(AbortSignal),'session'));await vi.waitFor(()=>expect(document.body.textContent).toContain('Таймлайнов: 1'));expect(nestedComposition.document).toBeNull()
+ const librarySource = {...source,fps:24,vcodec:'ffv1',acodec:null}
+ component=mount(Panel,{target:document.body,props:{token:'session',sources:[{label:'Library.mov',source:librarySource}]}});await tick();await read();click('Проверить импорт Concat');await vi.waitFor(()=>expect(importConcatProject).toHaveBeenCalledWith(original,{m1:source},expect.any(AbortSignal),'session'));await vi.waitFor(()=>expect(document.body.textContent).toContain('Таймлайнов: 1'));expect(nestedComposition.document).toBeNull()
  if(process.env.CONCAT_UI_IMPORT_REQUEST_OUTPUT){const[document,mediaBindings]=vi.mocked(importConcatProject).mock.calls[0]!;writeFileSync(process.env.CONCAT_UI_IMPORT_REQUEST_OUTPUT,JSON.stringify({schemaVersion:1,document,mediaBindings,preserveMediaIds:vi.mocked(importConcatProject).mock.calls[0]![5]??false}))}
  click('Открыть импорт как новый проект');await vi.waitFor(()=>expect(nestedComposition.document).toEqual(project));expect(nestedHistory.past).toHaveLength(1);expect(nestedComposition.projectId).toBeNull();expect(nestedComposition.name).toBe('Original cut');undoNestedComposition();expect(nestedComposition.document).toBeNull();redoNestedComposition();expect(nestedComposition.document).toEqual(project)
 })
@@ -209,7 +211,6 @@ it('uploads the selected template design and binds its bundled font before conve
    media: [{ ...original.media[0], path: 'assets/design.mov' }],
    fonts: [{ family: 'Title', path: 'assets/title.otf' }],
   }
-  const cover = '/9j/4AAQSkZJRgABAgAAAQABAAD//gAPTGF2YzYzLjEuMTAyAP/bAEMACAQEBAQEBQUFBQUFBgYGBgYGBgYGBgYGBgcHBwgICAcHBwYGBwcICAgICQkJCAgICAkJCgoKDAwLCw4ODhERFP/EAEsAAQEAAAAAAAAAAAAAAAAAAAAHAQEAAAAAAAAAAAAAAAAAAAAFEAEAAAAAAAAAAAAAAAAAAAAAEQEAAAAAAAAAAAAAAAAAAAAA/8AAEQgAEAAQAwEiAAIRAAMRAP/aAAwDAQACEQMRAD8AlYBIa//Z'
   const subtitles = [{ id: 'quotes', name: 'quotes.srt', text: '1\n00:00:00,000 --> 00:00:01,000\nDialogue' }]
   const manifest = JSON.stringify(template)
   const beforeVideo = { width: 1920, height: 1080, rateNum: 24, rateDen: 1 }
@@ -385,8 +386,8 @@ it('loads only the chosen template from a directory of Concat bundles', async ()
  }
 })
 
-it('opens a Concat ZIP with a bundled design, font and unfilled slot', async () => {
- const { ZipWriter, Uint8ArrayWriter, TextReader } = await import('@zip.js/zip.js')
+it.each([false, true])('restores a Concat ZIP cover after filling a slot (oversized: %s)', async (oversized) => {
+ const { ZipWriter, Uint8ArrayReader, Uint8ArrayWriter, TextReader } = await import('@zip.js/zip.js')
  const writer = new ZipWriter(new Uint8ArrayWriter(), { useWebWorkers: false })
  const manifest = {
   ...original,
@@ -396,6 +397,20 @@ it('opens a Concat ZIP with a bundled design, font and unfilled slot', async () 
  await writer.add('template.json', new TextReader(JSON.stringify(manifest)), { level: 0 })
  await writer.add('assets/design.mov', new TextReader('video'), { level: 0 })
  await writer.add('assets/title.otf', new TextReader('font'))
+ const jpeg = Uint8Array.from(atob(cover), byte => byte.charCodeAt(0))
+ const metadataLength = oversized ? 7 * 65_537 : 0
+ const poster = new Uint8Array(jpeg.length + metadataLength)
+ poster.set(jpeg.subarray(0, 2))
+ for (let offset = 2; offset < metadataLength + 2; offset += 65_537) {
+  poster.set([0xff, 0xef, 0xff, 0xff], offset)
+ }
+ poster.set(jpeg.subarray(2), metadataLength + 2)
+ await writer.add('poster.jpg', new Uint8ArrayReader(poster))
+ if (oversized) vi.mocked(normalizeConcatTemplateCover).mockResolvedValueOnce(cover)
+ vi.mocked(fillConcatMediaSlot).mockResolvedValueOnce({
+  document: { ...manifest, media: manifest.media.map(item => ({ ...item, placeholder: false })) },
+  source,
+ })
  const archive = new File([new Uint8Array(await writer.close())], 'template.zip')
  const store = await import('$lib/state/store.svelte')
  const upload = vi.spyOn(store, 'doUpload').mockResolvedValue({
@@ -403,7 +418,7 @@ it('opens a Concat ZIP with a bundled design, font and unfilled slot', async () 
   mediaType: 'video', duration: 1, width: 16, height: 16,
  })
  try {
-  component = mount(Panel, { target: document.body, props: { token: 'session' } })
+  component = mount(Panel, { target: document.body, props: { token: 'session', sources: [{ label: 'Replacement.mov', source }] } })
   await tick()
   const picker = document.querySelector<HTMLInputElement>('input[accept^=".zip"]')!
   Object.defineProperty(picker, 'files', { value: [archive] })
@@ -414,6 +429,30 @@ it('opens a Concat ZIP with a bundled design, font and unfilled slot', async () 
   expect(uploaded.name).toBe('design.mov')
   expect(await uploaded.text()).toBe('video')
   expect(document.body.textContent).toContain('title.otf')
+  expect(document.querySelector('img[alt="Обложка шаблона Concat"]')).not.toBeNull()
+
+  const slot = document.querySelector<HTMLSelectElement>('[aria-label="Заполнение слота Concat slot"]')!
+  slot.value = source.id
+  slot.dispatchEvent(new Event('change', { bubbles: true }))
+  await tick()
+  document.querySelector<HTMLButtonElement>('[aria-label="Заполнить слот Concat slot"]')!.click()
+  await vi.waitFor(() => expect(document.querySelector('[aria-label="Заполнение слота Concat slot"]')).toBeNull())
+  click('Проверить импорт Concat')
+  await vi.waitFor(() => expect(document.body.textContent).toContain('Таймлайнов: 1'))
+  click('Открыть импорт как новый проект')
+  await vi.waitFor(() => expect(nestedComposition.document?.coverJpeg).toBe(cover))
+  expect(normalizeConcatTemplateCover).toHaveBeenCalledTimes(oversized ? 1 : 0)
+  if (oversized) {
+   const [file, token, signal] = vi.mocked(normalizeConcatTemplateCover).mock.calls[0]!
+   expect(file.name).toBe('poster.jpg')
+   expect(new Uint8Array(await file.arrayBuffer())).toEqual(poster)
+   expect(token).toBe('session')
+   expect(signal.aborted).toBe(false)
+  }
+  undoNestedComposition()
+  expect(nestedComposition.document).toBeNull()
+  redoNestedComposition()
+  expect(nestedComposition.document?.coverJpeg).toBe(cover)
  } finally {
   upload.mockRestore()
  }
@@ -496,4 +535,136 @@ it('uploads a local template slot replacement and requires FillSlot before conve
  click('Отменить заполнение слота')
  await vi.waitFor(() => expect(verify.disabled).toBe(true))
  upload.mockRestore()
+})
+
+it('fills a masked video slot from Concat ZIP and restores caption styling before opening', async () => {
+ const { ZipWriter, Uint8ArrayReader, Uint8ArrayWriter, TextReader } = await import('@zip.js/zip.js')
+ const writer = new ZipWriter(new Uint8ArrayWriter(), { useWebWorkers: false })
+ const cutout = { mode: 'custom', subject: 'person', feather: 0.04,
+  strokes: [{ tool: 'smartBrush', size: 0.1, points: [[0.5, 0.5]], at: 0.2 }] }
+ const title = { id: 'caption', kind: 'text', trackId: 'captions', start: 0, duration: 1, text: 'Dialogue' }
+ const transparent = { red: 0, green: 0, blue: 0, alpha: 0 }
+ const constant = (value: number) => ({ mode: 'constant' as const, value })
+ const caption = {
+  id: 'caption', timelineStartTick: 0, timelineEndTick: 1000000, text: 'Dialogue', enabled: true,
+  style: { fontFamily: 'Noto Sans', fontSize: 12, align: 'center' as const,
+   color: { ...transparent, alpha: 1 }, background: transparent, stroke: transparent,
+   strokeWidth: 0, shadow: { ...transparent, alpha: 0.5 }, shadowX: 4, shadowY: -2 },
+  transform: { x: constant(0), y: constant(0), scaleX: constant(1), scaleY: constant(1),
+   rotationDegrees: constant(0), anchorX: 0.5, anchorY: 0.5 },
+  opacity: constant(1),
+ }
+ const manifest = { ...original, media: [{ ...original.media[0], path: '', placeholder: true }],
+  timelines: [{ ...original.timelines[0], tracks: [...original.timelines[0].tracks, { id: 'captions' }],
+   clips: [{ ...original.timelines[0].clips[0], cutout }, title] }] }
+ const subtitles = [{ id: 'dialogue', name: 'dialogue.srt', text: '1\n00:00:00,000 --> 00:00:01,000\nDialogue' }]
+ const encoded = JSON.stringify(manifest)
+ const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(encoded))
+ const manifestSha256 = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
+ await writer.add('template.json', new TextReader(encoded))
+ await writer.add('video-kadr-caption-clips.json', new TextReader(JSON.stringify({
+  manifestSha256, clips: [['TL1', caption]],
+ })))
+ await writer.add('video-kadr-subtitles.json', new TextReader(JSON.stringify(subtitles)))
+ await writer.add('poster.jpg', new Uint8ArrayReader(Uint8Array.from(atob(cover), byte => byte.charCodeAt(0))))
+ const archive = new File([new Uint8Array(await writer.close())], 'masked-template.zip')
+ const filled = { ...manifest, media: [{ ...manifest.media[0], path: 'library:source', placeholder: false }] }
+ vi.mocked(fillConcatMediaSlot).mockResolvedValueOnce({ document: filled, source })
+ const node = project.compositions.imported!
+ const imported: NativeNestedProject = {
+  ...project,
+  compositions: { imported: { ...node, content: { ...node.content, tracks: [{
+   id: 'captions', kind: 'text', name: 'Captions', hidden: false, locked: false,
+   clips: [{ ...caption, style: { ...caption.style, shadowX: 0, shadowY: 0 } }],
+  }] } } },
+ }
+ const result = { project: { id: 'saved', name: original.name, schemaVersion: 2 as const, mode: 'composition' as const,
+  revision: 1, sourceIds: [source.id], document: imported, createdAt: 1, updatedAt: 1 },
+  sourceMapping: {}, timelineIds: { TL1: 'imported' } }
+ vi.mocked(importConcatProjectAndRebuildMasks).mockResolvedValueOnce(result)
+ vi.mocked(updateNestedCompositionProject).mockImplementationOnce(async (_id, update) => ({
+  ...result.project, revision: 2, document: update.document,
+ }))
+ const oncreated = vi.fn(async (_result, guard: () => void) => guard())
+ component = mount(Panel, { target: document.body,
+  props: { token: 'session', spaceId: 'space', sources: [
+   { label: 'Replacement.mov', source },
+   { label: 'Music', source: { ...source, id: 'audio', kind: 'audio' } },
+  ], oncreated } })
+ await tick()
+ const picker = document.querySelector<HTMLInputElement>('input[accept^=".zip"]')!
+ Object.defineProperty(picker, 'files', { value: [archive] })
+ picker.dispatchEvent(new Event('change', { bubbles: true }))
+ const selector = '[aria-label="Заполнение слота Concat m1"]'
+ await vi.waitFor(() => expect(document.querySelector(selector)).not.toBeNull())
+ const label = 'Создать проект и восстановить видеомаски'
+ const action = () => [...document.querySelectorAll('button')].find(button => button.textContent?.trim() === label)!
+ expect(action().disabled).toBe(true)
+ const slot = document.querySelector<HTMLSelectElement>(selector)!
+ expect([...slot.options].map(option => option.value)).toEqual(['', source.id, 'audio'])
+ slot.value = 'audio'
+ slot.dispatchEvent(new Event('change', { bubbles: true }))
+ await vi.waitFor(() => expect(document.body.textContent).toContain('Аудиозамена сохранит настройки маски'))
+ slot.value = source.id
+ slot.dispatchEvent(new Event('change', { bubbles: true }))
+ await tick()
+ document.querySelector<HTMLButtonElement>('[aria-label="Заполнить слот Concat m1"]')!.click()
+ await vi.waitFor(() => expect(action().disabled).toBe(false))
+ click(label)
+ await vi.waitFor(() => expect(oncreated).toHaveBeenCalledWith(
+  expect.objectContaining({ project: expect.objectContaining({ id: 'saved', revision: 2 }) }), expect.any(Function),
+ ))
+ const [id, update, token] = vi.mocked(updateNestedCompositionProject).mock.calls[0]!
+ expect([id, update.baseRevision, token]).toEqual(['saved', 1, 'session'])
+ const styled = update.document.compositions.imported!.content
+ expect(styled.metadata?.captionTextTracks).toEqual(['captions'])
+ expect(styled.tracks[0]?.clips).toEqual([caption])
+ expect(importConcatProjectAndRebuildMasks).toHaveBeenCalledWith(filled, { m1: source }, expect.objectContaining({
+  token: 'session', spaceId: 'space', name: original.name, coverJpeg: cover,
+  subtitleDocuments: subtitles, preserveMediaIds: true,
+ }))
+ expect(action().disabled).toBe(true)
+ expect(importConcatProjectWithSavedCutouts).not.toHaveBeenCalled()
+})
+
+it.each([false, true])('supports mixed rebuild with optional saved image mask (%s)', async (reuse) => {
+ const label = 'Создать проект и восстановить маски'
+ const video = { ...source, id: 'video-source' }
+ const mixed = {
+  ...cutoutDocument,
+  media: [...cutoutDocument.media, { id: 'm2', kind: 'video', path: 'video.mov' }],
+  timelines: cutoutDocument.timelines.map(timeline => ({
+   ...timeline,
+   tracks: [...timeline.tracks, { id: 'video' }],
+   clips: [...timeline.clips, { ...timeline.clips[0], id: 'video-cut', kind: 'video',
+    trackId: 'video', mediaId: 'm2' }],
+  })),
+ }
+ vi.mocked(getCompositionProjects).mockResolvedValue(savedMasks())
+ vi.mocked(importConcatProjectAndRebuildMasks).mockResolvedValueOnce({
+  project: { id: 'mixed', name: original.name, schemaVersion: 2, mode: 'composition',
+   sourceIds: [imageSource.id, video.id], revision: 1, createdAt: 1, updatedAt: 1, document: project },
+  sourceMapping: {}, timelineIds: { TL1: 'imported' },
+ })
+ const oncreated = vi.fn()
+ component = mount(Panel, { target: document.body, props: { token: 'session', oncreated,
+  sources: [{ label: 'Portrait', source: imageSource }, { label: 'Video', source: video }] } })
+ await tick()
+ await read(mixed)
+ const select = document.querySelector<HTMLSelectElement>('select[aria-label="Источник Concat m2"]')!
+ select.value = video.id
+ select.dispatchEvent(new Event('change', { bubbles: true }))
+ await tick()
+ const action = () => [...document.querySelectorAll('button')].find(button => button.textContent?.trim() === label)!
+ expect(action().disabled).toBe(false)
+ if (reuse) await chooseSavedMask()
+ expect(action().disabled).toBe(false)
+ click(label)
+ await vi.waitFor(() => expect(oncreated).toHaveBeenCalled())
+ expect(importConcatProjectAndRebuildMasks).toHaveBeenCalledWith(mixed, { m1: imageSource, m2: video },
+  expect.objectContaining({ rebuildStills: true, preparedStills: reuse ? [{
+   projectId: 'private-source', compositionId: 'imported', sourceClipId: 'saved-clip',
+   expectedRevision: 7, timelineId: 'TL1', clipId: 'clip',
+  }] : [] }))
+ expect(importConcatProjectWithSavedCutouts).not.toHaveBeenCalled()
 })

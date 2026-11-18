@@ -36,6 +36,16 @@
       {/each}
      </details>
     {/if}
+    {#if (track.kind === 'video' || track.kind === 'image') && clip.transform && !clip.transform.concatPreparation}
+     <button class="btn ghost sm"
+      disabled={disabled || nestedHistory.busy || track.locked || Boolean(agentSession.lock)}
+      onclick={() => {
+       const selected = compositionId
+       void editNestedConcatPreparation(selected, track.id, clip.id, {kind:'enable-fit'}, () => {
+        if (compositionId !== selected) throw new Error('Выбранная композиция изменилась')
+       })
+      }}>{track.name} · {clip.id} · {track.kind === 'video' ? 'Применить подгонку и микс Concat' : 'Применить подгонку Concat'}</button>
+    {/if}
     {#if clip.transform?.concatPreparation||(((track.kind==='text'&&'concatTitle' in clip&&clip.concatTitle)||(track.kind==='graphic'&&'concatShape' in clip&&clip.concatShape))&&canvas)}<details><summary>{track.name} · {clip.id} · обрезка и отражения</summary><CropEditor preparation={clip.transform.concatPreparation??{crop:[0,0,0,0],canvas:[canvas!.width,canvas!.height]}} disabled={disabled||nestedHistory.busy||track.locked||Boolean(agentSession.lock)} onchange={edit=>{const selected=compositionId;void editNestedConcatPreparation(selected,track.id,clip.id,edit,()=>{if(compositionId!==selected)throw new Error('Выбранная композиция изменилась')})}}/></details>{/if}
     {#if ((track.kind==='text'&&'concatTitle' in clip&&clip.concatTitle)||(track.kind==='graphic'&&'concatShape' in clip&&clip.concatShape))&&!clip.transform.concatAnimation}
      <button class="btn ghost sm" aria-label={`${clip.id} initialize Concat animation`} disabled={disabled||nestedHistory.busy||track.locked||Boolean(agentSession.lock)} onclick={()=>{const selected=compositionId;void editNestedConcatClipKeys(selected,track.id,clip.id,'opacity',[],()=>{if(compositionId!==selected)throw new Error('Выбранная композиция изменилась')})}}>Включить анимацию Concat</button>

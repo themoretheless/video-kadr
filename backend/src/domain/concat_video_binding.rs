@@ -18,6 +18,72 @@ pub struct RegionTrack {pub stroke:usize,pub snapshot:super::video_region::Attac
 #[derive(Clone,Debug,PartialEq,Serialize,Deserialize)]
 #[serde(rename_all="camelCase",deny_unknown_fields,try_from="Wire")]
 pub struct Binding { #[serde(default,skip_serializing_if="Option::is_none")] pub origin:Option<CacheOrigin>, pub source_hash:String, pub model_hash:String, pub runtime_hash:String, pub subject:String, #[serde(default,skip_serializing_if="Option::is_none")] pub feather:Option<f64>, #[serde(default,skip_serializing_if="Option::is_none")] pub correction:Option<super::cutout::Correction>, #[serde(default,skip_serializing_if="Vec::is_empty")] pub region_tracks:Vec<RegionTrack> }
+/// Authored settings for building a mask on different footage.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Recipe {
+    pub model_hash: String,
+    pub subject: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub feather: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub correction: Option<super::cutout::Correction>,
+}
+
+impl Recipe {
+    pub fn from_binding(binding: Binding) -> Result<Self> {
+        binding.validate()?;
+        Ok(Self {
+            model_hash: binding.model_hash,
+            subject: binding.subject,
+            feather: binding.feather,
+            correction: binding.correction,
+        })
+    }
+
+    pub fn validate(&self) -> Result<()> {
+        validate_settings(&self.model_hash, &self.subject, self.feather, self.correction.as_ref())?;
+        if let Some(correction) = &self.correction {
+            correction.validate()?;
+            ensure!(
+                correction.strokes.iter().all(|stroke| stroke.region.is_none()),
+                "still region cannot bind a video stroke"
+            );
+        }
+        Ok(())
+    }
+
+    pub fn tracked_strokes(&self) -> impl Iterator<Item = usize> + '_ {
+        self.correction.iter().flat_map(|correction| {
+            correction.strokes.iter().enumerate().filter_map(|(index, stroke)| {
+                (stroke.at.is_some()
+                    && matches!(stroke.tool, super::cutout::Tool::SmartBrush | super::cutout::Tool::SmartEraser))
+                .then_some(index)
+            })
+        })
+    }
+
+    pub fn bind(
+        self,
+        source_hash: String,
+        runtime_hash: String,
+        region_tracks: Vec<RegionTrack>,
+    ) -> Result<Binding> {
+        let binding = Binding {
+            origin: None,
+            source_hash,
+            runtime_hash,
+            model_hash: self.model_hash,
+            subject: self.subject,
+            feather: self.feather,
+            correction: self.correction,
+            region_tracks,
+        };
+        binding.validate()?;
+        Ok(binding)
+    }
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all="camelCase",deny_unknown_fields)]
 struct Wire { #[serde(default)] origin:Option<CacheOrigin>, source_hash:String, model_hash:String, runtime_hash:String, subject:String, #[serde(default)] feather:Option<f64>, #[serde(default)] correction:Option<super::cutout::Correction>, #[serde(default)] region_tracks:Vec<RegionTrack> }
@@ -35,15 +101,48 @@ impl Binding {
    }
   }
 
-  if let Some(correction)=&self.correction{validate_tracks(correction,&self.region_tracks,&self.source_hash)?;ensure!(self.feather.is_none_or(|f|f==correction.feather),"conflicting video correction feather");}
+  if let Some(correction)=&self.correction{validate_tracks(correction,&self.region_tracks,&self.source_hash)?;}
   ensure!(self.correction.is_some()||self.region_tracks.is_empty(),"video regions require correction settings");
-  ensure!(self.feather.is_none_or(|value|value.is_finite()&&(0.0..=0.1).contains(&value)),"invalid video cutout feather");
-  for hash in [&self.source_hash,&self.model_hash,&self.runtime_hash]{ensure!(hash.len()==64&&hash.bytes().all(|b|b.is_ascii_digit()||(b'a'..=b'f').contains(&b)),"invalid video cutout identity");}
-  let person=matches!(self.model_hash.as_str(),super::cutout::PERSON_MODEL_HASH|super::cutout::SELFIE_MODEL_HASH);
-  let object=self.model_hash=="60920e99c45464f2ba57bee2ad08c919a52bbf852739e96947fbb4358c0d964a";
-  ensure!(match self.subject.as_str(){"auto"=>person||object,"person"=>person,"object"=>object,_=>false},"unsupported bound video cutout family");Ok(())
+  for hash in [&self.source_hash,&self.runtime_hash]{validate_hash(hash)?;}
+  validate_settings(&self.model_hash,&self.subject,self.feather,self.correction.as_ref())
  }
 }
+fn validate_hash(hash: &str) -> Result<()> {
+    ensure!(
+        hash.len() == 64 && hash.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)),
+        "invalid video cutout identity"
+    );
+    Ok(())
+}
+fn validate_settings(
+    model_hash: &str,
+    subject: &str,
+    feather: Option<f64>,
+    correction: Option<&super::cutout::Correction>,
+) -> Result<()> {
+    ensure!(
+        correction.is_none_or(|settings| feather.is_none_or(|value| value == settings.feather)),
+        "conflicting video correction feather"
+    );
+    ensure!(
+        feather.is_none_or(|value| value.is_finite() && (0.0..=0.1).contains(&value)),
+        "invalid video cutout feather"
+    );
+    validate_hash(model_hash)?;
+    let person = matches!(model_hash, super::cutout::PERSON_MODEL_HASH | super::cutout::SELFIE_MODEL_HASH);
+    let object = model_hash == "60920e99c45464f2ba57bee2ad08c919a52bbf852739e96947fbb4358c0d964a";
+    ensure!(
+        match subject {
+            "auto" => person || object,
+            "person" => person,
+            "object" => object,
+            _ => false,
+        },
+        "unsupported bound video cutout family"
+    );
+    Ok(())
+}
+
 impl TryFrom<Wire> for Binding { type Error=anyhow::Error;fn try_from(w:Wire)->Result<Self>{let value=Self{origin:w.origin,source_hash:w.source_hash,model_hash:w.model_hash,runtime_hash:w.runtime_hash,subject:w.subject,feather:w.feather,correction:w.correction,region_tracks:w.region_tracks};value.validate()?;Ok(value)} }
 
 pub fn validate_correction(correction:&super::cutout::Correction)->Result<()> {

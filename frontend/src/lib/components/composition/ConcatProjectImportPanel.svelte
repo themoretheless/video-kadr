@@ -4,7 +4,7 @@
  import ConcatTemplatePreview from './ConcatTemplatePreview.svelte'
 
  import type {CompositionSource} from '$lib/composition/types'
- import {importConcatProject,importConcatProjectWithSavedStills,importConcatProjectWithSavedCutouts,getCompositionProjects,fillConcatMediaSlot,type ConcatProjectImportReport,type ConcatFontBinding} from '$lib/api'
+ import {importConcatProject,importConcatProjectAndRebuildMasks,updateNestedCompositionProject,type NativeTemplateImportResponse,importConcatProjectWithSavedStills,importConcatProjectWithSavedCutouts,getCompositionProjects,fillConcatMediaSlot,normalizeConcatTemplateCover,type ConcatProjectImportReport,type ConcatFontBinding} from '$lib/api'
  import {concatImportMedia,concatImportFonts,concatImportStillDestinations,concatImportVideoDestinations,savedStillChoices,savedVideoChoices,type SavedStillChoice,type ConcatImportFont,type ConcatImportMedia,type ConcatImportSource} from '$lib/composition/concatProjectImport'
  import {concatTemplateFolders,concatTemplateSlotStats,readConcatTemplateFolder} from '$lib/composition/concatTemplateFolder'
  import {restoreConcatTemplateCaptions} from '$lib/composition/concatTemplateCaptions'
@@ -12,8 +12,9 @@
  import {doUpload} from '$lib/state/store.svelte'
  import {compositionSourceFromMediaInfo} from '$lib/state/composition/media.svelte'
  import {adoptImportedConcatProject,nestedComposition,nestedHistory} from '$lib/state/nestedComposition.svelte'
- let {token=null,sources=[],context,disabled=false}:{token?:string|null;sources?:readonly ConcatImportSource[];context?:unknown;disabled?:boolean}=$props()
+ let {token=null,sources=[],context,disabled=false,spaceId,oncreated}:{token?:string|null;sources?:readonly ConcatImportSource[];context?:unknown;disabled?:boolean;spaceId?:string;oncreated?:(result:NativeTemplateImportResponse,guard:()=>void)=>Promise<void>}=$props()
  let document=$state<unknown>(null),media=$state<readonly ConcatImportMedia[]>([]),bindings=$state<Record<string,string>>({}),report=$state<ConcatProjectImportReport|null>(null),busy=$state(false),error=$state(''),applied=$state(false)
+ let rebuilding = $state(false)
  let fonts=$state<readonly ConcatImportFont[]>([]),fontBindings=$state<Record<string,ConcatFontBinding>>({}),fontNames=$state<Record<string,string>>({})
  let savedMasks=$state<readonly SavedStillChoice[]>([]),maskChoices=$state<Record<string,string>>({})
  let savedVideoMasks=$state<readonly SavedStillChoice[]>([])
@@ -35,13 +36,19 @@
  let fontEpoch=0,fontTicket=0
  let fontTickets:Record<string,number>=Object.create(null)
  let request=0,controller:AbortController|undefined,expectedContext='',lastToken=untrack(()=>token)
- const ready=$derived(!!document&&(!importingTemplate||!media.some(item=>item.placeholder))&&media.every(item=>!!bindings[item.id])&&fonts.every(font=>Object.hasOwn(fontBindings,font.path))&&stillDestinations.every(item=>!!chosenMask(item.key,item.mediaId))&&videoDestinations.every(item=>!!chosenMask(item.key,item.mediaId,true)))
- function identity(){return JSON.stringify([token,context,nestedComposition.document,nestedComposition.projectId,document,bindings,sourceOverrides,fontBindings,availableSources,preserveMediaIds,nestedComposition.revision,savedMasks,savedVideoMasks,maskChoices])}
+ const sourcesReady = $derived(!!document && (!importingTemplate || !media.some(item => item.placeholder))
+   && media.every(item => !!bindings[item.id]) && fonts.every(font => Object.hasOwn(fontBindings, font.path)))
+ const stillMasksReady = $derived(stillDestinations.every(item => !!chosenMask(item.key,item.mediaId)))
+ const ready = $derived(sourcesReady && stillMasksReady
+   && videoDestinations.every(item => !!chosenMask(item.key,item.mediaId,true)))
+ const canRebuild = $derived(!!oncreated && (videoDestinations.length > 0 || stillDestinations.length > 0))
+ const rebuildReady = $derived(sourcesReady && !media.some(item => item.placeholder) && (videoDestinations.length > 0 || !stillMasksReady))
+ function identity(includeLibrary = true){return JSON.stringify([token,spaceId,context,nestedComposition.document,nestedComposition.projectId,document,bindings,sourceOverrides,fontBindings,includeLibrary ? availableSources : null,preserveMediaIds,nestedComposition.revision,savedMasks,savedVideoMasks,maskChoices])}
  function importedName(value: unknown) {
   return typeof value === 'object' && value && 'name' in value && typeof value.name === 'string'
    ? value.name : 'Импорт Concat'
  }
- function invalidate(){request++;controller?.abort();report=null;applied=false;error='';busy=false}
+ function invalidate(){request++;controller?.abort();report=null;applied=false;error='';busy=false;rebuilding=false}
  $effect(()=>{const current=token;if(current!==lastToken)untrack(()=>{lastToken=current;templateDetails=undefined;templateFolders=[];selectedFolder=undefined;uploadedSources=[];savedMasks=[];savedVideoMasks=[];maskChoices={};invalidate()})})
  $effect(()=>()=>{request++;fontEpoch++;controller?.abort()})
  async function load(file:File|undefined){invalidate();fontEpoch++;fontTickets=Object.create(null);fonts=[];fontBindings={};fontNames={};document=null;media=[];bindings={};slotChoices={};sourceOverrides={};slotUndo=[];maskChoices={};templateDetails=undefined;uploadedSources=[];importingTemplate=false;preserveMediaIds=false;if(!file)return;const serial=request;try{if(file.size>4*1024*1024)throw new Error('Файл Concat превышает 4 МиБ');const parsed:unknown=JSON.parse(await file.text());if(serial!==request)return;media=concatImportMedia(parsed);fonts=concatImportFonts(parsed);document=parsed}catch(failure){if(serial===request)error=failure instanceof Error?failure.message:String(failure)}}
@@ -152,6 +159,7 @@
   return left === right ? 0 : left < right ? -1 : 1
  }))
  const orderedMedia = $derived([...pendingSlots, ...media.filter(item => !item.placeholder)])
+ const maskedMedia = $derived(new Set([...stillDestinations, ...videoDestinations].map(item => item.mediaId)))
  function replacementFor(id: string) {
   return availableSources.find(entry => entry.source.id === slotChoices[id])
  }
@@ -230,10 +238,90 @@
   try{const projects=await getCompositionProjects(token,controller.signal);if(serial!==request)return;if(identity()!==scope)throw new Error('Контекст импорта изменился; обновите список масок');savedMasks=savedStillChoices(projects);savedVideoMasks=savedVideoChoices(projects)}
   catch(failure){if(serial===request)error=failure instanceof Error?failure.message:String(failure)}finally{if(serial===request)busy=false}
  }
- async function convert(){if(!ready||busy||disabled||nestedHistory.busy||!token)return;invalidate();busy=true;const serial=request;controller=new AbortController();expectedContext=identity();try{const mapped=Object.fromEntries(media.map(item=>{const entry=availableSources.find(entry=>entry.source.id===bindings[item.id]);if(!entry)throw new Error('Выбранный источник исчез из библиотеки');return[item.id,sourceOverrides[item.id]?.id===entry.source.id?sourceOverrides[item.id]:entry.source]}));const references=stillDestinations.map(item=>{const selected=chosenMask(item.key,item.mediaId);if(!selected)throw new Error('Выберите сохранённую маску для каждого изображения');return{...selected.reference,timelineId:item.timelineId,clipId:item.clipId}});const videoReferences=videoDestinations.map(item=>{const selected=chosenMask(item.key,item.mediaId,true);if(!selected)throw new Error('Выберите сохранённую маску для каждого видео');return{...selected.reference,timelineId:item.timelineId,clipId:item.clipId}});const result=videoReferences.length?await importConcatProjectWithSavedCutouts(document,mapped,references,videoReferences,controller.signal,token,fontBindings,preserveMediaIds):references.length?await importConcatProjectWithSavedStills(document,mapped,references,controller.signal,token,fontBindings,preserveMediaIds):preserveMediaIds?await importConcatProject(document,mapped,controller.signal,token,fontBindings,true):fonts.length?await importConcatProject(document,mapped,controller.signal,token,fontBindings):await importConcatProject(document,mapped,controller.signal,token);if(serial!==request)return;if(identity()!==expectedContext)throw new Error('Текущий проект изменился; повторите проверку импорта');report=result}catch(failure){if(serial===request)error=failure instanceof Error?failure.message:String(failure)}finally{if(serial===request)busy=false}}
+ function mappedSources() {
+  return Object.fromEntries(media.map(item => {
+   const entry = availableSources.find(entry => entry.source.id === bindings[item.id])
+   if (!entry) throw new Error('Выбранный источник исчез из библиотеки')
+   const override = sourceOverrides[item.id]
+   const source = override?.id === entry.source.id ? override : entry.source
+   const {id, kind, durationTicks, width, height, hasAudio, audioChannels} = source
+   return [item.id, {id, kind, durationTicks, width, height, hasAudio,
+    ...(audioChannels === undefined ? {} : {audioChannels})}]
+  }))
+ }
+
+ function stillReferences(requireAll = true) {
+  return stillDestinations.flatMap(item => {
+   const selected = chosenMask(item.key, item.mediaId)
+   if (!selected) {
+    if (requireAll) throw new Error('Выберите сохранённую маску для каждого изображения')
+    return []
+   }
+   return [{ ...selected.reference, timelineId: item.timelineId, clipId: item.clipId }]
+  })
+ }
+
+ async function rebuildMasks() {
+  if (!canRebuild || !rebuildReady || !token || !oncreated || disabled || busy || nestedHistory.busy || applied) return
+  invalidate()
+  busy = true
+  rebuilding = true
+  const serial = request, scope = identity(false)
+  const operation = new AbortController()
+  controller = operation
+  const guard = () => {
+   if (serial !== request || operation.signal.aborted || identity(false) !== scope) {
+    throw new Error('Контекст импорта изменился')
+   }
+  }
+  try {
+   let cover: string | undefined
+   const warnings: string[] = []
+   try {
+    const file = templateDetails?.poster
+    cover = file && file.size > 384 * 1024
+     ? await normalizeConcatTemplateCover(file, token, operation.signal)
+     : await projectCover(file)
+   } catch (failure) {
+    warnings.push('Не удалось сохранить обложку шаблона. '
+     + (failure instanceof Error ? failure.message : String(failure)))
+   }
+   guard()
+   const result = await importConcatProjectAndRebuildMasks(document, mappedSources(), {
+    token, spaceId, name: (importingTemplate && templateProjectName.trim()) || importedName(document), fontBindings,
+    preserveMediaIds, rebuildStills: true, preparedStills: stillReferences(false), coverJpeg: cover, subtitleDocuments: templateDetails?.subtitleDocuments,
+    signal: operation.signal,
+   })
+   guard()
+   applied = true
+   let saved = result.project
+   try {
+    const restored = restoreConcatTemplateCaptions(saved.document, result.timelineIds, templateDetails?.captionClips)
+    if (restored !== saved.document) {
+     saved = await updateNestedCompositionProject(saved.id, {
+      name: saved.name, baseRevision: saved.revision, document: restored,
+     }, token)
+     guard()
+    }
+   } catch (failure) {
+    warnings.push('Проект сохранён. Не удалось восстановить оформление субтитров. '
+     + (failure instanceof Error ? failure.message : String(failure)))
+   }
+   await oncreated({...result, project: saved}, guard)
+   error = warnings.join(" ")
+  } catch (failure) {
+   if (serial === request) error = failure instanceof Error ? failure.message : String(failure)
+  } finally {
+   if (serial === request) {
+    busy = false
+    rebuilding = false
+   }
+  }
+ }
+ async function convert(){if(!ready||busy||disabled||nestedHistory.busy||!token)return;invalidate();busy=true;const serial=request;controller=new AbortController();expectedContext=identity();try{const mapped=mappedSources();const references=stillReferences();const videoReferences=videoDestinations.map(item=>{const selected=chosenMask(item.key,item.mediaId,true);if(!selected)throw new Error('Выберите сохранённую маску для каждого видео');return{...selected.reference,timelineId:item.timelineId,clipId:item.clipId}});const result=videoReferences.length?await importConcatProjectWithSavedCutouts(document,mapped,references,videoReferences,controller.signal,token,fontBindings,preserveMediaIds):references.length?await importConcatProjectWithSavedStills(document,mapped,references,controller.signal,token,fontBindings,preserveMediaIds):preserveMediaIds?await importConcatProject(document,mapped,controller.signal,token,fontBindings,true):fonts.length?await importConcatProject(document,mapped,controller.signal,token,fontBindings):await importConcatProject(document,mapped,controller.signal,token);if(serial!==request)return;if(identity()!==expectedContext)throw new Error('Текущий проект изменился; повторите проверку импорта');report=result}catch(failure){if(serial===request)error=failure instanceof Error?failure.message:String(failure)}finally{if(serial===request)busy=false}}
  async function apply() {
   const project = report?.project
-  if (!project || busy || disabled || nestedHistory.busy || applied) return
+  if (!project || !token || busy || disabled || nestedHistory.busy || applied) return
   const serial = request
   if (identity() !== expectedContext) {
    error = 'Текущий проект изменился; повторите проверку импорта'
@@ -241,7 +329,17 @@
   }
   const chosenName = importingTemplate ? templateProjectName.trim() : ''
   busy = true
-  const cover = await projectCover(templateDetails?.poster)
+  controller = new AbortController()
+  let cover: string | undefined
+  let coverWarning = ''
+  try {
+   const file = templateDetails?.poster
+   cover = file && file.size > 384 * 1024
+    ? await normalizeConcatTemplateCover(file, token, controller.signal)
+    : await projectCover(file)
+  } catch (failure) {
+   coverWarning = 'Не удалось сохранить обложку шаблона. ' + (failure instanceof Error ? failure.message : String(failure))
+  }
   if (serial !== request) return
   if (identity() !== expectedContext) {
    busy = false
@@ -272,11 +370,14 @@
   })
   if (serial !== request) return
   busy = false
-  if (accepted) applied = true
+  if (accepted) {
+   applied = true
+   error = coverWarning
+  }
   else error = nestedHistory.error || 'Импорт не применён'
  }
  async function projectCover(file: File | undefined) {
-  if (!file || file.size > 384 * 1024) return undefined
+  if (!file) return undefined
   try {
    const bytes = new Uint8Array(await file.arrayBuffer())
    if (bytes[0] !== 255 || bytes[1] !== 216 || bytes[2] !== 255 ||
@@ -328,7 +429,10 @@
    {#if !importingTemplate || !item.placeholder}<label>{item.name} <select aria-label={`Источник Concat ${item.id}`} value={bindings[item.id]??''} onchange={event=>{invalidate();bindings={...bindings,[item.id]:event.currentTarget.value}}}><option value="">Выберите медиа из библиотеки</option>{#each availableSources.filter(entry=>(entry.source.kind===item.kind||sourceOverrides[item.id]?.id===entry.source.id&&sourceOverrides[item.id]?.kind===item.kind)) as entry(entry.source.id)}<option value={entry.source.id}>{entry.label}</option>{/each}</select></label>{/if}
    {#if item.placeholder}
     <label>Заполнить слот {item.name} · {(slotStats.get(item.id)?.seconds ?? 0).toLocaleString('ru-RU',{maximumFractionDigits:3})} с <select aria-label={`Заполнение слота Concat ${item.id}`} value={slotChoices[item.id]??''} onchange={event=>{slotChoices={...slotChoices,[item.id]:event.currentTarget.value}}}><option value="">Выберите замену из библиотеки</option>{#each availableSources as entry(entry.source.id)}<option value={entry.source.id}>{entry.label}</option>{/each}</select></label>
-    <button class="btn ghost sm" type="button" disabled={!slotChoices[item.id]} aria-label={`Заполнить слот Concat ${item.id}`} onclick={()=>void fillSlots([item.id])}>Заполнить слот</button>
+    {#if maskedMedia.has(item.id) && replacementFor(item.id)?.source.kind === 'audio'}
+     <p>Аудиозамена сохранит настройки маски в документе Concat. В проекте будет слышен звук.</p>
+    {/if}
+    <button class="btn ghost sm" type="button" disabled={!replacementFor(item.id)} aria-label={`Заполнить слот Concat ${item.id}`} onclick={()=>void fillSlots([item.id])}>Заполнить слот</button>
     <label>Загрузить замену для {item.name}
      <input type="file" accept="video/*,audio/*,image/*" aria-label={`Файл замены слота Concat ${item.id}`} onchange={event=>{
       const file=event.currentTarget.files?.[0]
@@ -350,7 +454,11 @@
   {#if media.some(item=>!item.placeholder&&!bindings[item.id])}<p>Для материалов без привязки выберите файлы из библиотеки.</p>{/if}
   {#if media.length}<label><input type="checkbox" aria-label="Сохранять отдельные ID медиа Concat" checked={preserveMediaIds} onchange={event=>{invalidate();preserveMediaIds=event.currentTarget.checked}} />Сохранять отдельные слоты при общем файле</label>{/if}
   {#if stillDestinations.length||videoDestinations.length}
-   <p>Для каждого изображения и видео с вырезанием выберите сохранённую маску с теми же настройками.</p>
+   {#if canRebuild}
+    <p>Маски можно построить на выбранных файлах. Выбранные сохранённые маски изображений будут использованы повторно.</p>
+   {:else}
+    <p>Для каждого изображения и видео с вырезанием выберите сохранённую маску с теми же настройками.</p>
+   {/if}
    <button class="btn ghost sm" type="button" onclick={()=>void loadSavedMasks()}>Обновить сохранённые маски</button>
    {#each stillDestinations as item(item.key)}
     <label>Маска {item.label} <select aria-label={`Сохранённая маска Concat ${item.timelineId} ${item.clipId}`} value={maskChoices[item.key]??''} onchange={event=>{invalidate();maskChoices={...maskChoices,[item.key]:event.currentTarget.value}}}><option value="">Выберите сохранённую маску</option>{#each savedMasks.filter(mask=>mask.sourceId===bindings[item.mediaId]) as mask(mask.key)}<option value={mask.key}>{mask.label}</option>{/each}</select></label>
@@ -358,12 +466,18 @@
    {#each videoDestinations as item(item.key)}
     <label>Видеомаска {item.label} <select aria-label={`Сохранённая видеомаска Concat ${item.timelineId} ${item.clipId}`} value={maskChoices[item.key]??''} onchange={event=>{invalidate();maskChoices={...maskChoices,[item.key]:event.currentTarget.value}}}><option value="">Выберите сохранённую видеомаску</option>{#each savedVideoMasks.filter(mask=>mask.sourceId===bindings[item.mediaId]) as mask(mask.key)}<option value={mask.key}>{mask.label}</option>{/each}</select></label>
    {/each}
-   {#if !savedMasks.length&&!savedVideoMasks.length}<p>Сначала выполните вырезание в проекте и сохраните его, затем обновите список масок.</p>{/if}
+   {#if !canRebuild&&!savedMasks.length&&!savedVideoMasks.length}<p>Сначала выполните вырезание в проекте и сохраните его, затем обновите список масок.</p>{/if}
+  {/if}
+  {#if canRebuild}
+   <button class="btn primary sm" disabled={!rebuildReady||applied} onclick={() => void rebuildMasks()}>
+    {stillDestinations.length ? 'Создать проект и восстановить маски' : 'Создать проект и восстановить видеомаски'}
+   </button>
   {/if}
   <button class="btn ghost sm" disabled={!ready} onclick={()=>void convert()}>Проверить импорт Concat</button>
   {#if report?.status==='converted'&&report.project}<p>Таймлайнов: {Object.keys(report.project.compositions).length}. Открытие создаст новый несохранённый проект; прежний доступен через undo.</p><button class="btn primary sm" disabled={applied} onclick={()=>void apply()}>Открыть импорт как новый проект</button>{/if}
   {#if report}<button class="btn ghost sm" onclick={download}>Скачать исходник и отчёт импорта</button>{/if}
  </fieldset>
+ {#if rebuilding}<p role="status">Восстанавливаем маски и сохраняем проект…</p>{/if}
  {#if report?.diagnostics.length}<ul>{#each report.diagnostics as message,index (index)}<li>{message}</li>{/each}</ul>{/if}
  {#if error}<p role="alert">{error}</p>{/if}{#if applied}<p>Импорт открыт. Для сохранения используйте «Сохранить».</p>{/if}
 </details>

@@ -889,21 +889,41 @@ export async function revokeProjectReviewShare(
   await requireOk(response, `${path} -> HTTP ${response.status}`)
 }
 
+type TemplatePoster = 'saved' | { timeUs: number; compositionId?: string } | { automatic: true; compositionId?: string }
+
+function templatePosterQuery(poster?: TemplatePoster): URLSearchParams {
+  const query = new URLSearchParams()
+  if (poster === 'saved') {
+    query.set('useSavedCover', 'true')
+  } else if (poster) {
+    if ('automatic' in poster) query.set('autoPoster', 'true')
+    else query.set('posterTimeUs', String(poster.timeUs))
+    if (poster.compositionId) query.set('posterCompositionId', poster.compositionId)
+  }
+  return query
+}
+
 /**
  * Direct navigation keeps multi-gigabyte archives streaming to disk instead
  * of materializing them as an in-memory browser Blob.
  */
 export function compositionProjectTemplateUrl(
   id: string,
-  poster?: { timeUs: number; compositionId?: string },
+  poster?: TemplatePoster,
   name?: string,
 ): string {
   const path = `/api/composition-projects/${encodeURIComponent(id)}/template`
+  const query = templatePosterQuery(poster)
+  if (name) query.set('name', name)
+  return query.size ? `${path}?${query}` : path
+}
+
+export const MAX_TEMPLATE_COVER_BYTES = 1024 * 1024
+
+export function compositionProjectTemplateCoverUrl(id: string, name?: string, download = false): string {
+  const path = `/api/composition-projects/${encodeURIComponent(id)}/template-cover`
   const query = new URLSearchParams()
-  if (poster) {
-    query.set('posterTimeUs', String(poster.timeUs))
-    if (poster.compositionId) query.set('posterCompositionId', poster.compositionId)
-  }
+  if (download) query.set('download', 'true')
   if (name) query.set('name', name)
   return query.size ? `${path}?${query}` : path
 }
@@ -912,13 +932,10 @@ export function compositionProjectArchiveUrl(id: string): string {
   return `/api/composition-projects/${encodeURIComponent(id)}/archive`
 }
 
-export function compositionProjectConcatTemplateUrl(id: string, poster?: 'saved' | { timeUs: number; compositionId?: string }): string {
+export function compositionProjectConcatTemplateUrl(id: string, poster?: TemplatePoster): string {
   const path = `/api/composition-projects/${encodeURIComponent(id)}/concat-template`
-  if (!poster) return path
-  if (poster === 'saved') return `${path}?useSavedCover=true`
-  const query = new URLSearchParams({ posterTimeUs: String(poster.timeUs) })
-  if (poster.compositionId) query.set('posterCompositionId', poster.compositionId)
-  return `${path}?${query}`
+  const query = templatePosterQuery(poster)
+  return query.size ? `${path}?${query}` : path
 }
 
 /** Upload, verify and relink a portable `.veproj` into a new local project. */
@@ -970,7 +987,7 @@ export async function importNativeTemplate(file:File,fills:readonly NativeTempla
  return reply
 }
 
-export interface NativeTemplateLibraryEntry {hasPoster?:boolean;id:string;name:string;info:NativeTemplateInfo;bytes:number;createdAt:number}
+export interface NativeTemplateLibraryEntry {hasPoster?:boolean;spaceId?:string|null;canManage?:boolean;id:string;name:string;info:NativeTemplateInfo;bytes:number;createdAt:number}
 export async function getNativeTemplatePoster(id:string,token:string,signal?:AbortSignal):Promise<Blob>{
  const response=await safeFetch(`/api/template-library/${encodeURIComponent(id)}/poster`,{headers:bearerHeaders(token),signal})
  await requireOk(response,'Не удалось загрузить обложку шаблона')
@@ -986,17 +1003,33 @@ export function saveProjectTemplate(
   poster?: Parameters<typeof compositionProjectTemplateUrl>[1],
   signal?: AbortSignal,
   name?: string,
+  spaceId?: string,
 ): Promise<NativeTemplateLibraryEntry> {
   return requestJson(compositionProjectTemplateUrl(id, poster, name), {
-    method: 'POST', headers: bearerHeaders(token), signal,
+    method: 'POST', headers: libraryAccessHeaders(token, spaceId), signal,
+  })
+}
+export function saveProjectTemplateWithCover(
+  id: string,
+  token: string,
+  cover: File,
+  signal?: AbortSignal,
+  name?: string,
+  spaceId?: string,
+): Promise<NativeTemplateLibraryEntry> {
+  if (cover.size > MAX_TEMPLATE_COVER_BYTES) throw new Error('Обложка превышает 1 МиБ')
+  const body = new FormData()
+  body.append('poster', cover)
+  return requestJson(compositionProjectTemplateCoverUrl(id, name), {
+    method: 'POST', headers: libraryAccessHeaders(token, spaceId), body, signal,
   })
 }
 export function nativeTemplateLibraryUrl(id:string):string{return `/api/template-library/${encodeURIComponent(id)}`}
-export function listNativeTemplateLibrary(token:string,signal?:AbortSignal):Promise<NativeTemplateLibraryEntry[]>{return requestJson('/api/template-library',{headers:bearerHeaders(token),signal})}
-export async function installNativeTemplate(file:File,token:string,signal?:AbortSignal):Promise<NativeTemplateLibraryEntry>{
+export function listNativeTemplateLibrary(token:string,signal?:AbortSignal,spaceId?:string):Promise<NativeTemplateLibraryEntry[]>{return requestJson('/api/template-library',{headers:libraryAccessHeaders(token,spaceId),signal})}
+export async function installNativeTemplate(file:File,token:string,signal?:AbortSignal,spaceId?:string):Promise<NativeTemplateLibraryEntry>{
  if(file.size>MAX_COMPOSITION_PROJECT_ARCHIVE_BYTES)throw new Error('Шаблон превышает лимит 2 ГиБ')
  const body=new FormData();body.append('file',file)
- return requestJson('/api/template-library',{method:'POST',headers:bearerHeaders(token),body,signal})
+ return requestJson('/api/template-library',{method:'POST',headers:libraryAccessHeaders(token,spaceId),body,signal})
 }
 export async function removeNativeTemplate(id:string,token:string,signal?:AbortSignal):Promise<void>{
  const response=await safeFetch(nativeTemplateLibraryUrl(id),{method:'DELETE',headers:bearerHeaders(token),signal});await requireOk(response,'Не удалось удалить шаблон')
@@ -1371,22 +1404,51 @@ export function nestedDurations(project: NativeNestedProject, signal?: AbortSign
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project }), signal,
   })
 }
-export interface NestedExportHistoryEntry { jobId: string; status: Job['status']; createdAt: number }
+export interface NestedExportQueueEntry { jobId: string; raised: boolean }
+export interface NestedExportHistoryEntry { jobId: string; status: Job['status']; createdAt: number; raised?: boolean; downloadName?: string }
 export function listNestedExports(token: string, signal?: AbortSignal, cursor?: string):
-  Promise<{ jobs: NestedExportHistoryEntry[]; nextCursor: string | null }> {
+  Promise<{ jobs: NestedExportHistoryEntry[]; nextCursor: string | null; queue?: NestedExportQueueEntry[] }> {
   const query = cursor ? `?${new URLSearchParams({ cursor })}` : ''
   return requestJson(`/api/compositions/nested-export${query}`, { headers: bearerHeaders(token), signal })
 }
 
+export function setNestedExportPriority(id: string, raised: boolean, token: string, signal?: AbortSignal):
+  Promise<{ jobId: string; raised: boolean; queue?: NestedExportQueueEntry[] }> {
+  return requestJson(`/api/compositions/nested-export/${encodeURIComponent(id)}/priority`, {
+    method: 'POST', headers: bearerHeaders(token, true), body: JSON.stringify({ raised }), signal,
+  })
+}
+
+export function moveNestedExport(id: string, direction: 'earlier' | 'later', token: string, signal?: AbortSignal):
+  Promise<{ jobId: string; applied: boolean; queue: NestedExportQueueEntry[] }> {
+  return requestJson(`/api/compositions/nested-export/${encodeURIComponent(id)}/move`, {
+    method: 'POST', headers: bearerHeaders(token, true), body: JSON.stringify({ direction }), signal,
+  })
+}
+
+export function nestedExportCursorTimecode(
+  timeUs: number, rate: { numerator: number; denominator: number }, dropFrame: boolean, signal?: AbortSignal,
+): Promise<{ timecode: string }> {
+  return requestJson('/api/compositions/nested-export/cursor-timecode', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ timeUs, rate, dropFrame }), signal,
+  })
+}
+
 export function exportNestedVideo(
   project: NativeNestedProject, compositionId: string, startUs: number, endUs: number,
-  renderedOutputs: Readonly<Record<string, string>>, token: string, signal?: AbortSignal, mode: 'video_only' | 'video_audio' = 'video_only',
+  renderedOutputs: Readonly<Record<string, string>>, token: string, signal?: AbortSignal, mode: 'video_only' | 'video_audio' | 'audio_only' = 'video_only',
   savedProject?: {projectId:string;expectedRevision:number},
   captionSidecar?: {trackId:string;format:CaptionFileFormat;dropFrame:boolean},
-): Promise<{ jobId: string; mode: 'video_only' | 'video_audio'; container: 'mkv' | 'mp4' }> {
+  timecodeRange?: {start:string;end:string},
+  downloadName?: string,
+  audioCompression?: {codec:'aac' | 'opus'; bitrateKbps:number},
+  audioChannels?: 1 | 2,
+  audioSampleRate?: number,
+  pcmDepth?: 's16' | 's24',
+): Promise<{ jobId: string; mode: 'video_only' | 'video_audio' | 'audio_only'; container: 'mkv' | 'mp4' | 'wav' | 'm4a' | 'opus'; startUs?: number; endUs?: number; captionRange?: {startTick:string;endTick:string} }> {
   return requestJson('/api/compositions/nested-export', {
     method: 'POST', headers: { ...bearerHeaders(token), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ schemaVersion: 1, mode, project, compositionId, startUs, endUs, renderedOutputs, savedProject, captionSidecar }), signal,
+    body: JSON.stringify({ schemaVersion: 1, mode, project, compositionId, startUs, endUs, renderedOutputs, savedProject, captionSidecar, timecodeRange, downloadName, audioCompression, audioChannels, audioSampleRate, pcmDepth }), signal,
   })
 }
 
@@ -2527,8 +2589,8 @@ export function retryFilmcraftVideoJob(token: string, id: string, signal?: Abort
 export function cancelFilmcraftVideoJob(token: string, id: string, signal?: AbortSignal): Promise<unknown> {
   return requestJson(`/api/jobs/${encodeURIComponent(id)}/cancel`, { method: 'POST', headers: bearerHeaders(token), signal })
 }
-export async function downloadFilmcraftVideo(token: string, id: string, signal?: AbortSignal, format: 'mkv' | 'mp4' | 'mov' | 'mxf' | 'zip' | 'gif' | 'wav' | 'aiff' = 'mkv'): Promise<Blob> {
-  if (format !== 'mkv' && format !== 'mp4' && format !== 'mov' && format !== 'mxf' && format !== 'zip' && format !== 'gif' && format !== 'wav' && format !== 'aiff') throw new Error('Неподдерживаемый формат видео')
+export async function downloadFilmcraftVideo(token: string, id: string, signal?: AbortSignal, format: 'mkv' | 'mp4' | 'mov' | 'mxf' | 'zip' | 'gif' | 'wav' | 'aiff' | 'm4a' | 'opus' = 'mkv'): Promise<Blob> {
+  if (format !== 'mkv' && format !== 'mp4' && format !== 'mov' && format !== 'mxf' && format !== 'zip' && format !== 'gif' && format !== 'wav' && format !== 'aiff' && format !== 'm4a' && format !== 'opus') throw new Error('Неподдерживаемый формат видео')
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) throw new Error('Некорректный идентификатор видео')
   const response = await safeFetch(`/files/outputs/${id}.${format}`, { headers: bearerHeaders(token), signal })
   await requireOk(response, 'Не удалось скачать видео')
@@ -3133,6 +3195,49 @@ export function importConcatProjectWithSavedStills(document:unknown,mediaBinding
 }
 
 export type ConcatFontBinding={readonly data:string}|{readonly fallback:true}
+export async function normalizeConcatTemplateCover(file: File, token: string, signal: AbortSignal): Promise<string> {
+  const body = new FormData()
+  body.append('poster', file)
+  const response = await requestJson<{ coverJpeg: string }>('/api/composition-projects/concat-template-cover', {
+    method: 'POST', headers: bearerHeaders(token), body, signal,
+  })
+  return response.coverJpeg
+}
+
+export interface ConcatRebuildImportResponse extends NativeTemplateImportResponse {
+  timelineIds: Record<string, string>
+}
+
+export function importConcatProjectAndRebuildMasks(
+  document: unknown,
+  mediaBindings: Readonly<Record<string, import('./composition/types').CompositionSource>>,
+  options: {
+    token: string
+    spaceId?: string
+    name: string
+    fontBindings: Readonly<Record<string, ConcatFontBinding>>
+    preserveMediaIds: boolean
+    rebuildStills?: boolean
+    preparedStills?: readonly ConcatSavedStillReference[]
+    coverJpeg?: string
+    subtitleDocuments?: readonly import('./subtitles/documents').SubtitleDocument[]
+    signal: AbortSignal
+  },
+): Promise<ConcatRebuildImportResponse> {
+  const { token, spaceId, name, fontBindings, preserveMediaIds, rebuildStills, preparedStills, coverJpeg, subtitleDocuments, signal } = options
+  const headers = bearerHeaders(token, true)
+  if (spaceId) headers['X-Space-Id'] = spaceId
+  return requestJson('/api/compositions/concat-project/import-rebuild', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      request: { schemaVersion: 1, document, mediaBindings, preserveMediaIds, fontBindings },
+      name, rebuildStills, preparedStills, coverJpeg, subtitleDocuments,
+    }),
+    signal,
+  })
+}
+
 export function importConcatProject(document:unknown,mediaBindings:Readonly<Record<string,import('./composition/types').CompositionSource>>,signal?:AbortSignal,token?:string|null,fontBindings:Readonly<Record<string,ConcatFontBinding>>={},preserveMediaIds=false):Promise<ConcatProjectImportReport>{
  return requestJson('/api/compositions/concat-project/import',{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},body:JSON.stringify({schemaVersion:1,document,mediaBindings,preserveMediaIds,...(Object.keys(fontBindings).length?{fontBindings}:{})}),signal})
 }
@@ -3168,6 +3273,16 @@ export async function previewNestedVideoCutout(projectId:string,compositionId:st
  const bytes=await response.arrayBuffer()
  if(bytes.byteLength!==width*height*4)throw new ApiError('Неполный RGBA-видеокадр',response.status)
  return {width,height,rgba:new Uint8ClampedArray(bytes)}
+}
+
+export function replaceNestedMaskedVideo(
+  projectId: string, mediaId: string, sourceId: string, expectedRevision: number,
+  token: string, signal?: AbortSignal,
+): Promise<NestedCompositionProjectDto> {
+  return requestJson(`/api/composition-projects/${encodeURIComponent(projectId)}/concat-video-cutout/replace-source`, {
+    method: 'POST', headers: bearerHeaders(token, true),
+    body: JSON.stringify({ mediaId, sourceId, expectedRevision }), signal,
+  })
 }
 
 export function setNestedVideoCutoutBinding(projectId:string,compositionId:string,clipId:string,expectedRevision:number,enabled:boolean,token:string,signal?:AbortSignal,subject?:ConcatCutoutSubject,expectedModelHash?:string,feather?:number,correction?:MaskCorrection,regionTracks?:readonly import('./composition/types').ConcatVideoRegionTrack[]):Promise<NestedCompositionProjectDto>{

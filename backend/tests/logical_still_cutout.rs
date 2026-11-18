@@ -160,6 +160,7 @@ async fn run_logical_cutout(smart: bool) {
         settings["strokes"] =
             json!([{"tool":"smartBrush","size":0.2,"points":[[0.25,0.5]],"at":0.25}]);
     }
+    Box::pin(qualify_rebuilt_still_import(&state, &owner.token, &space.id, &source, &settings, &physical_hash, smart)).await;
     let mut last_region = String::new();
     for pass in 0..if smart { 3 } else { 2 } {
         if smart && pass == 2 {
@@ -274,14 +275,9 @@ async fn run_logical_cutout(smart: bool) {
         .await
         .unwrap();
         assert_eq!(checked.assets.original.id.as_str(), "slot");
-        assert_eq!(
-            checked.paths["slot"],
-            state
-                .sources_dir()
-                .join("physical.png")
-                .canonicalize()
-                .unwrap()
-        );
+        let physical_entry = state.library.get("physical").await.unwrap();
+        let physical_path = state.library.resolve_media_path(&physical_entry).await.unwrap();
+        assert_eq!(checked.paths["slot"], physical_path.canonicalize().unwrap());
         for asset in [&checked.assets.copy, &checked.assets.mask] {
             let entry = state.library.get(asset.id.as_str()).await.unwrap();
             assert!(entry
@@ -341,4 +337,177 @@ async fn run_logical_cutout(smart: bool) {
         .unwrap()
         .unwrap();
     assert_eq!(loaded.document, saved.document);
+}
+
+async fn qualify_rebuilt_still_import(
+    state: &video_kadr_backend::state::AppState,
+    token: &str,
+    space: &str,
+    source: &Value,
+    settings: &Value,
+    expected_hash: &str,
+    smart: bool,
+) {
+    let app = support::router(state.clone());
+    let request = || Request::post("/api/compositions/concat-project/import-rebuild")
+        .header("authorization", format!("Bearer {token}"))
+        .header("x-space-id", space)
+        .header("content-type", "application/json")
+        .body(Body::from(json!({
+            "name":"Imported still mask", "rebuildStills":true,
+            "request":{"schemaVersion":1,"preserveMediaIds":true,
+                "document":{"version":1,"media":[{"id":"slot","kind":"image","path":"never-read.png"}],
+                    "timelines":[{"id":"main","video":{"width":40,"height":24,"rateNum":4,"rateDen":1},
+                        "tracks":[{"id":"image"}],"clips":[{"id":"clip","kind":"image","mediaId":"slot",
+                            "trackId":"image","duration":1,"cutout":settings}]}]},
+                "mediaBindings":{"slot":source}}
+        }).to_string())).unwrap();
+    let pool = sqlx::sqlite::SqlitePoolOptions::new().connect_with(
+        sqlx::sqlite::SqliteConnectOptions::new().filename(state.storage.join("app.db")),
+    ).await.unwrap();
+    let before = state.library.list().await.len();
+    sqlx::query("CREATE TRIGGER reject_still_import BEFORE INSERT ON composition_projects WHEN NEW.name='Imported still mask' BEGIN SELECT RAISE(ABORT,'forced image mask rollback'); END")
+        .execute(&pool).await.unwrap();
+    let failed = app.clone().oneshot(request()).await.unwrap();
+    let status = failed.status();
+    let bytes = to_bytes(failed.into_body(), 1 << 20).await.unwrap();
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "{}", String::from_utf8_lossy(&bytes));
+    assert_eq!(state.library.list().await.len(), before);
+    sqlx::query("DROP TRIGGER reject_still_import").execute(&pool).await.unwrap();
+    let created = app.oneshot(request()).await.unwrap();
+    let status = created.status();
+    let bytes = to_bytes(created.into_body(), 1 << 20).await.unwrap();
+    assert_eq!(status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&bytes));
+    let result: Value = serde_json::from_slice(&bytes).unwrap();
+    let document = &result["project"]["document"];
+    let cutout = &document["compositions"]["concat-timeline-0"]["content"]["metadata"]["mediaVersions"]["clip"]["cutout"];
+    assert_eq!(cutout["sourceHash"], expected_hash);
+    assert_eq!(cutout["correction"]["strokes"][0]["points"], settings["strokes"][0]["points"]);
+    assert_eq!(!cutout["correction"]["strokes"][0]["region"].is_null(), smart);
+    assert_eq!(document["projectMedia"]["slot"]["librarySourceId"], "physical");
+    assert_eq!(state.library.list().await.len(), before + if smart { 3 } else { 2 });
+    if smart {
+        for replace in [false, true] {
+            Box::pin(qualify_sam_still_zip_round_trip(state, token, space, &result, settings, expected_hash, replace)).await;
+        }
+    }
+}
+
+async fn qualify_sam_still_zip_round_trip(
+    state: &video_kadr_backend::state::AppState,
+    token: &str,
+    space: &str,
+    original: &Value,
+    settings: &Value,
+    expected_hash: &str,
+    replace: bool,
+) {
+    let app = support::router(state.clone());
+    let project_id = if replace {
+        let mut template = original["project"]["document"].clone();
+        template["projectMedia"]["slot"]["placeholder"] = json!(true);
+        let source_ids: Vec<String> = serde_json::from_value(original["project"]["sourceIds"].clone()).unwrap();
+        state.db.create_space_composition_project(
+            "Replaceable SAM image", &template, &source_ids, "logical-cutout-owner", space,
+        ).await.unwrap().id
+    } else {
+        original["project"]["id"].as_str().unwrap().to_owned()
+    };
+    let exported = app.clone().oneshot(Request::get(format!(
+        "/api/composition-projects/{}/concat-template", project_id,
+    )).header("authorization", format!("Bearer {token}")).body(Body::empty()).unwrap())
+        .await.unwrap();
+    let status = exported.status();
+    let bytes = to_bytes(exported.into_body(), 4 << 20).await.unwrap();
+    assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&bytes));
+    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+    assert_eq!(zip.len(), if replace { 1 } else { 2 });
+    let manifest: Value = serde_json::from_reader(zip.by_name("template.json").unwrap()).unwrap();
+    let cutout = &manifest["timelines"][0]["clips"][0]["cutout"];
+    assert_eq!(plan(cutout).unwrap(), plan(settings).unwrap());
+    assert!(cutout["strokes"][0].get("region").is_none());
+    let (manifest, binding, source_hash) = if replace {
+        assert_eq!(manifest["media"][0]["placeholder"], true);
+        assert_eq!(manifest["media"][0]["path"], "");
+        drop(zip);
+        let filled = app.clone().oneshot(Request::post("/api/compositions/concat-project/fill-registered-slot")
+            .header("authorization", format!("Bearer {token}"))
+            .header("content-type", "application/json")
+            .body(Body::from(json!({"document":manifest,"mediaId":"slot","sourceId":"slot"}).to_string())).unwrap())
+            .await.unwrap();
+        let status = filled.status();
+        let bytes = to_bytes(filled.into_body(), 4 << 20).await.unwrap();
+        assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&bytes));
+        let filled: Value = serde_json::from_slice(&bytes).unwrap();
+        let entry = state.library.get("slot").await.unwrap();
+        let path = state.library.resolve_media_path(&entry).await.unwrap();
+        let hash = format!("{:x}", Sha256::digest(std::fs::read(path).unwrap()));
+        assert_ne!(hash, expected_hash);
+        (filled["document"].clone(), filled["source"].clone(), hash)
+    } else {
+        let mut image = Vec::new();
+        std::io::Read::read_to_end(&mut zip.by_name(manifest["media"][0]["path"].as_str().unwrap()).unwrap(), &mut image).unwrap();
+        assert_eq!(format!("{:x}", Sha256::digest(&image)), expected_hash);
+        drop(zip);
+        std::fs::write(state.sources_dir().join("sam-zip-image.png"), image).unwrap();
+        assert!(state.library.add(MediaEntry::from_result("source", &json!({
+            "id":"sam-zip-image","filename":"sam-zip-image.png","url":"/files/sources/sam-zip-image.png",
+            "mediaType":"image","width":37,"height":23,
+        }))).await);
+        let binding = json!({"id":"sam-zip-image","kind":"image","durationTicks":0,"width":37,"height":23,"hasAudio":false});
+        (manifest, binding, expected_hash.to_owned())
+    };
+    let response = app.oneshot(Request::post("/api/compositions/concat-project/import-rebuild")
+        .header("authorization", format!("Bearer {token}"))
+        .header("x-space-id", space)
+        .header("content-type", "application/json")
+        .body(Body::from(json!({
+            "rebuildStills":true,
+            "request":{"schemaVersion":1,"preserveMediaIds":true,"document":manifest,
+                "mediaBindings":{"slot":binding}}
+        }).to_string())).unwrap()).await.unwrap();
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), 4 << 20).await.unwrap();
+    assert_eq!(status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&bytes));
+    let result: Value = serde_json::from_slice(&bytes).unwrap();
+    let imported = &result["project"];
+    assert_eq!(imported["document"]["projectMedia"]["slot"]["librarySourceId"], binding["id"]);
+    let region = |saved: &Value| saved["document"]["compositions"]["concat-timeline-0"]["content"]
+        ["metadata"]["mediaVersions"]["clip"]["cutout"]["correction"]["strokes"][0]["region"].clone();
+    let restored = region(imported);
+    let previous = region(&original["project"]);
+    assert_eq!(restored["sourceHash"], source_hash);
+    assert_eq!(restored["points"], previous["points"]);
+    if !replace {
+        assert_eq!(restored["maskHash"], previous["maskHash"]);
+    }
+    assert_ne!(restored["maskSourceId"], previous["maskSourceId"]);
+    let render = support::router(state.clone().with_person_config(None).with_sam_config(None));
+    let preview = |project: &Value, document: Value| Request::post("/api/compositions/nested-preview")
+        .header("authorization", format!("Bearer {token}"))
+        .header("content-type", "application/json")
+        .body(Body::from(json!({
+            "project":document,"timeUs":0,"renderedOutputs":{},
+            "savedProject":{"projectId":project["id"],"expectedRevision":project["revision"]},
+        }).to_string())).unwrap();
+    let mut unmasked = imported["document"].clone();
+    unmasked["compositions"]["concat-timeline-0"]["content"]["tracks"][0]["clips"][0]["sourceId"] = json!("slot");
+    let mut frames = Vec::new();
+    for (project, document) in [
+        (&original["project"], original["project"]["document"].clone()),
+        (imported, imported["document"].clone()),
+        (imported, unmasked),
+    ] {
+        let frame = render.clone().oneshot(preview(project, document)).await.unwrap();
+        let status = frame.status();
+        let pixels = to_bytes(frame.into_body(), 1 << 20).await.unwrap();
+        assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&pixels));
+        frames.push(pixels);
+    }
+    if replace {
+        assert_ne!(frames[0], frames[1]);
+    } else {
+        assert_eq!(frames[0], frames[1]);
+    }
+    assert_ne!(frames[1], frames[2], "fixture must visibly exercise its cutout");
 }

@@ -620,6 +620,10 @@ fn transition_side<'ctx>(
  let empty=GroupSurface::transparent(composition.canvas.width as usize,composition.canvas.height as usize)?;
  let mut output=LinearColorFrame::from_surface(&empty,checkpoint)?;
  let Some(clip)=clip.filter(|clip|clip.enabled)else{return Ok(output)};
+ let exact = if let Some(clock) = clip.placement.concat_retime.as_ref().filter(|_| held_tail) {
+  let (start, duration) = clock.timeline_window_ticks(clip.placement.timeline_start_tick, clip.placement.source_in_tick)?;
+  start + duration - 1
+ } else { exact };
  let Some(clocks)=super::video_effect_timing::sample(clip,exact)?else{return Ok(output)};
  let source_exact=source_override.unwrap_or(clocks.frame as i128);
  let source=if clip.placement.concat_retime.is_some(){super::video_clock::FrameTime::SourceTicks(i64::try_from(source_exact)?)}else{super::video_clock::FrameTime::Microseconds(u64::try_from(source_exact/254016)?)};

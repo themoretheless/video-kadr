@@ -203,8 +203,8 @@ pub async fn nested_preview_handler(
     let token=tokio_util::sync::CancellationToken::new();let _cancel=token.clone().drop_guard();
     let frame = tokio::spawn(async move {
         let _permit=permit;
-        let mut masks=super::concat_video_bound::BoundMasks::load(&state,&actor,request.saved_project.as_ref(),&request.project,&token).await?;
-        let check=state.clone();let check_actor=actor.clone();let authorities=masks.authorities();
+        let mut masks=super::concat_video_bound::BoundMasks::load_preview(&state,&actor,request.saved_project.as_ref(),&request.project,&token).await?;
+        let check=state.clone();let check_actor=actor.clone();let authorities=masks.authorities();let current_only=masks.current_only();
         let frame=tokio::task::spawn_blocking(move || {
             let mut filter=|node:&str,clip:&crate::domain::composition::CompositionClipId,source:&crate::domain::composition::SourceId,time,frame:&mut crate::domain::group_surface::GroupSurface|masks.apply(node,clip,source,time,frame);
             let frame=crate::domain::group_media::render_project_frame_sources_with_clip_filter(
@@ -219,7 +219,7 @@ pub async fn nested_preview_handler(
             }else{frame.rgba};
             anyhow::Ok((frame.width,frame.height,body))
         }).await??;
-        super::concat_video_bound::recheck_authorities(&check,&check_actor,&authorities).await?;
+        super::concat_video_bound::recheck_preview_authorities(&check,&check_actor,&authorities,current_only).await?;
         anyhow::ensure!(!token.is_cancelled(),"saved preview cancelled");
         anyhow::Ok(frame)
     }).await.map_err(|error|AppError::bad_request(error.to_string()))?.map_err(|error|AppError::bad_request(error.to_string()))?;

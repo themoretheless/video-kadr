@@ -4,7 +4,7 @@ use anyhow::{ensure,Result};
 use tokio_util::sync::CancellationToken;
 use crate::{state::AppState,domain::{concat_cutout_import::Subject,concat_cutout_clock::MaskTimeline},services::{concat_cutout_selection::{self,Model},concat_cutout_still::Engine,concat_video_selection,concat_video_analysis::{RunCache,FillReport},concat_video_sample::Input,local_enhance_video::Tools}};
 pub struct Report{pub fill:FillReport,pub cache_reused:bool,pub model_hash:Option<String>}
-async fn load(state:&AppState,actor:&str,model:Model)->Result<Engine>{match model{
+pub(super) async fn load(state:&AppState,actor:&str,model:Model)->Result<Engine>{match model{
  Model::Person=>Ok(Engine::Person(state.person.as_ref().as_ref().ok_or_else(||anyhow::anyhow!("Person model unavailable"))?.clone())),
  Model::Selfie=>Ok(Engine::Selfie(state.selfie.as_ref().as_ref().ok_or_else(||anyhow::anyhow!("Selfie model unavailable"))?.clone())),
  Model::Object=>{let(config,_)=super::cutout_models::config_for_owner(state,actor).await.map_err(|_|anyhow::anyhow!("Object model unavailable"))?;Ok(Engine::Object(config))},

@@ -31,6 +31,19 @@ pub(super) async fn dispatch_job(state: &AppState, job_id: &str) {
             return;
         }
     }
+    // A waiting native export remains in the durable queue until the required slots
+    // are available. It does not occupy a worker, lease, or retry attempt.
+    let export_guards = match state.job_store.nested_export_uses_video(job_id).await {
+        Ok(Some(with_video)) => match state.try_acquire_export_execution(with_video) {
+            Some(guards) => Some(guards),
+            None => return,
+        },
+        Ok(None) => None,
+        Err(error) => {
+            tracing::error!(job.id = job_id, %error, "load job kind before dispatch");
+            return;
+        }
+    };
     let lease_seconds = i64::try_from(state.job_timeout().as_secs())
         .unwrap_or(i64::MAX)
         .saturating_add(60);
@@ -193,7 +206,8 @@ pub(super) async fn dispatch_job(state: &AppState, job_id: &str) {
                 let work=serde_json::from_value::<super::nested_export::NestedExportWork>(envelope.payload)?;
                 anyhow::ensure!(work.schema_version==1,"unsupported native export work version");
                 let lease=JobLeaseHeartbeat::start(state,job_id,envelope.attempt,lease_seconds);
-                super::nested_export::spawn_nested_export_job(state.clone(),job_id.into(),work,envelope.attempt,token,lease);
+                let guards = export_guards.ok_or_else(|| anyhow::anyhow!("native export dispatch has no execution slots"))?;
+                super::nested_export::spawn_nested_export_job(state.clone(),job_id.into(),work,envelope.attempt,token,lease,guards);
             }
             JobKind::Proxy => {
                 let work = serde_json::from_value::<ProxyWork>(envelope.payload)?;
@@ -279,6 +293,17 @@ impl JobLeaseHeartbeat {
 impl Drop for JobLeaseHeartbeat {
     fn drop(&mut self) {
         self.stop.cancel();
+    }
+}
+
+pub(super) async fn dispatch_waiting_native_exports(state: &AppState) {
+    match state.job_store.deliverable_ids_for_kind(Some(JobKind::NestedExport)).await {
+        Ok(ids) => {
+            for id in ids {
+                dispatch_job(state, &id).await;
+            }
+        }
+        Err(error) => tracing::error!(%error, "load native export queue"),
     }
 }
 
@@ -436,7 +461,11 @@ pub async fn retry_job_handler(
         .await
         .map_err(|error| AppError::conflict(error.to_string()))?;
     state.replace_job(job).await;
-    dispatch_job(&state, &id).await;
+    if state.job_store.is_nested_export(&id).await.unwrap_or(false) {
+        dispatch_waiting_native_exports(&state).await;
+    } else {
+        dispatch_job(&state, &id).await;
+    }
     Ok(Json(json!({ "jobId": id, "status": "pending" })))
 }
 

@@ -113,6 +113,59 @@ pub struct ReadyVideoBinding {
 }
 pub type VideoBindings=BTreeMap<String,BTreeMap<String,ReadyVideoBinding>>;
 
+/// A video mask to construct after verifying the selected library source.
+#[derive(Debug)]
+pub struct PendingVideoCutout {
+    pub timeline_id: String,
+    pub clip_id: super::composition::CompositionClipId,
+    pub source_id: super::composition::SourceId,
+    pub settings: super::concat_cutout_import::Plan,
+}
+
+pub(crate) struct PendingStillCutout {
+    pub timeline_id: String,
+    pub clip_id: String,
+    pub media_id: String,
+    pub settings: super::concat_cutout_import::Plan,
+}
+
+#[derive(Default)]
+struct PendingCutouts {
+    videos: Vec<PendingVideoCutout>,
+    stills: Option<Vec<PendingStillCutout>>,
+}
+
+/// Resolve every clip and source before starting inference for missing stills.
+pub(crate) fn preflight_generated_stills(
+    request: &ImportRequest,
+    stills: &StillBindings,
+) -> Result<Vec<PendingStillCutout>> {
+    validate_request(request)?;
+    let mut pending = PendingCutouts { stills: Some(Vec::new()), ..Default::default() };
+    let (project, _) = convert(
+        &request.document, &request.media_bindings, &request.font_bindings, stills,
+        &VideoBindings::new(), request.preserve_media_ids, Some(&mut pending),
+    )?;
+    ensure!(
+        project.project_media.values().all(|media| !media.placeholder),
+        "Выберите файлы для всех слотов Concat"
+    );
+    Ok(pending.stills.unwrap_or_default())
+}
+
+/// The assembled draft must rebuild every returned mask before publication.
+pub fn prepare_video_import(
+    request: ImportRequest,
+    stills: &StillBindings,
+) -> Result<(ImportReport, Vec<PendingVideoCutout>)> {
+    let mut pending = PendingCutouts::default();
+    let report = import_impl(request, stills, &VideoBindings::new(), Some(&mut pending))?;
+    if report.project.is_none() {
+        pending.videos.clear();
+    }
+    Ok((report, pending.videos))
+}
+
 pub fn import(request: ImportRequest) -> Result<ImportReport> {
     import_with_still_bindings(request,&StillBindings::new())
 }
@@ -120,10 +173,22 @@ pub fn import_with_still_bindings(request:ImportRequest,ready:&StillBindings)->R
     import_with_ready_bindings(request,ready,&VideoBindings::new())
 }
 pub fn import_with_ready_bindings(request:ImportRequest,ready:&StillBindings,videos:&VideoBindings)->Result<ImportReport>{
+    import_impl(request, ready, videos, None)
+}
+fn validate_request(request: &ImportRequest) -> Result<()> {
     ensure!(request.schema_version == 1, "unsupported import schema");
     ensure!(serde_json::to_vec(&request.document)?.len()<=4*1024*1024,"Concat source document exceeds 4 MiB");
+    Ok(())
+}
+fn import_impl(
+    request: ImportRequest,
+    ready: &StillBindings,
+    videos: &VideoBindings,
+    pending: Option<&mut PendingCutouts>,
+) -> Result<ImportReport> {
+    validate_request(&request)?;
     let original = request.document;
-    let converted = convert(&original, &request.media_bindings,&request.font_bindings,ready,videos,request.preserve_media_ids);
+    let converted = convert(&original, &request.media_bindings,&request.font_bindings,ready,videos,request.preserve_media_ids,pending);
     let font_warnings=original.get("fonts").and_then(Value::as_array).into_iter().flatten().filter(|font|font.get("path").and_then(Value::as_str).and_then(|path|request.font_bindings.get(path)).is_some_and(|binding|binding.fallback)).map(|font|format!("Шрифт {} не встроен: выбрана системная замена.",font.get("family").and_then(Value::as_str).unwrap_or(""))).collect::<Vec<_>>();
     Ok(match converted {
         Ok((project, timeline_ids)) => ImportReport {
@@ -228,6 +293,7 @@ fn convert(
     ready:&StillBindings,
     videos:&VideoBindings,
     preserve_media_ids:bool,
+    mut pending: Option<&mut PendingCutouts>,
 ) -> Result<(NestedCompositionProject, BTreeMap<String, String>)> {
     let physical_bindings=bindings;
     let logical_bindings;
@@ -462,8 +528,34 @@ fn convert(
                         view.as_object_mut().context("invalid video clip")?.remove("cutout");
                         used_videos.insert((old_id.to_owned(),clip_id.to_owned()));
                     }
-                    let mut native = convert_clip(&view, bindings, width, height)
+                    let defer_still = kind == "image"
+                        && pending.as_ref().is_some_and(|pending| pending.stills.is_some());
+                    let pending_settings = if (kind == "video" && pending.is_some()) || defer_still {
+                        view.as_object_mut().context("invalid cutout clip")?
+                            .remove("cutout").filter(|value| !value.is_null())
+                            .map(|value| super::concat_cutout_import::plan(&value)).transpose()?
+                    } else {
+                        None
+                    };
+                    let mut native = convert_clip_at_rate(&view, bindings, width, height, (num as u32, den as u32))
                         .with_context(|| clip_path.clone())?;
+                    if let Some((settings, pending)) = pending_settings.zip(pending.as_deref_mut()) {
+                        if let Some(stills) = pending.stills.as_mut().filter(|_| defer_still) {
+                            stills.push(PendingStillCutout {
+                                timeline_id: old_id.to_owned(),
+                                clip_id: clip_id.to_owned(),
+                                media_id: text(clip, "mediaId")?.to_owned(),
+                                settings,
+                            });
+                        } else {
+                            pending.videos.push(PendingVideoCutout {
+                                timeline_id: id.clone(),
+                                clip_id: super::composition::CompositionClipId::parse(clip_id)?,
+                                source_id: super::composition::SourceId::parse(text(&native, "sourceId")?)?,
+                                settings,
+                            });
+                        }
+                    }
                     if native.get("detachedFrom").is_some_and(Value::is_string){native["concatDetachedOrder"]=json!(ci);}
                     let clip_id = text(clip, "id")?;
                     ensure!(
@@ -577,7 +669,38 @@ fn convert(
     project.dependency_order()?;
     Ok((project, mapping))
 }
-pub(crate) fn convert_clip(
+pub(crate) fn convert_clip_at_rate(
+    clip: &Value,
+    bindings: &BTreeMap<String, CompositionSource>,
+    width: f64,
+    height: f64,
+    (rate_num, rate_den): (u32, u32),
+) -> Result<Value> {
+    if !matches!(clip["kind"].as_str(), Some("video" | "audio")) || !clip.as_object().is_some_and(|clip| clip.contains_key("speedCurve")) {
+        return convert_clip(clip, bindings, width, height);
+    }
+    let mut view = clip.clone();
+    view.as_object_mut().context("invalid media clip")?.remove("speedCurve");
+    let mut native = convert_clip(&view, bindings, width, height)?;
+    if !clip["speedCurve"].is_null() {
+        let points: Vec<super::concat_retime_edit::Point> =
+            serde_json::from_value(clip["speedCurve"].clone())?;
+        let clock = super::concat_retime_edit::Clock {
+            start: number(clip, "start", 0.0)?,
+            duration: number(clip, "duration", 1.0)?,
+            source_start: number(clip, "sourceStart", 0.0)?,
+            speed: number(clip, "speed", 1.0)?,
+            speed_curve: (!points.is_empty()).then_some(points),
+        };
+        let mut placement = clock.placement(rate_num, rate_den)?;
+        let source = bindings.get(text(clip, "mediaId")?).context("missing speed-curve media binding")?;
+        placement.concat_source_eof = placement.source_out_tick > source.duration_ticks;
+        native["placement"] = serde_json::to_value(placement)?;
+    }
+    Ok(native)
+}
+
+fn convert_clip(
     clip: &Value,
     bindings: &BTreeMap<String, CompositionSource>,
     width: f64,
@@ -800,14 +923,13 @@ pub(crate) fn convert_clip(
             out["audioFadeOutTicks"]=json!(ticks(number(clip,"fadeOut",0.)?)?);
             out["placement"] = placement;
             out["sourceAudioEnabled"] =
-                json!(source.has_audio && clip.get("muted").and_then(Value::as_bool) != Some(true));
+                json!(clip.get("muted").and_then(Value::as_bool) != Some(true));
             out["audioGain"] = value(gain);
             out["concatGainKeys"]=serde_json::to_value(&gain_keys)?;
         } else {
             let raw_start = number(clip, "sourceStart", 0.)?;
             let curve = match clip.get("speedCurve") {
                 None|Some(Value::Null)=>None,
-                Some(Value::Array(points)) if points.is_empty()=>None,
                 Some(value)=>Some(serde_json::from_value::<Vec<super::concat_retime_edit::Point>>(value.clone())?),
             };
             if speed != 1. || raw_start != 0. || curve.is_some() {

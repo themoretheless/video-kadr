@@ -17,7 +17,7 @@ use std::collections::BTreeMap;
 pub struct SavedReference {
     timeline_id: String,
     clip_id: String,
-    project_id: String,
+    pub(crate) project_id: String,
     composition_id: Option<String>,
     source_clip_id: String,
     expected_revision: u64,
@@ -98,92 +98,9 @@ pub async fn handler(
                     super::cutout_jobs::source(&state, source.id.as_str(), &actor).await?,
                 );
             }
-            let mut ready = StillBindings::new();
-            let mut checks = vec![];
-            for reference in input.prepared_stills {
-                ensure!(!cancel.is_cancelled(), "ready import cancelled");
-                ensure!(
-                    !ready
-                        .get(&reference.timeline_id)
-                        .is_some_and(|clips| clips.contains_key(&reference.clip_id)),
-                    "duplicate prepared destination"
-                );
-                let plan = settings(
-                    &input.request.document,
-                    &reference.timeline_id,
-                    &reference.clip_id,
-                    "image",
-                )?;
-                let clip = CompositionClipId::parse(&reference.source_clip_id)?;
-                let saved = state
-                    .db
-                    .get_composition_project_for(&reference.project_id, &actor)
-                    .await?
-                    .context("saved source project unavailable")?;
-                ensure!(
-                    saved.revision == reference.expected_revision,
-                    "stale saved cutout revision"
-                );
-                let descriptors = crate::domain::concat_cutout_binding::saved_still(
-                    &saved.document,
-                    reference.composition_id.as_deref(),
-                    &clip,
-                )?;
-                for source in [&descriptors.original, &descriptors.copy, &descriptors.mask]
-                    .into_iter()
-                    .chain(descriptors.regions.iter())
-                {
-                    let physical = super::concat_cutout_access::library_id(
-                        &saved.document,
-                        source.id.as_str(),
-                    )?;
-                    super::library::authorize_source_access(&state, &physical, &headers)
-                        .await
-                        .map_err(|_| anyhow::anyhow!("saved cutout file access denied"))?;
-                }
-                let candidate = super::concat_cutout_access::verify_saved_still(
-                    &state,
-                    &actor,
-                    &reference.project_id,
-                    reference.composition_id.as_deref(),
-                    &clip,
-                    reference.expected_revision,
-                    &plan,
-                    &cancel,
-                )
-                .await?;
-                let mut assets = candidate.assets.clone();
-                let physical =
-                    |id: &str| super::concat_cutout_access::library_id(&saved.document, id);
-                let original = physical(assets.original.id.as_str())?;
-                assets.snapshot.source_id = original.clone();
-                assets.snapshot.mask_source_id = physical(&assets.snapshot.mask_source_id)?;
-                for stroke in &mut assets.snapshot.correction.strokes {
-                    if let Some(region) = &mut stroke.region {
-                        region.source_id = original.clone();
-                        region.mask_source_id = physical(&region.mask_source_id)?;
-                    }
-                }
-                for source in [&mut assets.original, &mut assets.copy, &mut assets.mask]
-                    .into_iter()
-                    .chain(assets.regions.iter_mut())
-                {
-                    source.id = SourceId::parse(physical(source.id.as_str())?)?;
-                }
-                let snapshot = &assets.snapshot;
-                let binding = ReadyStillBinding {
-                    source_settings: plan.clone(),
-                    source_hash: snapshot.source_hash.clone(),
-                    model_hash: snapshot.model_hash.clone(),
-                    runtime_hash: snapshot.runtime_hash.clone(),
-                    assets,
-                };
-                ready
-                    .entry(reference.timeline_id.clone())
-                    .or_insert_with(BTreeMap::new)
-                    .insert(reference.clip_id.clone(), binding);
-                checks.push((reference, clip, plan, candidate));
-            }
+            let (ready, checks) = verify_stills(
+                &state, &actor, &headers, &input.request.document, input.prepared_stills, &cancel,
+            ).await?;
             let mut videos=crate::domain::concat_project_import::VideoBindings::new();
             let mut video_checks=vec![];
             for reference in input.prepared_videos {
@@ -204,28 +121,7 @@ pub async fn handler(
             }
             // Every referenced project/file is checked again after conversion; no
             // library records, assets or saved documents are created by this route.
-            for (reference, clip, plan, before) in checks {
-                let current = super::concat_cutout_access::verify_saved_still(
-                    &state,
-                    &actor,
-                    &reference.project_id,
-                    reference.composition_id.as_deref(),
-                    &clip,
-                    reference.expected_revision,
-                    &plan,
-                    &cancel,
-                )
-                .await?;
-                ensure!(
-                    current.paths == before.paths
-                        && current.assets.snapshot == before.assets.snapshot
-                        && current.assets.original == before.assets.original
-                        && current.assets.copy == before.assets.copy
-                        && current.assets.mask == before.assets.mask
-                        && current.assets.regions == before.assets.regions,
-                    "saved cutout changed during import"
-                );
-            }
+            recheck_stills(&state, &actor, checks, &cancel).await?;
             for (id, path) in media_paths {
                 super::library::authorize_source_access(&state, id.as_str(), &headers)
                     .await
@@ -246,6 +142,141 @@ pub async fn handler(
         .map_err(|e| AppError::internal("join ready cutout import", e))?
         .map_err(|e| AppError::conflict(e.to_string()))?;
     Ok(([("cache-control", "private, no-store")], Json(report)))
+}
+
+pub(crate) struct StillCheck {
+    reference: SavedReference,
+    clip: CompositionClipId,
+    plan: crate::domain::concat_cutout_import::Plan,
+    before: super::concat_cutout_access::SavedStillCandidate,
+}
+
+pub(crate) async fn verify_stills(
+    state: &AppState,
+    actor: &str,
+    headers: &HeaderMap,
+    document: &Value,
+    references: Vec<SavedReference>,
+    cancel: &tokio_util::sync::CancellationToken,
+) -> Result<(StillBindings, Vec<StillCheck>)> {
+    let mut ready = StillBindings::new();
+    let mut checks = vec![];
+    for reference in references {
+        ensure!(!cancel.is_cancelled(), "ready import cancelled");
+        ensure!(
+            !ready
+                .get(&reference.timeline_id)
+                .is_some_and(|clips| clips.contains_key(&reference.clip_id)),
+            "duplicate prepared destination"
+        );
+        let plan = settings(
+            document,
+            &reference.timeline_id,
+            &reference.clip_id,
+            "image",
+        )?;
+        let clip = CompositionClipId::parse(&reference.source_clip_id)?;
+        let saved = state
+            .db
+            .get_composition_project_for(&reference.project_id, &actor)
+            .await?
+            .context("saved source project unavailable")?;
+        ensure!(
+            saved.revision == reference.expected_revision,
+            "stale saved cutout revision"
+        );
+        let descriptors = crate::domain::concat_cutout_binding::saved_still(
+            &saved.document,
+            reference.composition_id.as_deref(),
+            &clip,
+        )?;
+        for source in [&descriptors.original, &descriptors.copy, &descriptors.mask]
+            .into_iter()
+            .chain(descriptors.regions.iter())
+        {
+            let physical = super::concat_cutout_access::library_id(
+                &saved.document,
+                source.id.as_str(),
+            )?;
+            super::library::authorize_source_access(state, &physical, headers)
+                .await
+                .map_err(|_| anyhow::anyhow!("saved cutout file access denied"))?;
+        }
+        let candidate = super::concat_cutout_access::verify_saved_still(
+            state,
+            actor,
+            &reference.project_id,
+            reference.composition_id.as_deref(),
+            &clip,
+            reference.expected_revision,
+            &plan,
+            cancel,
+        )
+        .await?;
+        let mut assets = candidate.assets.clone();
+        let physical =
+            |id: &str| super::concat_cutout_access::library_id(&saved.document, id);
+        let original = physical(assets.original.id.as_str())?;
+        assets.snapshot.source_id = original.clone();
+        assets.snapshot.mask_source_id = physical(&assets.snapshot.mask_source_id)?;
+        for stroke in &mut assets.snapshot.correction.strokes {
+            if let Some(region) = &mut stroke.region {
+                region.source_id = original.clone();
+                region.mask_source_id = physical(&region.mask_source_id)?;
+            }
+        }
+        for source in [&mut assets.original, &mut assets.copy, &mut assets.mask]
+            .into_iter()
+            .chain(assets.regions.iter_mut())
+        {
+            source.id = SourceId::parse(physical(source.id.as_str())?)?;
+        }
+        let snapshot = &assets.snapshot;
+        let binding = ReadyStillBinding {
+            source_settings: plan.clone(),
+            source_hash: snapshot.source_hash.clone(),
+            model_hash: snapshot.model_hash.clone(),
+            runtime_hash: snapshot.runtime_hash.clone(),
+            assets,
+        };
+        ready
+            .entry(reference.timeline_id.clone())
+            .or_insert_with(BTreeMap::new)
+            .insert(reference.clip_id.clone(), binding);
+        checks.push(StillCheck { reference, clip, plan, before: candidate });
+    }
+    Ok((ready, checks))
+}
+
+pub(crate) async fn recheck_stills(
+    state: &AppState,
+    actor: &str,
+    checks: Vec<StillCheck>,
+    cancel: &tokio_util::sync::CancellationToken,
+) -> Result<()> {
+    for StillCheck { reference, clip, plan, before } in checks {
+        let current = super::concat_cutout_access::verify_saved_still(
+            state,
+            actor,
+            &reference.project_id,
+            reference.composition_id.as_deref(),
+            &clip,
+            reference.expected_revision,
+            &plan,
+            cancel,
+        )
+        .await?;
+        ensure!(
+            current.paths == before.paths
+                && current.assets.snapshot == before.assets.snapshot
+                && current.assets.original == before.assets.original
+                && current.assets.copy == before.assets.copy
+                && current.assets.mask == before.assets.mask
+                && current.assets.regions == before.assets.regions,
+            "saved cutout changed during import"
+        );
+    }
+    Ok(())
 }
 
 /// Build a server-owned binding from the selected saved clip and verified stores.

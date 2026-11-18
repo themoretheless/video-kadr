@@ -133,8 +133,7 @@ pub fn set_placeholder(
                         continue;
                     };
                     ensure!(
-                        &clip.source_id != id
-                            && !binding
+                        !binding
                                 .region_tracks
                                 .iter()
                                 .any(|region| region.snapshot.mask_source_id == id.as_str()),
@@ -252,4 +251,55 @@ impl NestedCompositionProject {
             .and_then(|item| item.library_source_id.as_ref())
             .unwrap_or(logical)
     }
+}
+
+// The cache registry retains old files for Undo. Drop only declarations that
+// are no longer referenced by the active document or explicitly kept in its bin.
+pub(crate) fn prune_retired_regions(
+    document: &mut NestedCompositionProject,
+    candidates: &std::collections::BTreeSet<SourceId>,
+) -> Result<()> {
+    fn remove_references(
+        value: &serde_json::Value,
+        unused: &mut std::collections::BTreeSet<String>,
+    ) {
+        match value {
+            serde_json::Value::String(value) => {
+                unused.remove(value);
+            }
+            serde_json::Value::Array(values) => {
+                for value in values {
+                    remove_references(value, unused);
+                }
+            }
+            serde_json::Value::Object(values) => {
+                for value in values.values() {
+                    remove_references(value, unused);
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut unused = candidates
+        .iter()
+        .filter(|id| !document.project_media.contains_key(*id))
+        .map(|id| id.as_str().to_owned())
+        .collect();
+    for node in document.compositions.values() {
+        remove_references(
+            &serde_json::to_value((&node.content.tracks, &node.content.metadata))?,
+            &mut unused,
+        );
+    }
+    for node in document.compositions.values_mut() {
+        node.content
+            .sources
+            .retain(|id, _| !unused.contains(id.as_str()));
+        if let Some(metadata) = &mut node.content.metadata {
+            metadata
+                .source_names
+                .retain(|id, _| !unused.contains(id.as_str()));
+        }
+    }
+    Ok(())
 }

@@ -52,3 +52,34 @@ it('clears a private inspection and refuses its late metadata on account change'
  const signal=vi.mocked(api.inspectNativeTemplatePackage).mock.calls[0]![2]!;instance.changeAccount();await tick();expect(signal.aborted).toBe(true)
  resolve(info);await tick();await Promise.resolve();expect(document.querySelectorAll('select')).toHaveLength(0);expect(document.body.textContent).not.toContain('private.vktemplate');expect(button('Проверить шаблон').disabled).toBe(true)
 })
+
+it('fills an inspected package slot directly from a local file', async () => {
+ vi.mocked(api.inspectNativeTemplatePackage).mockResolvedValue(info)
+ vi.mocked(api.importNativeTemplate).mockResolvedValue({project:{id:'saved',name:'Local edit'}} as api.NativeTemplateImportResponse)
+ const store = await import('$lib/state/store.svelte')
+ const upload = vi.spyOn(store, 'doUpload').mockResolvedValue({
+  id:'uploaded', filename:'clip.mp4', url:'/files/sources/clip.mp4', mediaType:'video', duration:3, width:16, height:8,
+ })
+ try {
+  const {file,oncreated} = await setup()
+  await inspect()
+  const input = document.querySelector<HTMLInputElement>('input[accept^="image/"]')!
+  const local = new File(['video'], 'clip.mp4', {type:'video/mp4'})
+  Object.defineProperty(input, 'files', {value:[local]})
+  input.dispatchEvent(new Event('change', {bubbles:true}))
+  await vi.waitFor(() => expect(document.querySelector('select')?.value).toBe('uploaded'))
+  expect(upload).toHaveBeenCalledExactlyOnceWith(local, false)
+  const second = document.querySelectorAll('select')[1]!
+  second.value = 'chosen'
+  second.dispatchEvent(new Event('change', {bubbles:true}))
+  await tick()
+  button('Создать проект из выбранного шаблона').click()
+  await vi.waitFor(() => expect(oncreated).toHaveBeenCalledOnce())
+  expect(api.importNativeTemplate).toHaveBeenCalledWith(
+   file, [{mediaId:'b', sourceId:'uploaded'}, {mediaId:'a', sourceId:'chosen'}],
+   'owner', 'space', expect.any(AbortSignal), undefined,
+  )
+ } finally {
+  upload.mockRestore()
+ }
+})

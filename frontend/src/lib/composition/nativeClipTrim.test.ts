@@ -6,6 +6,17 @@ import { trimNativeClipEnds, trimNativeClipStarts } from './nativeClipTrim'
 import { editNativeTrack } from './nativeTrackEdit'
 import { insertNativeMedia } from './nativeClipInsert'
 const project = () => structuredClone(fixture.nativeFirstFree[0]!.after) as unknown as NativeNestedProject
+it('trims either edge of a saved video lane with omitted empty transitions', () => {
+  const input = project()
+  const track = input.compositions['new-timeline']!.content.tracks[1]!
+  expect(Reflect.deleteProperty(track, 'transitions')).toBe(true)
+  for (const [trim, delta] of [[trimNativeClipStarts, 500_000], [trimNativeClipEnds, -500_000]] as const) {
+    const output = trim(input, 'new-timeline', ['auto-first'], delta)
+    expect(output.compositions['new-timeline']!.content.tracks[1]).toMatchObject({
+      transitions: [], clips: [{placement:{timelineDurationTick: 2_500_000}}],
+    })
+  }
+})
 it('trims and extends both linked AV members, preserving metadata, animation and input', () => {
   const input = project(), before = JSON.stringify(input)
   expect(trimNativeClipEnds(input, 'new-timeline', ['auto-first'], 0)).toBe(input)

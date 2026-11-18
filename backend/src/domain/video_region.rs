@@ -173,6 +173,22 @@ pub fn validate_frame_times(times: Option<&[u64]>, frames: u64) -> Result<()> {
     Ok(())
 }
 /// Callers validate the immutable clock once before repeated random access.
+pub(crate) fn last_frame_time_us(
+    frames: u64,
+    rate: super::composition::FrameRateRatio,
+    times: Option<&[u64]>,
+) -> Result<u64> {
+    ensure!(frames > 0 && rate.numerator > 0 && rate.denominator > 0, "invalid temporal region clock");
+    let end = match times {
+        Some(times) => *times.last().ok_or_else(|| anyhow::anyhow!("empty temporal region clock"))?,
+        None => u64::try_from(
+            (u128::from(frames) * 1_000_000 * u128::from(rate.denominator))
+                .div_ceil(u128::from(rate.numerator)),
+        )?,
+    };
+    end.checked_sub(1).ok_or_else(|| anyhow::anyhow!("empty temporal region duration"))
+}
+
 pub fn frame_ordinal(
     source_us: u64,
     frames: u64,

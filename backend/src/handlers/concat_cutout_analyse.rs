@@ -2,7 +2,7 @@
 use anyhow::{ensure,Result};
 use axum::{extract::{Path,State},http::HeaderMap,Json};
 use serde::Deserialize;
-use crate::{state::AppState,error::{ApiJson,AppError,AppResult},domain::{composition::{Composition,CompositionClipId,CompositionTrack},concat_cutout_import::plan},services::{concat_cutout_still::{self,Engine},concat_cutout_selection::Model},config::resource_classes::ResourceClass};
+use crate::{state::AppState,error::{ApiJson,AppError,AppResult},domain::{composition::{Composition,CompositionClipId,CompositionTrack,CompositionSource,SourceId},concat_cutout_import::{plan,Plan}},services::concat_cutout_still::{self,PreparedStill,SavedRegions},config::resource_classes::ResourceClass};
 #[derive(Deserialize)]
 #[serde(rename_all="camelCase",deny_unknown_fields)]
 pub struct Request{composition_id:Option<String>,clip_id:String,expected_revision:u64,cutout:serde_json::Value}
@@ -48,22 +48,58 @@ pub async fn handler(State(state):State<AppState>,Path(project):Path<String>,hea
    }
   }
   let _models=tokio::select!{biased;_=token.cancelled()=>anyhow::bail!("cutout request cancelled"),guard=state.cutout_model_ops.lock()=>guard};
-  let root=state.storage.join("concat-analysis");tokio::fs::create_dir_all(&root).await?;
-  let(tx,_rx)=tokio::sync::mpsc::unbounded_channel();
-  let analysed=concat_cutout_still::analyse(&state.process_runtime,settings.subject,None,&source,&hash,&root,|model|{let state=state.clone();let actor=actor.clone();async move{match model{
-   Model::Person=>{let config=state.person.as_ref().as_ref().ok_or_else(||anyhow::anyhow!("Person model unavailable"))?.clone();crate::services::local_person::identity(&config).await?;Ok(Engine::Person(config))},
-   Model::Selfie=>{let config=state.selfie.as_ref().as_ref().ok_or_else(||anyhow::anyhow!("Selfie model unavailable"))?.clone();crate::services::local_selfie::identity(&config).await?;Ok(Engine::Selfie(config))},
-   Model::Object=>{let(config,_)=super::cutout_models::config_for_owner(&state,&actor).await.map_err(|_|anyhow::anyhow!("Object model unavailable"))?;crate::services::local_cutout::identity(&config).await?;Ok(Engine::Object(config))},
-  }}},&token,std::time::Duration::from_secs(1800),&tx).await?;
-  let mut copy=original.clone();copy.id=crate::domain::composition::SourceId::parse(uuid::Uuid::new_v4().to_string())?;
-  let mut mask=copy.clone();mask.id=crate::domain::composition::SourceId::parse(uuid::Uuid::new_v4().to_string())?;mask.width=analysed.metadata.mask_width;mask.height=analysed.metadata.mask_height;
-  let prepared=analysed.prepare_binding_with_regions(&state.process_runtime,&source,settings,original,copy,mask,regions,&token,std::time::Duration::from_secs(1800),&tx).await?;
+  let prepared = prepare_still(&state, &actor, &source, &hash, settings, original, regions, &token).await?;
   let registered=super::concat_cutout_publish::register(&state,&actor,&project,request.expected_revision,prepared,&token).await?;
   super::concat_cutout_publish::apply_registered(&state,&actor,&project,request.composition_id.as_deref(),&clip,request.expected_revision,&registered,&token).await
  }.await;
  if result.is_err(){for id in generated{if state.db.composition_source_reference_count(&id).await.unwrap_or(1)==0{let _=state.library.remove(&id).await;if state.library.get(&id).await.is_none(){let _=state.db.release_space_source_claim(&id).await;}}}}
  result});
  work.await.map_err(|e|AppError::internal("join cutout analysis",e))?.map(Json).map_err(|e|AppError::conflict(e.to_string()))
+}
+
+/// Analyse a verified image and stage the original-compatible mask and cutout.
+pub(super) async fn prepare_still(
+    state: &AppState,
+    actor: &str,
+    source: &std::path::Path,
+    hash: &str,
+    settings: Plan,
+    original: CompositionSource,
+    regions: SavedRegions,
+    cancel: &tokio_util::sync::CancellationToken,
+) -> Result<PreparedStill> {
+    let root = state.storage.join("concat-analysis");
+    tokio::fs::create_dir_all(&root).await?;
+    let (progress, _) = tokio::sync::mpsc::unbounded_channel();
+    let limit = std::time::Duration::from_secs(1800);
+    let analysed = concat_cutout_still::analyse(
+        &state.process_runtime,
+        settings.subject,
+        None,
+        source,
+        hash,
+        &root,
+        |model| async move {
+            let engine = super::concat_video_run::load(state, actor, model).await?;
+            engine.sequence().identity().await?;
+            Ok(engine)
+        },
+        cancel,
+        limit,
+        &progress,
+    )
+    .await?;
+    let mut copy = original.clone();
+    copy.id = SourceId::parse(uuid::Uuid::new_v4().to_string())?;
+    let mut mask = copy.clone();
+    mask.id = SourceId::parse(uuid::Uuid::new_v4().to_string())?;
+    mask.width = analysed.metadata.mask_width;
+    mask.height = analysed.metadata.mask_height;
+    analysed
+        .prepare_binding_with_regions(
+            &state.process_runtime, source, settings, original, copy, mask, regions, cancel, limit, &progress,
+        )
+        .await
 }
 
 /// Cancellation wins even when a resource becomes available simultaneously.

@@ -240,6 +240,14 @@ impl Db {
             sqlx::query("ALTER TABLE concat_video_project_caches ADD COLUMN model_hash TEXT NOT NULL DEFAULT '88d4531297118f595bf2fd60f6f566aec2e559393802d1f436c380f0cbbd2828'").execute(&mut *migration).await?;
         }
         sqlx::query("CREATE INDEX IF NOT EXISTS concat_video_project_cache_model_lookup ON concat_video_project_caches(project_id,source_id,video_hash,model_hash,runtime_hash)").execute(&mut *migration).await?;
+        sqlx::query(
+            "CREATE INDEX IF NOT EXISTS concat_video_cache_generation ON concat_video_project_caches(generation);
+             CREATE TABLE IF NOT EXISTS concat_video_retired_caches(generation TEXT PRIMARY KEY);
+             CREATE TRIGGER IF NOT EXISTS concat_video_cache_retired
+             AFTER DELETE ON concat_video_project_caches BEGIN
+               INSERT OR IGNORE INTO concat_video_retired_caches(generation) VALUES(OLD.generation);
+             END;",
+        ).execute(&mut *migration).await?;
         migration.commit().await?;
 
         // Existing DBs created before error_kind still need the column.

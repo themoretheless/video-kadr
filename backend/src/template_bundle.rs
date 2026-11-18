@@ -4,7 +4,8 @@ mod instantiate;
 pub use instantiate::{instantiate, SlotFill};
 
 use crate::domain::{
-    composition::{CompositionTrack, SourceId},
+    composition::{CompositionClipId, CompositionTrack, SourceId, SourceKind},
+    concat_video_binding::Recipe,
     nested_composition::NestedCompositionProject,
     project_media::ProjectMediaItem,
 };
@@ -22,6 +23,7 @@ use zip::{write::SimpleFileOptions, CompressionMethod, ZipArchive, ZipWriter};
 const MANIFEST: &str = "template.json";
 const MAX_MANIFEST: u64 = crate::project_archive::MAX_ARCHIVE_MANIFEST_BYTES as u64;
 pub const MAX_POSTER_BYTES: usize = 1024 * 1024;
+pub const MAX_CONCAT_POSTER_BYTES: usize = 8 * 1024 * 1024;
 const MAX_ASSETS: u64 = crate::project_archive::MAX_ARCHIVE_TOTAL_MEDIA_BYTES;
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -32,8 +34,18 @@ pub struct Manifest {
     pub assets: Vec<Asset>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub video_caches: Vec<ArchivedVideoCache>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub slot_masks: Vec<SlotMask>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub poster: Option<Poster>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SlotMask {
+    pub timeline_id: String,
+    pub clip_id: CompositionClipId,
+    pub media_id: SourceId,
+    pub recipe: Recipe,
 }
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -81,13 +93,43 @@ pub struct Input {
 pub struct Plan {
     pub project: NestedCompositionProject,
     pub assets: BTreeMap<SourceId, SourceId>,
+    pub slot_masks: Vec<SlotMask>,
 }
 /// Replace physical bindings with package-local keys and erase slot bindings.
 /// Original descriptors remain for editorial authoring; original slot bytes do not ship.
 pub fn plan(project: &NestedCompositionProject) -> Result<Plan> {
     project.dependency_order()?;
     let mut next = project.clone();
-    for node in project.compositions.values() {
+    let mut slot_masks = Vec::new();
+    let mut retired = BTreeSet::new();
+    for (timeline_id, node) in &mut next.compositions {
+        for track in &mut node.content.tracks {
+            if let CompositionTrack::Video { clips, .. } = track {
+                for clip in clips {
+                    if !next
+                        .project_media
+                        .get(&clip.source_id)
+                        .is_some_and(|item| item.placeholder)
+                    {
+                        continue;
+                    }
+                    if let Some(binding) = clip.concat_cutout.take() {
+                        for region in &binding.region_tracks {
+                            retired.insert(SourceId::parse(&region.snapshot.mask_source_id)?);
+                        }
+                        slot_masks.push(SlotMask {
+                            timeline_id: timeline_id.clone(),
+                            clip_id: clip.id.clone(),
+                            media_id: clip.source_id.clone(),
+                            recipe: Recipe::from_binding(binding)?,
+                        });
+                    }
+                }
+            }
+        }
+    }
+    crate::domain::project_media::prune_retired_regions(&mut next, &retired)?;
+    for node in next.compositions.values() {
         for (id, source) in &node.content.sources {
             if let Some(item) = next.project_media.get(id) {
                 ensure!(
@@ -150,6 +192,7 @@ pub fn plan(project: &NestedCompositionProject) -> Result<Plan> {
     Ok(Plan {
         project: next,
         assets,
+        slot_masks,
     })
 }
 /// A mask belongs to the exact original bytes. Its source and region movies
@@ -244,6 +287,39 @@ fn validate(manifest: &Manifest) -> Result<()> {
             .context("Template asset size overflow")?;
     }
     validate_mask_sources(&manifest.project)?;
+    let mut seen_masks = BTreeSet::new();
+    for mask in &manifest.slot_masks {
+        mask.recipe.validate()?;
+        ensure!(
+            manifest
+                .project
+                .project_media
+                .get(&mask.media_id)
+                .is_some_and(|item| item.placeholder && item.source.kind == SourceKind::Video),
+            "Video mask recipe requires a video slot"
+        );
+        let matches = manifest
+            .project
+            .compositions
+            .get(&mask.timeline_id)
+            .into_iter()
+            .flat_map(|node| &node.content.tracks)
+            .filter_map(|track| match track {
+                CompositionTrack::Video { clips, .. } => Some(clips),
+                _ => None,
+            })
+            .flatten()
+            .filter(|clip| {
+                clip.id == mask.clip_id
+                    && clip.source_id == mask.media_id
+                    && clip.concat_cutout.is_none()
+            })
+            .count();
+        ensure!(
+            matches == 1 && seen_masks.insert((&mask.timeline_id, &mask.clip_id)),
+            "Invalid or duplicate template mask destination"
+        );
+    }
     crate::project_archive::video::validate_bindings(
         &serde_json::to_value(&manifest.project)?,
         &manifest.video_caches,
@@ -372,6 +448,7 @@ pub(crate) fn write_with_resources<W: Write + Seek>(
         project: prepared.project,
         assets,
         video_caches: video_caches.to_vec(),
+        slot_masks: prepared.slot_masks,
         poster,
     };
     validate(&manifest)?;

@@ -619,6 +619,27 @@ it('opens the native workspace with unavailable catalogs and downloads its saved
   poster.value='saved';poster.dispatchEvent(new Event('change',{bubbles:true}));await settle()
   button('Скачать архив шаблона Concat из сохранённой версии').click();await settle()
   expect(downloads[3]).toBe('/api/composition-projects/saved%2Fnative/concat-template?useSavedCover=true')
+  poster.value = 'auto'
+  poster.dispatchEvent(new Event('change', { bubbles: true }))
+  await settle()
+  button('Скачать архив шаблона Concat из сохранённой версии').click()
+  expect(downloads[4]).toBe('/api/composition-projects/saved%2Fnative/concat-template?autoPoster=true&posterCompositionId=root')
+  const submit = vi.spyOn(HTMLFormElement.prototype, 'requestSubmit').mockImplementation(() => {})
+  poster.value = 'file'
+  poster.dispatchEvent(new Event('change', { bubbles: true }))
+  await settle()
+  const download = button('Скачать архив шаблона Concat из сохранённой версии')
+  expect(download.disabled).toBe(true)
+  const input = target.querySelector<HTMLInputElement>('input[name="poster"]')!
+  Object.defineProperty(input, 'files', { value: [new File(['cover'], 'cover.png', { type: 'image/png' })] })
+  input.dispatchEvent(new Event('change', { bubbles: true }))
+  await settle()
+  expect(download.disabled).toBe(false)
+  download.click()
+  expect(submit).toHaveBeenCalledOnce()
+  expect(input.form?.getAttribute('action')).toBe('/api/composition-projects/saved%2Fnative/concat-template')
+  expect(downloads).toHaveLength(5)
+
   expect(JSON.stringify(nestedComposition.document)).toBe(before)
   expect(durationCalls).toBeGreaterThan(0);expect(previewCalls).toBeGreaterThan(0);expect(durations).toHaveBeenCalledTimes(durationCalls);expect(previews).toHaveBeenCalledTimes(previewCalls)
  }finally{await unmount(component)}

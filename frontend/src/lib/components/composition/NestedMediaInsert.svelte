@@ -8,8 +8,9 @@
   const project = $derived(nestedComposition.document)
   const active = $derived(nestedComposition.activeCompositionId ?? project?.root ?? '')
   const tracks = $derived(project?.compositions[active]?.content.tracks.filter(track => ['video', 'audio', 'image'].includes(track.kind)) ?? [])
-  let sourceId = $state(''), trackId = $state(''), start = $state(0), sourceIn = $state(0), duration = $state(5), videoAudio = $state(true), automatic = $state(false)
-  const selectedKind = $derived.by(() => { const entry = library.library.find(entry => entry.id === sourceId); return entry ? inferMediaType(entry) : null })
+  let sourceId = $state(''), trackId = $state(''), start = $state(0), sourceIn = $state(0), duration = $state(5), videoAudio = $state(true), automatic = $state(false), concatFit = $state(false)
+  const selectedEntry = $derived(library.library.find(entry => entry.id === sourceId && entry.kind === 'source'))
+  const selectedKind = $derived(selectedEntry ? inferMediaType(selectedEntry) : null)
   $effect(() => { if (active) { sourceId = ''; trackId = ''; start = untrack(() => nestedComposition.timeUs / 1000000) } })
   function plan() {
     if (!project) throw new Error('Нет проекта')
@@ -20,7 +21,7 @@
     const reserved = new Set(project.compositions[active]?.content.tracks.flatMap(track => track.clips.map(clip => clip.id)) ?? [])
     const trackIds = new Set(project.compositions[active]?.content.tracks.map(track => track.id) ?? [])
     let serial = 0; while (reserved.has(`insert-preview-${serial}`) || reserved.has(`insert-preview-${serial}-audio`) || trackIds.has(`insert-track-preview-${serial}`)) serial++
-    const request = { trackId, clipId: `insert-preview-${serial}`, startUs: Math.round(start * 1000000), sourceInUs: Math.round(sourceIn * 1000000), durationUs: Math.round(duration * 1000000), videoAudio, automatic, newTrackId: `insert-track-preview-${serial}` }
+    const request = { trackId, clipId: `insert-preview-${serial}`, startUs: Math.round(start * 1000000), sourceInUs: Math.round(sourceIn * 1000000), durationUs: Math.round(duration * 1000000), videoAudio, concatFit: source.kind !== 'audio' && concatFit, automatic, newTrackId: `insert-track-preview-${serial}` }
     if (automatic) insertNativeMediaAtFirstFree(project, active, source, request)
     else insertNativeMedia(project, active, source, request)
     return { source, request }
@@ -41,7 +42,10 @@
     <label><input type="checkbox" aria-label="Автоматический выбор дорожки" bind:checked={automatic} /> Выбрать свободную дорожку автоматически</label>
     <label>Дорожка <select disabled={automatic} aria-label="Дорожка для нового клипа" value={trackId} onchange={event => { trackId = event.currentTarget.value }}><option value="">Выберите дорожку</option>{#each tracks as track (track.id)}<option value={track.id} disabled={track.locked}>{track.name}</option>{/each}</select></label>
     {#if (automatic && selectedKind === 'video') || (!automatic && tracks.find(track => track.id === trackId)?.kind === 'video')}<label><input type="checkbox" aria-label="Использовать звук нового видео" bind:checked={videoAudio} /> Использовать звук видео</label>{/if}
-    {#if automatic && selectedKind === 'video' && videoAudio}<p>Видео и его звук добавляются отдельными клипами в одно время.</p>{/if}
+    {#if selectedKind === 'video' || selectedKind === 'image'}
+      <label><input type="checkbox" bind:checked={concatFit} /> {selectedKind === 'video' ? 'Подгонка изображения и звук как в Concat' : 'Подгонка изображения как в Concat'}</label>
+    {/if}
+    {#if automatic && selectedKind === 'video' && selectedEntry?.acodec != null && videoAudio && !concatFit}<p>Видео и его звук добавляются отдельными клипами в одно время.</p>{/if}
     <label>Начало в таймлайне, с <input aria-label="Начало нового клипа" type="number" min="0" step="0.001" bind:value={start} /></label>
     <label>Начало в файле, с <input aria-label="Начало нового клипа в файле" type="number" min="0" step="0.001" bind:value={sourceIn} /></label>
     <label>Длительность, с <input aria-label="Длительность нового клипа" type="number" min="0.001" step="0.001" bind:value={duration} /></label>

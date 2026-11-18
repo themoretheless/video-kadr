@@ -31,12 +31,15 @@ pub async fn handler(State(state): State<AppState>, Path(project): Path<String>,
         CompositionTrack::Video { locked: false, clips, .. } => clips.iter().find(|clip| clip.id == id && clip.enabled).cloned(), _ => None,
     }).ok_or_else(|| AppError::bad_request("Нужно незаблокированное видео"))?;
     if composition.metadata.as_ref().is_some_and(|m| m.media_versions.contains_key(&id)) { return Err(AppError::conflict("Клип содержит обработанную версию")); }
-    if crate::domain::video_clock::source_tick(&selected.placement, selected.playback_mode, request.time_us).map_err(|e| AppError::bad_request(e.to_string()))?.is_none() { return Err(AppError::bad_request("Кадр вне клипа")); }
     let mut correction=request.correction.unwrap_or_else(||selected.concat_cutout.as_ref().map(|b|b.settings()).unwrap_or(crate::domain::cutout::Correction{custom:false,strokes:vec![],feather:0.}));
     if let Some(feather)=request.feather{correction.feather=feather;}
     correction.validate().map_err(|e|AppError::bad_request(e.to_string()))?;
-    let source_time=crate::domain::video_clock::source_tick(&selected.placement,selected.playback_mode,request.time_us).map_err(|e|AppError::bad_request(e.to_string()))?.ok_or_else(||AppError::bad_request("Frame outside clip"))?;
-    let source_dimensions=composition.sources.get(&selected.source_id).map(|s|(s.width as usize,s.height as usize)).ok_or_else(||AppError::bad_request("Missing source dimensions"))?;
+    let source = &composition.sources[&selected.source_id];
+    let source_time = crate::domain::video_clock::presented_source_tick(
+        &selected.placement, selected.playback_mode, request.time_us, source.duration_ticks,
+    ).map_err(|e| AppError::bad_request(e.to_string()))?
+        .ok_or_else(|| AppError::bad_request("Кадр вне клипа"))?;
+    let source_dimensions = (source.width as usize, source.height as usize);
     let region_tracks=request.region_tracks.unwrap_or_else(||selected.concat_cutout.as_ref().map(|b|b.region_tracks.clone()).unwrap_or_default());
     let source_id = selected.source_id.clone();
     composition.tracks.retain(|track| matches!(track, CompositionTrack::Video{clips,..} if clips.iter().any(|c| c.id == id)));
@@ -52,9 +55,15 @@ pub async fn handler(State(state): State<AppState>, Path(project): Path<String>,
         let mut cache=super::concat_video_cache::restore_for_model(&state,&actor,&project,source_id.as_str(),request.expected_revision,&choice.runtime_hash,&choice.model_hash,&token).await?.ok_or_else(||anyhow::anyhow!("Video masks have not been analysed"))?;
         crate::domain::concat_video_binding::validate_tracks(&correction,&region_tracks,cache.video_hash())?;
         let mut region_leases=vec![];let mut region_bytes=0u64;
+        let mut last_region_time: Option<u64> = None;
         for track in &region_tracks{
             ensure!(track.snapshot.source_id==source_id.as_str(),"video region belongs to another source");
             region_bytes=region_bytes.checked_add(track.snapshot.frames*256*256).ok_or_else(||anyhow::anyhow!("video region budget overflow"))?;ensure!(region_bytes<=64*1024*1024*1024,"video region preview budget exceeded");
+            let snapshot = &track.snapshot;
+            let last = crate::domain::video_region::last_frame_time_us(
+                snapshot.frames, snapshot.frame_rate, snapshot.frame_times_us.as_deref(),
+            )?;
+            last_region_time = Some(last_region_time.map_or(last, |time| time.min(last)));
             region_leases.push((track.stroke,super::concat_video_region_cache::load(&state,&actor,&project,request.expected_revision,&track.snapshot,&token).await?));
         }
         let mut sources = std::collections::BTreeMap::new();
@@ -75,6 +84,7 @@ pub async fn handler(State(state): State<AppState>, Path(project): Path<String>,
         let render_token = token.clone();
         let frame = tokio::task::spawn_blocking(move || {
             let mut resolve=|source_us:u64,frame:&mut crate::domain::group_surface::GroupSurface|->Result<()>{
+                let source_us = last_region_time.map_or(source_us, |last| source_us.min(last));
                 let regions=if region_leases.is_empty(){None}else{let mut planes=vec![None;correction.strokes.len()];for(index,lease)in &region_leases{planes[*index]=Some(lease.reader.read(cache.video_hash(),source_us,&render_token)?);}Some(crate::services::concat_video_analysis::SourceRegions{video_hash:cache.video_hash().into(),source_us,planes})};
                 cache.apply_decoded_with_regions(frame,source_us,&correction,regions.as_ref(),&render_token)?;Ok(())
             };

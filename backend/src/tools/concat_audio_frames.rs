@@ -16,8 +16,19 @@ pub struct DecodedFrameSpan {
     pub source_exhausted:bool,
     pub feed:FrameFeedPlan,
 }
+#[derive(Debug)]
+pub(crate) struct SourceAudioExhausted;
+
+impl std::fmt::Display for SourceAudioExhausted {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("source has no decoded audio frames after seek")
+    }
+}
+
+impl std::error::Error for SourceAudioExhausted {}
+
 /// Stop once the last complete frame needed by original MixInput is observed.
-/// A short source is returned with source_exhausted=true; an empty one refuses.
+/// A short source sets source_exhausted; a clean empty seek is reported separately.
 pub async fn trace_source_piece(runtime:&ProcessRuntime,ffprobe:&Path,source:&Path,stream:&StreamMetadata,piece:&AudioPiece,limit:Duration,cancel:&CancellationToken)->Result<DecodedFrameSpan>{
     ensure!(stream.kind==StreamKind::Audio,"source frame probe needs an audio stream");
     let rate=stream.sample_rate.filter(|v|*v>0).context("source audio sample rate missing")?;
@@ -54,7 +65,7 @@ pub async fn trace_source_piece(runtime:&ProcessRuntime,ffprobe:&Path,source:&Pa
         Ok(None)
     }).await?;
     ensure!(diagnostic.trim().is_empty(),"source frame decoder: {diagnostic}");
-    match completed{Some(span)=>Ok(span),None=>{let mut span=span.context("source has no decoded audio frames after seek")?;span.source_exhausted=true;Ok(span)}}
+    match completed{Some(span)=>Ok(span),None=>{let mut span=span.ok_or(SourceAudioExhausted)?;span.source_exhausted=true;Ok(span)}}
 }
 fn reduced_seconds(stamp:i64,num:i64,den:i64)->f64{
     let(mut numerator,mut denominator)=(stamp as i128*num as i128,den as i128);
@@ -76,6 +87,10 @@ pub async fn prepare_source_piece(runtime:&ProcessRuntime,ffmpeg:&Path,ffprobe:&
     let started=std::time::Instant::now();
     let remaining=||limit.checked_sub(started.elapsed()).filter(|v|!v.is_zero()).context("source frame preparation timed out");
     let span=trace_source_piece(runtime,ffprobe,source,stream,piece,remaining()?,cancel).await?;
+    let rate = stream.sample_rate.context("source audio sample rate missing")? as f64;
+    if span.source_exhausted && span.sample_count as f64 <= span.feed.source_lead_seconds * rate {
+        return Err(SourceAudioExhausted.into());
+    }
     let channels=stream.channels.filter(|v|*v>0&&*v<=64).context("source audio channels missing")?;
     let(codec,bytes)=match stream.sample_format.as_deref(){
         Some("u8"|"u8p")=>("pcm_u8",1u64),Some("s16"|"s16p")=>("pcm_s16le",2),Some("s32"|"s32p")=>("pcm_s32le",4),Some("s64"|"s64p")=>("pcm_s64le",8),Some("flt"|"fltp")=>("pcm_f32le",4),Some("dbl"|"dblp")=>("pcm_f64le",8),_=>anyhow::bail!("source sample format needs lossless frame capture support"),
@@ -88,7 +103,15 @@ pub async fn prepare_source_piece(runtime:&ProcessRuntime,ffmpeg:&Path,ffprobe:&
     let mut command=Command::new(ffmpeg);
     command.args(["-nostdin","-v","error","-y","-protocol_whitelist",super::OFFLINE_PROTOCOLS,"-noaccurate_seek"]);
     if piece.source_start_seconds>0.{command.args(["-seek_timestamp","1","-ss",&format!("{:.6}",owned.span.seek_stream_microseconds as f64/1e6)]);}
-    command.arg("-i").arg(source).args(["-map",&format!("0:{}",stream.index),"-vn","-sn","-dn","-frames:a",&owned.span.frame_count.to_string(),"-af","asetpts=N/SR/TB","-c:a",codec,"-f","nut","-fs",&staging_bytes.to_string()]).arg(&path);
+    let mut capture_filter = "asetpts=N/SR/TB".to_owned();
+    if let Some(landed) = owned.span.landed_source_seconds.filter(|_| piece.source_start_seconds > 0.0) {
+        // A container-level seek can land before the probed audio frame
+        // when video controls the seek. Drop whole earlier packets.
+        let timestamp = landed + stream.start_time_seconds.unwrap_or(0.0);
+        capture_filter = format!("aselect=gte(t\\,{:.9}),{capture_filter}", timestamp - 0.5 / rate);
+        command.arg("-copyts");
+    }
+    command.arg("-i").arg(source).args(["-map",&format!("0:{}",stream.index),"-vn","-sn","-dn","-frames:a",&owned.span.frame_count.to_string(),"-af",&capture_filter,"-c:a",codec,"-f","nut","-fs",&staging_bytes.to_string()]).arg(&path);
     let output=crate::process_control::capture_output_cancellable(runtime,command,runtime.render_policy(vec![source.to_path_buf()],path.clone()),remaining()?,cancel).await?;
     ensure!(output.status.success()&&!cancel.is_cancelled(),"source frame capture failed: {}",String::from_utf8_lossy(&output.stderr));
     ensure!(tokio::fs::metadata(&path).await?.len()<=staging_bytes,"source frame file exceeded staging budget");

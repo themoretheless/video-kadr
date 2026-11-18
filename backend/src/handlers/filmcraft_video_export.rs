@@ -301,7 +301,7 @@ impl ExportPreset {
             };
         }
         if matches!(self, Self::Lossless) {
-            return RasterEncoding::Ffv1;
+            return RasterEncoding::Ffv1(None);
         }
         if let Some(profile) = self.prores_profile() {
             return RasterEncoding::ProRes { profile };

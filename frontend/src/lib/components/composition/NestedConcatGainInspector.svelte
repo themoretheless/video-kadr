@@ -10,12 +10,18 @@
  let entries=$derived((nestedComposition.document?.compositions[id]?.content.tracks??[]).flatMap<Entry>(track=>track.kind==='audio'||track.kind==='video'?track.clips.map(clip=>({trackId:track.id,name:track.name,locked:track.locked,clip})):[]))
  let current=$derived(entries.find(entry=>entry.clip.id===selected)??entries[0])
  let gain=$derived(current?('audioGain'in current.clip?current.clip.audioGain:current.clip.gain):undefined)
- function edit(keys:readonly WireConcatParamKey[]){const target=current,composition=id,document=nestedComposition.document;if(!target)return;void editNestedSourceGainKeys(composition,target.trackId,target.clip.id,keys,()=>{if(nestedComposition.document!==document||id!==composition||current?.clip.id!==target.clip.id)throw new Error('Выбранный клип изменился')})}
+ function edit(keys:readonly WireConcatParamKey[]|'convert'){const target=current,composition=id,document=nestedComposition.document;if(!target)return;void editNestedSourceGainKeys(composition,target.trackId,target.clip.id,keys,()=>{if(nestedComposition.document!==document||id!==composition||current?.clip.id!==target.clip.id)throw new Error('Выбранный клип изменился')})}
 </script>
 {#if current}
  <details><summary>Анимация громкости клипа</summary>
   <label>Клип <select aria-label="Клип для ключей громкости" value={current.clip.id} disabled={disabled||nestedHistory.busy} onchange={event=>{selected=event.currentTarget.value}}>{#each entries as entry(entry.clip.id)}<option value={entry.clip.id}>{entry.name} · {entry.clip.id}</option>{/each}</select></label>
-  {#if gain?.mode==='keyframes'}<p>Сначала отключите анимацию громкости по времени.</p>{/if}
+  {#if gain?.mode==='keyframes'}
+   {#if 'audioGain' in current.clip && !current.clip.independentAudio}
+    <p>Для преобразования ключей включите независимый микс видеоклипа.</p>
+   {:else}
+    <button class="btn ghost sm" disabled={disabled||nestedHistory.busy||current.locked} onclick={()=>edit('convert')}>Преобразовать ключи громкости для Concat</button>
+   {/if}
+  {/if}
   <ConcatGainSourceKeyEditor keys={current.clip.concatGainKeys} rest={gain?.mode==='constant'?gain.value:1} progress={(nestedComposition.timeUs-current.clip.placement.timelineStartTick)/(nativeClipEnd(current.clip)-current.clip.placement.timelineStartTick)} disabled={disabled||nestedHistory.busy||current.locked||gain?.mode==='keyframes'} onchange={edit} />
  </details>
 {/if}

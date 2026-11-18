@@ -20,6 +20,7 @@
   import NestedScalarKeyInspector from "./NestedScalarKeyInspector.svelte"
   import NestedEmbeddedAudioInspector from "./NestedEmbeddedAudioInspector.svelte"
   import ConcatProjectImportPanel from "./ConcatProjectImportPanel.svelte"
+  import TemplateCoverForm from "./TemplateCoverForm.svelte"
   import ConcatProjectExportPanel from "./ConcatProjectExportPanel.svelte"
   import {compositionSourceFromLibraryEntry} from "$lib/state/composition.svelte"
   import NestedPlaybackControls from './NestedPlaybackControls.svelte'
@@ -275,7 +276,9 @@ import NestedSharpenInspector from './NestedSharpenInspector.svelte'
   let pendingVoiceover = $state.raw<File | null>(null)
   let archivePicker = $state<HTMLInputElement>()
   let archiveBusy = $state(false)
-  let concatPosterSource = $state<'' | 'saved' | 'frame'>('')
+  let concatPosterSource = $state<'' | 'saved' | 'frame' | 'file' | 'auto'>('')
+  let concatPosterFile = $state<File>()
+  let concatPosterForm = $state<HTMLFormElement>()
   let templateLibraryRevision = $state(0)
   let archiveMessage = $state('')
   let archiveError = $state('')
@@ -389,7 +392,7 @@ import NestedSharpenInspector from './NestedSharpenInspector.svelte'
   }
 
   let activeSavedProjectId=$derived(nestedComposition.document?nestedComposition.projectId:compositionState.projectId)
-  $effect(() => { void activeSavedProjectId; concatPosterSource = '' })
+  $effect(() => { void activeSavedProjectId; concatPosterSource = ''; concatPosterFile = undefined })
   function downloadProjectArchive(): void {
     const projectId = activeSavedProjectId
     if (!projectId || !authState.token || archiveBusy) return
@@ -478,7 +481,7 @@ import NestedSharpenInspector from './NestedSharpenInspector.svelte'
     </select>
     {#if activeSavedProjectId}
       <button class="btn ghost sm" disabled={archiveBusy || !authState.token} onclick={downloadProjectArchive}>Экспорт .veproj</button>
-      {#if nestedComposition.document}<NativeTemplateDownload token={authState.token} onSaved={() => { templateLibraryRevision++ }} projectId={activeSavedProjectId} timeUs={nestedComposition.timeUs} compositionId={nestedComposition.activeCompositionId ?? undefined} disabled={archiveBusy||!authState.token}/>{/if}
+      {#if nestedComposition.document}<NativeTemplateDownload spaceId={spacesState.selectedId||undefined} hasSavedCover={Boolean(nestedComposition.document.coverJpeg)} token={authState.token} onSaved={() => { templateLibraryRevision++ }} projectId={activeSavedProjectId} timeUs={nestedComposition.timeUs} compositionId={nestedComposition.activeCompositionId ?? undefined} disabled={archiveBusy||!authState.token}/>{/if}
       <button class="btn ghost sm danger" disabled={Boolean(nestedComposition.document) || compositionState.save.busy || !authState.token} onclick={() => void deleteCompositionProject(compositionState.projectId!)}>Удалить проект</button>
     {/if}
     <button class="btn ghost sm" disabled={archiveBusy || !authState.token} onclick={() => archivePicker?.click()}>Импорт .veproj</button>
@@ -556,24 +559,41 @@ import NestedSharpenInspector from './NestedSharpenInspector.svelte'
 
   <NativeTemplateLibrary refresh={templateLibraryRevision} token={authState.token} spaceId={spacesState.selectedId||undefined} context={nestedComposition.document??compositionState.document} disabled={compositionState.save.busy||nestedHistory.busy||archiveBusy} oncreated={templateCreated} sources={legacyState.library.flatMap(entry=>{try{return[{label:entry.filename,source:compositionSourceFromLibraryEntry(entry)}]}catch{return[]}})}/>
   <NativeTemplateImport token={authState.token} spaceId={spacesState.selectedId||undefined} context={nestedComposition.document??compositionState.document} disabled={compositionState.save.busy||nestedHistory.busy||archiveBusy} oncreated={templateCreated} sources={legacyState.library.flatMap(entry=>{try{return[{label:entry.filename,source:compositionSourceFromLibraryEntry(entry)}]}catch{return[]}})}/>
-  <ConcatProjectImportPanel token={authState.token} context={compositionState.document} disabled={compositionState.save.busy} sources={legacyState.library.flatMap(entry=>{try{return[{label:entry.filename,source:compositionSourceFromLibraryEntry(entry)}]}catch{return[]}})} />
+  <ConcatProjectImportPanel token={authState.token} spaceId={spacesState.selectedId||undefined} oncreated={templateCreated} context={compositionState.document} disabled={compositionState.save.busy} sources={legacyState.library.flatMap(entry=>{try{return[{label:entry.filename,source:compositionSourceFromLibraryEntry(entry)}]}catch{return[]}})} />
   <ConcatProjectExportPanel disabled={compositionState.save.busy} />
   {#if nestedComposition.document && activeSavedProjectId && authState.token}
     <label>Обложка для ZIP-шаблона Concat
       <select value={concatPosterSource} onchange={event => {
         const value = event.currentTarget.value
-        concatPosterSource = value === 'saved' || value === 'frame' ? value : ''
+        concatPosterFile = undefined
+        concatPosterSource = value === 'saved' || value === 'frame' || value === 'file' || value === 'auto' ? value : ''
       }}>
         <option value="">Без обложки</option>
         {#if nestedComposition.document.coverJpeg}<option value="saved">Обложка проекта</option>{/if}
+        <option value="auto">Автоматически</option>
         <option value="frame">Кадр сохранённого проекта</option>
+        <option value="file">Выбрать файл</option>
       </select>
     </label>
-    <button class="btn ghost sm" disabled={archiveBusy || compositionState.save.busy}
-      onclick={() => downloadUrl(compositionProjectConcatTemplateUrl(activeSavedProjectId!, concatPosterSource === 'frame' ? {
-        timeUs: nestedComposition.timeUs,
-        compositionId: nestedComposition.activeCompositionId ?? undefined,
-      } : concatPosterSource === 'saved' && nestedComposition.document?.coverJpeg ? 'saved' : undefined))}>
+    {#if concatPosterSource === 'file'}
+      <TemplateCoverForm bind:form={concatPosterForm} bind:file={concatPosterFile}
+        disabled={archiveBusy || compositionState.save.busy}
+        action={compositionProjectConcatTemplateUrl(activeSavedProjectId)} />
+    {/if}
+    <button class="btn ghost sm" disabled={archiveBusy || compositionState.save.busy || (concatPosterSource === 'file' && !concatPosterFile)}
+      onclick={() => {
+        if (concatPosterSource === 'file') {
+          concatPosterForm?.requestSubmit()
+        } else {
+          downloadUrl(compositionProjectConcatTemplateUrl(activeSavedProjectId!, concatPosterSource === 'frame' ? {
+            timeUs: nestedComposition.timeUs,
+            compositionId: nestedComposition.activeCompositionId ?? undefined,
+          } : concatPosterSource === 'auto' ? {
+            automatic: true,
+            compositionId: nestedComposition.activeCompositionId ?? undefined,
+          } : concatPosterSource === 'saved' && nestedComposition.document?.coverJpeg ? 'saved' : undefined))
+        }
+      }}>
       Скачать архив шаблона Concat из сохранённой версии
     </button>
   {/if}

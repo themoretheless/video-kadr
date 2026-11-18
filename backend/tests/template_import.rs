@@ -92,6 +92,19 @@ async fn imports_template_to_independent_project_and_rolls_back_design_publicati
     let source = |id: &str| json!({"id":id,"kind":"image","durationTicks":0,"width":16,"height":8,"hasAudio":false});
     let mut content = serde_json::to_value(Composition::new(CanvasSpec::default())).unwrap();
     content["sources"] = json!({"slot":source("slot"),"design":source("design")});
+    let scalar = |value: f64| json!({"mode":"constant","value":value});
+    let mut transform = serde_json::to_value(video_kadr_backend::domain::composition::TransformSpec::default()).unwrap();
+    transform["x"] = scalar(7.0);
+    transform["rotationDegrees"] = scalar(15.0);
+    let clip = json!({
+        "id":"artwork","sourceId":"slot","timelineStartTick":500000,"durationTicks":2000000,
+        "transform":transform,"opacity":scalar(0.65),"blendMode":"multiply","enabled":true,
+        "concatSourceTiming":{"sourceStart":1.5,"speed":2.0},
+        "effects":[{"kind":"mask","shape":"rectangle","x":scalar(0.5),"y":scalar(0.5),
+            "width":scalar(0.75),"height":scalar(0.5),"rotationDegrees":scalar(12.0),
+            "feather":0.2,"inverted":false}]
+    });
+    content["tracks"] = json!([{"kind":"image","id":"images","name":"Artwork","clips":[clip]}]);
     let project:NestedCompositionProject=serde_json::from_value(json!({"schemaVersion":1,"root":"root","projectMedia":{"slot":{"source":source("slot"),"name":"Replace","placeholder":true,"librarySourceId":"author-private"},"design":{"source":source("design"),"name":"Design","librarySourceId":"author-design"}},"compositions":{"root":{"content":content,"instances":[]}}})).unwrap();
     let bytes = template_bundle::write(
         Cursor::new(Vec::new()),
@@ -213,6 +226,12 @@ async fn imports_template_to_independent_project_and_rolls_back_design_publicati
         serde_json::from_slice(&to_bytes(response.into_body(), 1024 * 1024).await.unwrap())
             .unwrap();
     assert_eq!(body["project"]["name"], "Winter cut & titles");
+    let mut expected_clip = clip;
+    expected_clip["concatSourceTiming"]["sourceStart"] = json!(0.0);
+    assert_eq!(
+        body["project"]["document"]["compositions"]["root"]["content"]["tracks"][0]["clips"][0],
+        expected_clip,
+    );
     assert_eq!(
         body["project"]["document"]["projectMedia"]["slot"]["librarySourceId"],
         "replacement"

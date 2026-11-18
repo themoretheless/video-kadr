@@ -285,6 +285,9 @@ impl RunCache {
         ensure!(!cancel.is_cancelled(),"video cache restore cancelled");cache.published=Some(PublishedPrefix{receipt:receipt.clone(),run_count:cache.runs.len(),total_bytes:total});Ok(cache)
     }
 }
+mod cleanup;
+pub use cleanup::cleanup_retired_caches;
+
 fn valid_generation(value:&str)->Result<()>{let suffix=value.strip_prefix("concat-video-cache-").ok_or_else(||anyhow::anyhow!("invalid parent cache generation"))?;ensure!(uuid::Uuid::parse_str(suffix)?.to_string()==suffix,"invalid parent cache generation");Ok(())}
 async fn read_manifest(directory:&Path,hash:&str,budget:u64)->Result<(CacheManifest,u64)>{
     use tokio::io::AsyncReadExt;use sha2::Digest;
