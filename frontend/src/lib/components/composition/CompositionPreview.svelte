@@ -123,8 +123,8 @@
       nativeAudio.start(nativeAudioRequest.project, head, compositionDuration(), authState.token ?? undefined)
     })
   })
-  const hasKaraokePreview = $derived(previewDocument.tracks.some(track => !track.hidden && track.clips.some(clip =>
-    clip.kind === 'text' && clip.enabled !== false && !!clip.karaoke?.length,
+  const hasKaraokePreview = $derived(previewDocument.tracks.some(track => track.kind === 'text' && !track.hidden && track.clips.some(clip =>
+    clip.enabled !== false && !!clip.karaoke?.length,
   )))
   const graphicPreviewRequest = $derived.by((): {project: NativeNestedProject | null;error: string} => {
     try {

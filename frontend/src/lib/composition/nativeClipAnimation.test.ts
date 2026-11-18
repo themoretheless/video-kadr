@@ -1,16 +1,20 @@
 import { expect, it } from 'vitest'
 import fixture from '../../../../backend/tests/fixtures/concat-merge-preview.json'
-import type { WireTextClip, WireVideoClip } from './types'
+import type { WireVideoClip } from './types'
+import { createComposition } from './commands'
+import { textClipToWire } from './payload'
 import { rebaseNativeClipAnimation } from './nativeClipAnimation'
 import { sampleAnimatableValue } from './keyframes'
 
 it('retains completed and partially elapsed karaoke timing across a head cut', () => {
-  const input = {
+  const input = textClipToWire(createComposition({ width: 320, height: 180, fps: 25, backgroundColor: '#000000FF' }), {
+    id: 'karaoke', kind: 'text', text: 'AB', timelineStartTicks: 0, durationTicks: 1_000_000,
+    x: 160, y: 90, opacity: 1, style: { fontSizePx: 24, color: '#FFFFFFFF', align: 'center' },
     karaoke: [
       { start: 0, end: 1, startTicks: 0, endTicks: 200000, mode: 'step' },
       { start: 1, end: 2, startTicks: 200000, endTicks: 600000, mode: 'sweep' },
     ],
-  } as WireTextClip
+  })
   expect(rebaseNativeClipAnimation(input, -300000).karaoke).toEqual([
     { start: 0, end: 1, startTicks: -300000, endTicks: -100000, mode: 'step' },
     { start: 1, end: 2, startTicks: -100000, endTicks: 300000, mode: 'sweep' },
