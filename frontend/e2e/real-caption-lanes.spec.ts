@@ -2,6 +2,56 @@ import { execFileSync } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
 import { expect, test } from '@playwright/test'
 
+test('ordinary ASS karaoke changes color in the editor when seeking', async ({ page, request }) => {
+  test.setTimeout(140_000)
+  const registration = await request.post('/api/auth/register', {
+    data: { username: 'caption-karaoke-browser', password: 'caption-karaoke-browser-password' },
+  })
+  expect(registration.status()).toBe(201)
+  const { token } = await registration.json()
+  await page.addInitScript(value => localStorage.setItem('caption-lanes-token', value), token)
+  await page.goto('/e2e/fixtures/caption-lanes.html', { waitUntil: 'domcontentloaded' })
+
+  const subtitles = page.locator('details').filter({ has: page.locator('summary', { hasText: 'Субтитры SRT / VTT / ASS / TXT' }) }).first()
+  await subtitles.locator('summary').click()
+  await subtitles.locator('input[type=file]').setInputFiles({
+    name: 'karaoke.ass',
+    mimeType: 'text/plain',
+    buffer: Buffer.from(String.raw`[Script Info]
+PlayResX: 640
+PlayResY: 360
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, Outline, Shadow, Alignment, MarginL, MarginR, MarginV
+Style: Default,Arial,40,&H0000FF00,&H000000FF,0,0,2,140,140,20
+[Events]
+Format: Start, End, Style, MarginL, MarginR, MarginV, Text
+Dialogue: 0:00:00.00,0:00:01.00,Default,0,0,0,{\kf40}M
+`),
+  })
+  const canvas = page.getByLabel('Предпросмотр графической композиции', { exact: true })
+  const colors = () => canvas.evaluate(element => {
+    const frame = element as HTMLCanvasElement
+    const pixels = frame.getContext('2d')!.getImageData(0, 0, frame.width, frame.height).data
+    let red = 0
+    let green = 0
+    for (let index = 0; index < pixels.length; index += 4) {
+      if (pixels[index]! > 128 && pixels[index + 1]! < 32) red++
+      if (pixels[index + 1]! > 128 && pixels[index]! < 32) green++
+    }
+    return { red, green }
+  })
+  await expect.poll(async () => (await colors()).red, { timeout: 35_000 }).toBeGreaterThan(10)
+  expect((await colors()).green).toBe(0)
+  await page.getByLabel('Плейхед', { exact: true }).evaluate(element => {
+    const playhead = element as HTMLInputElement
+    playhead.value = '200000'
+    playhead.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  await expect.poll(async () => (await colors()).green, { timeout: 35_000 }).toBeGreaterThan(10)
+  expect((await colors()).red).toBeGreaterThan(10)
+  await expect(page.locator('.composition-text-layer')).toHaveCount(0)
+})
+
 test('subtitle lanes render simultaneous cues, Undo once and survive native project reopen', async ({ page, request }) => {
   const registration = await request.post('/api/auth/register', { data: { username: 'caption-lanes-browser', password: 'caption-lanes-browser-password' } })
   expect(registration.status()).toBe(201)
