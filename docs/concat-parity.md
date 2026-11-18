@@ -14321,8 +14321,12 @@ through ZIP export and reimport. The exporter writes an empty
 in-point for both audio and video. Chromium removed the curve through
 the editor and reopened the exported ZIP with replacement footage.
 The pinned original Concat implementation also opened and filled that
-ZIP at constant speed. An original Concat save may omit the empty
-array, which removes the marker used to recover the exact clock.
+ZIP at constant speed. The pinned original deserializer turns an empty
+curve into an absent field and retains the authored seconds when saving.
+When those seconds have sub-microsecond precision, Video Kadr now keeps
+the exact constant clock even with the field absent. The regression
+round-trips a 0.2500004-second source in-point for both video and audio,
+with no authored speed points after reimport.
 
 The empty curve also survives a temporary still image in the slot,
 including a template exported while the image is in place. Replacing

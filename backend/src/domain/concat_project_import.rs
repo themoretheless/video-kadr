@@ -676,27 +676,35 @@ pub(crate) fn convert_clip_at_rate(
     height: f64,
     (rate_num, rate_den): (u32, u32),
 ) -> Result<Value> {
-    if !matches!(clip["kind"].as_str(), Some("video" | "audio")) || !clip.as_object().is_some_and(|clip| clip.contains_key("speedCurve")) {
+    if !matches!(clip["kind"].as_str(), Some("video" | "audio")) {
+        return convert_clip(clip, bindings, width, height);
+    }
+    let start = number(clip, "start", 0.0)?;
+    let duration = number(clip, "duration", 1.0)?;
+    let source_start = number(clip, "sourceStart", 0.0)?;
+    // Concat omits an empty curve when saving, while retaining fractional seconds.
+    let exact_clock_needed = [start, duration, source_start].iter().any(|seconds| {
+        *seconds != (*seconds * 1e6).round() / 1e6
+    });
+    if clip["speedCurve"].is_null() && !exact_clock_needed {
         return convert_clip(clip, bindings, width, height);
     }
     let mut view = clip.clone();
     view.as_object_mut().context("invalid media clip")?.remove("speedCurve");
     let mut native = convert_clip(&view, bindings, width, height)?;
-    if !clip["speedCurve"].is_null() {
-        let points: Vec<super::concat_retime_edit::Point> =
-            serde_json::from_value(clip["speedCurve"].clone())?;
-        let clock = super::concat_retime_edit::Clock {
-            start: number(clip, "start", 0.0)?,
-            duration: number(clip, "duration", 1.0)?,
-            source_start: number(clip, "sourceStart", 0.0)?,
-            speed: number(clip, "speed", 1.0)?,
-            speed_curve: (!points.is_empty()).then_some(points),
-        };
-        let mut placement = clock.placement(rate_num, rate_den)?;
-        let source = bindings.get(text(clip, "mediaId")?).context("missing speed-curve media binding")?;
-        placement.concat_source_eof = placement.source_out_tick > source.duration_ticks;
-        native["placement"] = serde_json::to_value(placement)?;
-    }
+    let points: Option<Vec<super::concat_retime_edit::Point>> =
+        serde_json::from_value(clip["speedCurve"].clone())?;
+    let clock = super::concat_retime_edit::Clock {
+        start,
+        duration,
+        source_start,
+        speed: number(clip, "speed", 1.0)?,
+        speed_curve: points.filter(|points| !points.is_empty()),
+    };
+    let mut placement = clock.placement(rate_num, rate_den)?;
+    let source = bindings.get(text(clip, "mediaId")?).context("missing source clock media binding")?;
+    placement.concat_source_eof = placement.source_out_tick > source.duration_ticks;
+    native["placement"] = serde_json::to_value(placement)?;
     Ok(native)
 }
 

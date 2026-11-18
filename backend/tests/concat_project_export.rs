@@ -568,6 +568,16 @@ fn source_speed_curve_roundtrips_and_rebases_with_new_media() {
         let cleared = serde_json::from_value(cleared).unwrap();
         let output = export_with_paths(&cleared, &paths).unwrap();
         assert_eq!(output["timelines"][0]["clips"][0]["speedCurve"], json!([]));
+        let mut original_resave = output.clone();
+        let clip = original_resave["timelines"][0]["clips"][0].as_object_mut().unwrap();
+        clip.remove("speedCurve");
+        clip.insert("sourceStart".into(), json!(0.2500004));
+        let resaved = convert(original_resave);
+        assert_eq!(resaved.status, "converted", "{:?}", resaved.diagnostics);
+        let resaved = resaved.project.unwrap();
+        let reexported = export_with_paths(&resaved, &paths).unwrap();
+        assert_eq!(reexported["timelines"][0]["clips"][0]["sourceStart"], json!(0.2500004));
+        assert_eq!(reexported["timelines"][0]["clips"][0]["speedCurve"], json!([]));
         let reopened = convert(output);
         assert_eq!(reopened.status, "converted", "{:?}", reopened.diagnostics);
         let reopened = reopened.project.unwrap();
