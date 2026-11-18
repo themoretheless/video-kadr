@@ -626,7 +626,7 @@
       {#if sequence?.clips?.length}
         <label>Клип <select aria-label="Клип Filmcraft" value={clipId} onchange={(event) => { clipId = event.currentTarget.value; rightClipId = ''; extraSelectedIds = [] }} disabled={busy}><option value="">Выберите клип</option>{#each sequence.clips as clip}<option value={clip.id}>{clip.name || clip.id} · {clip.trackKind === 'video_tracks' ? 'Видео' : 'Звук'} {clip.trackId}</option>{/each}</select></label>
         <label>Режим <select aria-label="Режим обрезки" value={trimMode} onchange={(event) => trimMode = event.currentTarget.value as 'regular' | 'ripple'} disabled={busy}><option value="regular">Обычная</option><option value="ripple">Со сдвигом</option></select></label>
-        <label>Край <select bind:value={edge} disabled={busy}><option value="in">Начало</option><option value="out">Конец</option></select></label>
+        <label>Край <select aria-label="Край обрезки Filmcraft" bind:value={edge} disabled={busy}><option value="in">Начало</option><option value="out">Конец</option></select></label>
         <label>Сдвиг, кадров <input aria-label="Сдвиг обрезки" type="number" step="1" bind:value={trimFrames} disabled={busy} /></label>
         <label class="linked"><input aria-label="Связанные клипы" type="checkbox" bind:checked={linked} disabled={busy} />Связанные клипы</label>
         <button type="button" disabled={busy || !clipId || !Number.isSafeInteger(trimFrames)} onclick={() => editClip()}>Обрезать</button>

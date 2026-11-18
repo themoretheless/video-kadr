@@ -11901,6 +11901,11 @@ parameter still produces a targeted error.
 After each reimport, Chromium also queued and downloaded a two-frame
 MKV/FFV1 video-only export via the standard export panel. Both decoded
 RGBA frames matched the separately exported PNG frames byte for byte.
+For each operation, the browser also trimmed the new video clip's out
+point by exactly one sequence frame at 24000/1001. The first frame
+stayed identical and the newly excluded frame changed. Undo and Redo
+restored the full project snapshots. After reopening the trimmed project,
+the decoded FFV1 frames on either side of the new edge matched the PNGs.
 
 Validation: `/tmp/kadr-source-edit-native-final.log` — 50 tests passed: two source-edit/oracle/exact-ID/allocator/import tests, all 47 existing project API regressions and authenticated MCP discovery/execution including actual Insert/Overwrite. Near-u64::MAX clip/source identities, imported track metadata and envelope extensions are covered separately. `/tmp/kadr-source-edit-ui-final.log` — 228 tests passed across typed APIs, controls, parent history/source-clock/selection/bindings and agent routing; `/tmp/kadr-source-edit-types-final.log` — zero errors/warnings; scoped API/control/agent lint and catalog check passed.
 

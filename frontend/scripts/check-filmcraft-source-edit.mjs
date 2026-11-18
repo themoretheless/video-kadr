@@ -50,9 +50,9 @@ try {
     ], { input, maxBuffer: 32 * 1024 * 1024, timeout: 30_000 })
   }
 
-  async function exportVideo() {
+  async function exportVideo(startFrame) {
     await page.getByLabel('Диапазон обычного экспорта Filmcraft', { exact: true }).selectOption('frames')
-    await page.getByLabel('Начальный кадр видеоэкспорта Filmcraft', { exact: true }).fill('0')
+    await page.getByLabel('Начальный кадр видеоэкспорта Filmcraft', { exact: true }).fill(String(startFrame))
     await page.getByLabel('Количество кадров видеоэкспорта Filmcraft', { exact: true }).fill('2')
     await page.getByRole('button', { name: 'Экспортировать видео без звука', exact: true }).click()
     await expect(page.getByRole('button', { name: 'Скачать видео MKV', exact: true })).toBeVisible({ timeout: 60_000 })
@@ -95,8 +95,33 @@ try {
     await page.getByLabel('Секвенция Filmcraft', { exact: true }).selectOption('27')
     assert.deepEqual(JSON.parse(await download()),JSON.parse(changed))
     assert((await exportFrame()).equals(afterFrame), label)
-    const expectedFrames = Buffer.concat([decodeFrames(afterFrame), decodeFrames(await exportFrame(1))])
-    const video = await exportVideo()
+    const sourceSequence = JSON.parse(changed).project.items['27'].kind.Sequence
+    const bars = sourceSequence.video_tracks.flatMap(track => track.items).find(clip => clip.item === 12)
+    assert(bars)
+    const frameTicks = 254016000000 * sourceSequence.settings.frame_rate.den / sourceSequence.settings.frame_rate.num
+    const boundary = (bars.start + bars.duration) / frameTicks - 1
+    assert(Number.isInteger(boundary) && boundary >= 1)
+    const preTrimFrame = await exportFrame(boundary)
+    await page.getByLabel('Клип Filmcraft', { exact: true }).selectOption(String(bars.id))
+    await page.getByLabel('Край обрезки Filmcraft', { exact: true }).selectOption('out')
+    await page.getByLabel('Сдвиг обрезки', { exact: true }).fill('-1')
+    await page.getByRole('button', { name: 'Обрезать', exact: true }).click()
+    const trimmed = await download()
+    const trimmedSequence = JSON.parse(trimmed).project.items['27'].kind.Sequence
+    const trimmedBars = trimmedSequence.video_tracks.flatMap(track => track.items).find(clip => clip.id === bars.id)
+    assert.equal(trimmedBars.duration, bars.duration - frameTicks)
+    assert((await exportFrame()).equals(afterFrame), label)
+    const postTrimFrame = await exportFrame(boundary)
+    assert(!postTrimFrame.equals(preTrimFrame), label)
+    await page.getByRole('button', { name: 'Отменить правку', exact: true }).click()
+    assert.deepEqual(JSON.parse(await download()), JSON.parse(changed))
+    await page.getByRole('button', { name: 'Повторить правку', exact: true }).click()
+    assert.deepEqual(JSON.parse(await download()), JSON.parse(trimmed))
+    await open(trimmed)
+    await page.getByLabel('Секвенция Filmcraft', { exact: true }).selectOption('27')
+    assert((await exportFrame(boundary)).equals(postTrimFrame), label)
+    const expectedFrames = Buffer.concat([decodeFrames(await exportFrame(boundary - 1)), decodeFrames(postTrimFrame)])
+    const video = await exportVideo(boundary - 1)
     const codec = execFileSync('ffprobe', [
       '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=codec_name',
       '-of', 'default=noprint_wrappers=1:nokey=1', 'pipe:0',
@@ -117,7 +142,7 @@ try {
     })
     assert.equal(refused.status(), 400)
     assert.match((await refused.json()).error, /time remapping supports only constant 100%/)
-    console.log('PASS', label, 'undo redo download reopen, PNG and FFV1 export')
+    console.log('PASS', label, 'trim, undo redo download reopen, PNG and FFV1 export')
   }
 } finally {
   await browser.close()
