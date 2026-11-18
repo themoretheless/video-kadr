@@ -240,8 +240,10 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
       const normalizeText = (value: string) => value.replace(/\\N/g, '\n')
         .replace(/\\n/g, cueWrapStyle === 2 ? '\n' : ' ').replace(/\\h/g, '\u00a0').replace(/\\([{}])/g, '$1')
       const normalizedText = normalizeText(unstyled)
-      const text = normalizedText.trim()
-      const trimOffset = normalizedText.length - normalizedText.trimStart().length
+      const withoutLeadingSpace = normalizedText.replace(/^[^\S\u00a0]+/, '')
+      const textEnd = Math.max(withoutLeadingSpace.trimEnd().length, withoutLeadingSpace.lastIndexOf('\u00a0') + 1)
+      const text = withoutLeadingSpace.slice(0, textEnd)
+      const trimOffset = normalizedText.length - withoutLeadingSpace.length
       let rawOffset = 0
       let normalizedOffset = 0
       const karaoke = karaokeMarkers.flatMap((marker, index) => {

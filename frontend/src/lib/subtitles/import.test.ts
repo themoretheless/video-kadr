@@ -256,6 +256,17 @@ Dialogue: 0:00:00.00,0:00:02.00, {\k20}\{😀\}{comment}{\k30}\}end
     expect(report.simplifiedCueCount).toBe(0)
   })
 
+  it('preserves ASS hard spaces at cue edges and within karaoke ranges', () => {
+    const [cue] = parseSubtitleDocument(String.raw`[Events]
+Format: Start, End, Text
+Dialogue: 0:00:00.00,0:00:02.00, {\k20}\hA{\k30}B\h
+`)
+    expect(cue).toMatchObject({
+      text: '\u00a0AB\u00a0',
+      karaoke: [{ start: 0, end: 2 }, { start: 2, end: 4 }],
+    })
+  })
+
   it('refuses malformed, inverted, excessive and empty cues before mutation', () => {
     for (const event of [
       'Dialogue: 0:00:02.00,0:00:01.00,text',
