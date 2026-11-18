@@ -767,6 +767,30 @@ it('requests native composition pixels for graphics and aborts on disposal', asy
   expect(signal.aborted).toBe(true)
 })
 
+it('requests native karaoke pixels in the ordinary composition preview', async () => {
+  const api = await import('$lib/api')
+  const { addClip, addTrack } = await import('$lib/composition/commands')
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+    clearRect: vi.fn(),
+    createImageData: () => ({ data: new Uint8ClampedArray(4) }),
+    putImageData: vi.fn(),
+  } as unknown as CanvasRenderingContext2D)
+  const native = vi.spyOn(api, 'renderNestedPreview').mockResolvedValue({ width: 1, height: 1, rgba: new Uint8ClampedArray(4) })
+  const withTrack = addTrack(compositionState.document, { id: 'captions', kind: 'text', name: 'Captions', hidden: false, locked: false, clips: [] }, 0)
+  const karaoke = [{ start: 0, end: 1, startTicks: 0, endTicks: 400_000, mode: 'sweep' as const }]
+  compositionState.document = addClip(withTrack, 'captions', {
+    id: 'sing', kind: 'text', text: 'M', timelineStartTicks: 0, durationTicks: 1_000_000,
+    x: 640, y: 360, opacity: 1, style: { fontSizePx: 24, color: '#FFFFFFFF', align: 'center' }, karaoke,
+  })
+  setCompositionPlayhead(200_000)
+  const component = mountPreview()
+  await vi.waitFor(() => expect(native).toHaveBeenCalled())
+  const [project, timeUs] = native.mock.calls[0]!
+  expect(project.compositions.editor!.content.tracks[0]).toMatchObject({ kind: 'text', clips: [{ id: 'sing', karaoke }] })
+  expect(timeUs).toBe(200_000)
+  await unmount(component)
+})
+
 it('paints independent procedural pixels and aborts the prior native frame when seeking',async()=>{
  const api=await import('$lib/api')
  const {defaultProceduralTransition}=await import('$lib/composition/transitionCatalog')

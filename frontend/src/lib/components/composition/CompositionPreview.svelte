@@ -123,12 +123,16 @@
       nativeAudio.start(nativeAudioRequest.project, head, compositionDuration(), authState.token ?? undefined)
     })
   })
+  const hasKaraokePreview = $derived(previewDocument.tracks.some(track => !track.hidden && track.clips.some(clip =>
+    clip.kind === 'text' && clip.enabled !== false && !!clip.karaoke?.length,
+  )))
   const graphicPreviewRequest = $derived.by((): {project: NativeNestedProject | null;error: string} => {
     try {
       const independent = buildIndependentTransitionPreviewProject(previewDocument)
       if (independent) return {project:independent,error:''}
     } catch (reason) { return {project:null,error:reason instanceof Error ? reason.message : String(reason)} }
-    if (!previewDocument.tracks.some(track => track.kind === 'graphic' && !track.hidden && track.clips.some(clip => clip.enabled !== false)) && !previewDocument.captionTracks?.some(track => !track.hidden && track.clips.length > 0)) return {project:null,error:''}
+    const hasGraphics = previewDocument.tracks.some(track => track.kind === 'graphic' && !track.hidden && track.clips.some(clip => clip.enabled !== false))
+    if (!hasKaraokePreview && !hasGraphics && !previewDocument.captionTracks?.some(track => !track.hidden && track.clips.length > 0)) return {project:null,error:''}
     try {
       return {project:{ schemaVersion: 1, root: 'editor', compositions: { editor: { content: buildCompositionRenderRequest(previewDocument).composition, instances: [] } } },error:''}
     } catch (reason) { return {project:null,error:reason instanceof Error ? reason.message : String(reason)} }
@@ -798,14 +802,14 @@
         {/if}
       {:else if active.clip.kind === 'color'}
         <div data-color-clip={active.clip.id} class="composition-visual-media" style={visualStyle(active)}></div>
-      {:else if active.clip.kind === 'text'}
+      {:else if active.clip.kind === 'text' && !(active.clip.karaoke?.length && graphicPreviewProject)}
         <div class="composition-text-layer" style={visualStyle(active)}>{active.clip.text}</div>
       {/if}
     {/each}
     {#if graphicPreviewProject || graphicPreviewRequest.error}
       <div class="graphic-native-preview">
         {#if graphicPreviewProject}
-          <NestedCompositionPreview project={graphicPreviewProject} timeUs={compositionState.transport.playheadTicks} renderedOutputs={{}} token={authState.token ?? ''} label={previewDocument.tracks.some(track=>track.kind==='video'&&!track.hidden&&track.transitions?.some(transition=>transition.timeline)) ? "Нативный предпросмотр переходов" : "Предпросмотр графической композиции"} />
+          <NestedCompositionPreview project={graphicPreviewProject} timeUs={compositionState.transport.playheadTicks} renderedOutputs={{}} token={authState.token ?? ''} playing={hasKaraokePreview && compositionState.transport.playing} label={previewDocument.tracks.some(track=>track.kind==='video'&&!track.hidden&&track.transitions?.some(transition=>transition.timeline)) ? "Нативный предпросмотр переходов" : "Предпросмотр графической композиции"} />
         {:else}<p role="alert">{graphicPreviewRequest.error}</p>{/if}
       </div>
     {/if}
