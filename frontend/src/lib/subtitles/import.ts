@@ -105,7 +105,8 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
       const eventMargins = assMargins(field => values[fields.indexOf(field)]?.trim())
       let styleMargins = namedStyle?.margins
       let baseStyle = namedStyle?.style
-      let secondaryColor = namedStyle?.secondaryColor
+      let baseSecondaryColor = namedStyle?.secondaryColor
+      let secondaryColor = baseSecondaryColor
       let style = { ...baseStyle }
       let anchor = namedStyle?.anchor
       let hasInlineAlignment = false
@@ -128,6 +129,7 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
         hasText ||= preceding.trim().length > 0
         textOffset += preceding.length
         previousBlockEnd = offset + whole.length
+        const previousSecondaryColor = secondaryColor
         for (const rawTag of assTags(block)) {
           const tag = rawTag.trim()
           if (!tag) continue
@@ -155,7 +157,8 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
               const target = styles.get(reset[1]!.trim()) ?? namedStyle
               const alignment = style.align
               baseStyle = target?.style
-              secondaryColor = target?.secondaryColor
+              baseSecondaryColor = target?.secondaryColor
+              secondaryColor = baseSecondaryColor
               style = { ...baseStyle }
               rotationDegrees = target?.rotationDegrees
               baseScale = target?.scale
@@ -169,13 +172,18 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
           const coordinates = assPosition(tag)
           const motion = assMovement(tag)
           const envelope = assFade(tag)
-          const alpha = /^(alpha|[134]a)(?:&H([\da-f]{1,2})&?)?$/i.exec(tag)
+          const alpha = /^(alpha|[1-4]a)(?:&H([\da-f]{1,2})&?)?$/i.exec(tag)
+          const secondary = /^2c(?:(&H[\da-f]{1,8}&?))?$/i.exec(tag)
           const rotation = /^frz?([+-]?(?:\d+(?:\.\d*)?|\.\d+))$/i.exec(tag)
           const scaling = /^fsc(?:([xy])(\d+(?:\.\d+)?|\.\d+)?)?$/i.exec(tag)
           const alignment = /^(an|a)(\d+)$/i.exec(tag)
           const wrap = /^q([0-3])$/i.exec(tag)
           const fontSize = /^fs([+-]?(?:\d+(?:\.\d*)?|\.\d+))?$/i.exec(tag)
-          if (wrap) cueWrapStyle = Number(wrap[1])
+          if (secondary) {
+            const base = baseSecondaryColor ?? ASS_DEFAULT_SECONDARY_COLOR
+            const rgb = (assColor(secondary[1]) ?? base).slice(0, 7)
+            secondaryColor = rgb + (secondaryColor ?? base).slice(7)
+          } else if (wrap) cueWrapStyle = Number(wrap[1])
           else if (fontSize) {
             const rawSize = fontSize[1]
             const size = rawSize && /^[+-]/.test(rawSize)
@@ -200,8 +208,16 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
           }
           else if (envelope) fade ??= envelope
           else if (alpha) {
-            if (hasText) simplified = true
-            else applyAssAlpha(style, baseStyle, alpha[1]!.toLowerCase(), alpha[2])
+            const channel = alpha[1]!.toLowerCase()
+            if (channel === '2a' || channel === 'alpha') {
+              const base = baseSecondaryColor ?? ASS_DEFAULT_SECONDARY_COLOR
+              const opacity = alpha[2] === undefined ? base.slice(7) : assOpacity(alpha[2])
+              secondaryColor = (secondaryColor ?? base).slice(0, 7) + opacity
+            }
+            if (channel !== '2a') {
+              if (hasText) simplified = true
+              else applyAssAlpha(style, baseStyle, channel, alpha[2])
+            }
           } else if (rotation) {
             const angle = assRotation(rotation[1])
             if (hasText || angle === undefined) simplified = true
@@ -215,6 +231,10 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
             else scale = { ...baseScale }
           } else if (!applyAssOverride(style, baseStyle, tag, hasText)) simplified = true
         }
+        const marker = karaokeMarkers.at(-1)
+        if (marker?.start === textOffset && secondaryColor !== undefined) {
+          karaokeMarkers[karaokeMarkers.length - 1] = { ...marker, secondaryColor }
+        } else if (marker && secondaryColor !== previousSecondaryColor) simplified = true
         return ''
       })
       const normalizeText = (value: string) => value.replace(/\\N/g, '\n')
@@ -291,7 +311,7 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
         endTicks: assTimestamp(values[fields.indexOf('end')]!.trim()),
         text,
         ...(karaoke.length ? { karaoke } : {}),
-        ...(karaoke.length && secondaryColor ? { karaokeSecondaryColor: secondaryColor } : {}),
+        ...(karaoke.length && baseSecondaryColor ? { karaokeSecondaryColor: baseSecondaryColor } : {}),
         ...(cueWrapStyle === 2 ? { noAutoWrap: true } : {}),
         ...(Object.keys(style).length ? { style } : {}),
         ...(position ? { position } : {}),
@@ -472,6 +492,7 @@ function assScale(value: string | undefined): number | undefined {
 
 const ASS_COLOR_CHANNELS = { '1': 'color', '3': 'strokeColor', '4': 'shadowColor' } as const
 const ASS_DEFAULT_COLORS = { color: '#FFFFFFFF', strokeColor: '#000000FF', shadowColor: '#00000000' }
+const ASS_DEFAULT_SECONDARY_COLOR = '#00FFFFFF'
 
 function applyAssAlpha(style: AssStyle, baseStyle: AssStyle | undefined, channel: string, transparency?: string): void {
   for (const [number, field] of Object.entries(ASS_COLOR_CHANNELS)) {

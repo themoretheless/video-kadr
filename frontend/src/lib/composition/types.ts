@@ -413,6 +413,7 @@ export interface SubtitleKaraokeSpan {
   readonly startTicks: number
   readonly endTicks: number
   readonly mode: 'step' | 'sweep' | 'outline'
+  readonly secondaryColor?: string
 }
 
 export interface TextClip {
@@ -957,7 +958,7 @@ export interface WireConcatTitleStyle {
  readonly lineHeight?:number;readonly tracking?:number;readonly maxWidth?:number;readonly maxHeight?:number
 }
 export interface WireTextClip {
-  readonly karaoke?: readonly (SubtitleKaraokeSpan & { readonly secondaryColor?: WireRgba })[]
+  readonly karaoke?: readonly (Omit<SubtitleKaraokeSpan, 'secondaryColor'> & { readonly secondaryColor?: WireRgba })[]
   readonly textBoxHeight?: number
   readonly opacityMultiplier?: number
   readonly textBoxWidth?: number

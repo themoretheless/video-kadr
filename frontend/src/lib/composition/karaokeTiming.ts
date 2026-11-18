@@ -1,6 +1,6 @@
 import type { SubtitleKaraokeSpan } from './types'
 
-export function rebaseKaraokeTiming<T extends SubtitleKaraokeSpan>(spans: readonly T[], deltaUs: number): T[] {
+export function rebaseKaraokeTiming<T extends Pick<SubtitleKaraokeSpan, 'startTicks' | 'endTicks'>>(spans: readonly T[], deltaUs: number): T[] {
   return spans.map(span => {
     const startTicks = span.startTicks + deltaUs
     const endTicks = span.endTicks + deltaUs

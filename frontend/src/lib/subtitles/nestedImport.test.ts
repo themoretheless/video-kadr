@@ -282,6 +282,24 @@ Dialogue: 0:00:00.00,0:00:01.00,{\k20}😀{\kf30}time
  expect(ordinaryTrim.tracks[0]?.clips[0]).toMatchObject({timelineStartTicks:300000,karaoke:expected.karaoke})
 })
 
+it('imports per-syllable ASS secondary color and opacity into the native renderer', () => {
+ const result = importNestedSubtitles(project(), 'root', String.raw`[V4+ Styles]
+Format: Name, SecondaryColour
+Style: Default,&H000000FF
+[Events]
+Format: Start, End, Style, Text
+Dialogue: 0:00:00.00,0:00:01.00,Default,{\k20\2c&HFF0000&\2a&H80&}A{\k20}B{\2c\2a\k20}C
+`, allocator())
+ expect(result.simplifiedCueCount).toBe(0)
+ expect(result.document.compositions.root!.content.tracks[0]!.clips[0]).toMatchObject({
+  karaoke: [
+   {start:0,end:1,secondaryColor:{red:0,green:0,blue:1,alpha:127/255}},
+   {start:1,end:2,secondaryColor:{red:0,green:0,blue:1,alpha:127/255}},
+   {start:2,end:3,secondaryColor:{red:1,green:0,blue:0,alpha:1}},
+  ],
+ })
+})
+
 it('maps ASS absolute positions to editable canvas offsets', () => {
  const result = importNestedSubtitles(project(), 'root', String.raw`[Events]
 Format: Start, End, Text
