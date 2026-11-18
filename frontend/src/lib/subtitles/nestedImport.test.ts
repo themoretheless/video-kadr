@@ -226,6 +226,25 @@ Dialogue: 0:00:01.00,0:00:02.00,{\q0}First\nSecond\NThird
  expect(clips[1]).toMatchObject({text: 'First Second\nThird', textBoxWidth:269})
 })
 
+it('checks font size and border width limits after converting ASS script pixels', () => {
+ const result = importNestedSubtitles(project(), 'root', String.raw`[Script Info]
+PlayResX: 1280
+PlayResY: 720
+ScaledBorderAndShadow: yes
+[V4+ Styles]
+Format: Name, Fontsize, Outline
+Style: Default,800,120
+[Events]
+Format: Start, End, Text
+Dialogue: 0:00:00.00,0:00:01.00,Style
+Dialogue: 0:00:01.00,0:00:02.00,{\fs1000\bord160}Override
+Dialogue: 0:00:02.00,0:00:03.00,{\fs3000\bord500}Limited
+`, allocator())
+ const clips = result.document.compositions.root!.content.tracks[0]!.clips
+ expect(clips).toMatchObject([[200,30], [250,40], [512,100]].map(([fontSize,strokeWidth]) => ({style: {fontSize,strokeWidth}})))
+ expect(result.simplifiedCueCount).toBe(1)
+})
+
 it('maps ASS absolute positions to editable canvas offsets', () => {
  const result = importNestedSubtitles(project(), 'root', String.raw`[Events]
 Format: Start, End, Text

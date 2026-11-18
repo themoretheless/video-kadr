@@ -154,7 +154,7 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
             const size = rawSize && /^[+-]/.test(rawSize)
               ? (style.fontSizePx ?? defaultFontSize / typographyScale) * (1 + Number(rawSize) / 10)
               : Number(rawSize ?? 0)
-            if (hasText || !Number.isFinite(size) || size > 512) simplified = true
+            if (hasText || !Number.isFinite(size)) simplified = true
             else if (size > 0) style.fontSizePx = size
             else if (baseStyle?.fontSizePx !== undefined) style.fontSizePx = baseStyle.fontSizePx
             else delete style.fontSizePx
@@ -196,12 +196,12 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
         if (style.fontSizePx !== scaledSize) simplified = true
       }
       if (style.tracking !== undefined) style.tracking *= typographyScale
+      if (style.strokeWidthPx !== undefined) {
+        const width = style.strokeWidthPx * (scaleBorderAndShadow ? typographyScale : 1)
+        style.strokeWidthPx = Math.min(100, width)
+        if (style.strokeWidthPx !== width) simplified = true
+      }
       if (scaleBorderAndShadow) {
-        if (style.strokeWidthPx !== undefined) {
-          const width = style.strokeWidthPx * typographyScale
-          style.strokeWidthPx = Math.min(100, width)
-          if (style.strokeWidthPx !== width) simplified = true
-        }
         if (style.shadowX !== undefined) style.shadowX *= typographyScale
         if (style.shadowY !== undefined) style.shadowY *= typographyScale
       }
@@ -455,11 +455,11 @@ function assFont(value: string | undefined): TextStyle['fontFamily'] {
 
 function assStyle(read: (field: string) => string | undefined): AssStyle {
   const style: AssStyle = {}
-  const size = assNumber(read('fontsize'), 1, 512)
+  const size = assNumber(read('fontsize'), Number.MIN_VALUE, Number.MAX_VALUE)
   const color = assColor(read('primarycolour'))
   const family = assFont(read('fontname'))
   const align = assAlign(read('alignment'))
-  const outline = assNumber(read('outline'), 0, 100)
+  const outline = assNumber(read('outline'), 0, Number.MAX_VALUE)
   const shadow = assNumber(read('shadow'), 0, 100)
   const spacing = assNumber(read('spacing'), 0, 5120)
   if (size !== undefined) style.fontSizePx = size
@@ -494,7 +494,8 @@ function applyAssOverride(style: AssStyle, baseStyle: AssStyle | undefined, tag:
   const geometry = /^(bord|shad|[xy]shad)([+-]?(?:\d+(?:\.\d*)?|\.\d+))?$/i.exec(tag)
   if (geometry) {
     const property = geometry[1]!.toLowerCase()
-    const distance = assNumber(geometry[2], property === 'xshad' || property === 'yshad' ? -100 : 0, 100)
+    const distance = assNumber(geometry[2], property === 'xshad' || property === 'yshad' ? -100 : 0,
+      property === 'bord' ? Number.MAX_VALUE : 100)
     if (hasText || (geometry[2] !== undefined && distance === undefined)) return false
     const fields: readonly ('strokeWidthPx' | 'shadowX' | 'shadowY')[] = property === 'bord' ? ['strokeWidthPx']
       : property === 'shad' ? ['shadowX', 'shadowY'] : property === 'xshad' ? ['shadowX'] : ['shadowY']
