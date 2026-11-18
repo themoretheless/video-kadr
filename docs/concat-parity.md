@@ -14341,6 +14341,10 @@ template export. The server test removes the empty curve as Concat does,
 reimports the still, and fills the slot with video or audio. Both return
 to a constant-speed clip starting at 0.1250004 s for 0.5000004 s, with the
 new source starting at zero.
+The still split and trim controls now send that retained timing to the
+native planner and store the exact fragment boundaries it returns. If a
+visual edit has already moved a boundary to another tick, the planner
+uses the current tick for that boundary.
 
 The current worktree was rechecked across Concat import/export, native
 template packaging, import, library and poster suites. Server tests

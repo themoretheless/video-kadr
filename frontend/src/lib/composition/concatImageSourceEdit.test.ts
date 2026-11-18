@@ -33,13 +33,16 @@ it.each([false, true])('applies native split clocks to stills with a retained fl
  for(const clip of clips){expect('placement' in clip).toBe(false);expect('dspEffects' in clip).toBe(false);expect(clip.effects).toEqual(original.effects);expect(clip.concatSourceTiming?.speedCurve).toEqual(retainFlatClock ? [] : undefined)}
  expect(JSON.stringify(input)).toBe(before)
 })
-it('uses the Rust trim plan for head movement and refuses synchronous or failed-plan edits atomically',async()=>{
- const input=project(),before=JSON.stringify(input)
+it('uses exact still timing in the Rust trim plan and refuses failed-plan edits atomically',async()=>{
+ const input=project()
+ const clip = input.compositions.root!.content.tracks[0]!.clips[0] as WireImageClip
+ Object.assign(clip, {concatSourceTiming:{sourceStart:4,speed:2,timelineStart:2.0000004,timelineDuration:3.0000004}})
+ const before=JSON.stringify(input)
  expect(()=>trimNativeClipStarts(input,'root',['still'],500000)).toThrow('нативного плана')
- vi.mocked(api.planConcatSourceEdit).mockImplementation(async request=>({changed:true,rippleBy:0,parts:[part({...request.clock,start:2.5,duration:2.5,sourceStart:5},'clip',request.tracks!)]}))
+ vi.mocked(api.planConcatSourceEdit).mockImplementation(async request=>({changed:true,rippleBy:0,parts:[part({...request.clock,start:2.5000004,duration:2.5000004,sourceStart:5},'clip',request.tracks!)]}))
  const output=await trimNativeClipsWithSourcePlans(input,'root',['still'],500000,'start')
- expect(api.planConcatSourceEdit).toHaveBeenCalledWith(expect.objectContaining({command:{kind:'trimStart',delta:.5,floor:0,ripple:false}}))
- expect(output.compositions.root!.content.tracks[0]!.clips[0]).toMatchObject({timelineStartTick:2500000,durationTicks:2500000,concatSourceTiming:{sourceStart:5,speed:2}})
+ expect(api.planConcatSourceEdit).toHaveBeenCalledWith(expect.objectContaining({clock:{start:2.0000004,duration:3.0000004,sourceStart:4,speed:2},command:{kind:'trimStart',delta:.5,floor:0,ripple:false}}))
+ expect(output.compositions.root!.content.tracks[0]!.clips[0]).toMatchObject({timelineStartTick:2500000,durationTicks:2500000,concatSourceTiming:{sourceStart:5,speed:2,timelineStart:2.5000004,timelineDuration:2.5000004}})
  vi.mocked(api.planConcatSourceEdit).mockRejectedValue(Error('plan refused'))
  await expect(trimNativeClipsWithSourcePlans(input,'root',['still'],500000,'start')).rejects.toThrow('plan refused');expect(JSON.stringify(input)).toBe(before)
 })
