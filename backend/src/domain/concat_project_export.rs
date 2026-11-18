@@ -317,6 +317,11 @@ fn media_controls(clip:&Value,kind:&str,out:&mut Value)->Result<()>{
   if let Some(value)=clip.get("concatSourceTiming") {
    let timing:super::composition::ImageSourceTiming=serde_json::from_value(value.clone())?;timing.validate()?;
    out["sourceStart"]=json!(timing.source_start);out["speed"]=json!(timing.speed);
+   for (key, tick, authored) in [("start", "timelineStartTick", timing.timeline_start), ("duration", "durationTicks", timing.timeline_duration)] {
+    if let Some(seconds) = authored.filter(|seconds| Some((seconds * 1e6).round() as u64) == clip[tick].as_u64()) {
+     out[key] = json!(seconds);
+    }
+   }
    if let Some(points)=timing.speed_curve {out["speedCurve"]=serde_json::to_value(points)?;}
   }
   return Ok(())

@@ -572,6 +572,8 @@ fn source_speed_curve_roundtrips_and_rebases_with_new_media() {
         let clip = original_resave["timelines"][0]["clips"][0].as_object_mut().unwrap();
         clip.remove("speedCurve");
         clip.insert("sourceStart".into(), json!(0.2500004));
+        clip.insert("start".into(), json!(0.1250004));
+        clip.insert("duration".into(), json!(0.5000004));
         let resaved = convert(original_resave);
         assert_eq!(resaved.status, "converted", "{:?}", resaved.diagnostics);
         let resaved = resaved.project.unwrap();
@@ -591,6 +593,31 @@ fn source_speed_curve_roundtrips_and_rebases_with_new_media() {
             "id":"picture","kind":"image","durationTicks":0,"width":16,"height":8,"hasAudio":false
         })).unwrap();
         let slot = SourceId::parse("slot").unwrap();
+        let fractional_still = fill(&resaved, &slot, &json!({
+            "path":"library:picture","kind":"image","name":"Still","width":16,"height":8,"hasAudio":false
+        }), &image).unwrap();
+        let (fractional_still, _) = video_kadr_backend::domain::project_media::set_placeholder(&fractional_still, &slot, true).unwrap();
+        let mut portable = export_with_paths(&fractional_still, &paths).unwrap();
+        let raw = portable["timelines"][0]["clips"][0].as_object_mut().unwrap();
+        assert_eq!(raw["start"], json!(0.1250004));
+        assert_eq!(raw["duration"], json!(0.5000004));
+        raw.remove("speedCurve");
+        let reopened = import(serde_json::from_value(json!({
+            "schemaVersion":1,"document":portable,"mediaBindings":{"slot":image},"preserveMediaIds":true
+        })).unwrap()).unwrap();
+        assert_eq!(reopened.status, "converted", "{:?}", reopened.diagnostics);
+        let refilled = fill(&reopened.project.unwrap(), &slot, &json!({
+            "path":"library:new","kind":kind,"name":"Replacement","duration":0.25,
+            "width":width,"height":height,"hasAudio":true
+        }), &replacement).unwrap();
+        let native = serde_json::to_value(&refilled).unwrap();
+        let clock = &native["compositions"][&refilled.root]["content"]["tracks"][0]["clips"][0]
+            ["placement"]["concatRetime"]["documentClock"];
+        assert_eq!(clock["start"], json!(0.1250004));
+        assert_eq!(clock["duration"], json!(0.5000004));
+        assert_eq!(clock["sourceStart"], json!(0.0));
+        assert!(clock["speedCurve"].is_null());
+
         for (project, portable_curve, native_curve) in [
             (&moving, &curve, &curve),
             (&cleared, &json!([]), &serde_json::Value::Null),

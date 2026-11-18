@@ -278,6 +278,8 @@ pub fn fill(
                     if let Some(timing) = clip.get_mut("concatSourceTiming") {
                         if timing["speed"].as_f64() == Some(1.0)
                             && timing.get("speedCurve").is_none()
+                            && timing.get("timelineStart").is_none()
+                            && timing.get("timelineDuration").is_none()
                         {
                             clip.as_object_mut().unwrap().remove("concatSourceTiming");
                         } else {

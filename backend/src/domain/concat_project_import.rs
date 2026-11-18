@@ -669,6 +669,10 @@ fn convert(
     project.dependency_order()?;
     Ok((project, mapping))
 }
+fn needs_exact_seconds(seconds: f64) -> bool {
+    seconds != (seconds * 1e6).round() / 1e6
+}
+
 pub(crate) fn convert_clip_at_rate(
     clip: &Value,
     bindings: &BTreeMap<String, CompositionSource>,
@@ -683,9 +687,7 @@ pub(crate) fn convert_clip_at_rate(
     let duration = number(clip, "duration", 1.0)?;
     let source_start = number(clip, "sourceStart", 0.0)?;
     // Concat omits an empty curve when saving, while retaining fractional seconds.
-    let exact_clock_needed = [start, duration, source_start].iter().any(|seconds| {
-        *seconds != (*seconds * 1e6).round() / 1e6
-    });
+    let exact_clock_needed = [start, duration, source_start].into_iter().any(needs_exact_seconds);
     if clip["speedCurve"].is_null() && !exact_clock_needed {
         return convert_clip(clip, bindings, width, height);
     }
@@ -940,8 +942,12 @@ fn convert_clip(
                 None|Some(Value::Null)=>None,
                 Some(value)=>Some(serde_json::from_value::<Vec<super::concat_retime_edit::Point>>(value.clone())?),
             };
-            if speed != 1. || raw_start != 0. || curve.is_some() {
-                let timing = super::composition::ImageSourceTiming{source_start:raw_start,speed,speed_curve:curve};
+            let timeline_start = Some(number(clip, "start", 0.)?).filter(|&seconds| needs_exact_seconds(seconds));
+            let timeline_duration = Some(number(clip, "duration", 1.)?).filter(|&seconds| needs_exact_seconds(seconds));
+            if speed != 1. || raw_start != 0. || curve.is_some() || timeline_start.is_some() || timeline_duration.is_some() {
+                let timing = super::composition::ImageSourceTiming {
+                    source_start: raw_start, speed, speed_curve: curve, timeline_start, timeline_duration,
+                };
                 timing.validate()?;
                 out["concatSourceTiming"] = serde_json::to_value(timing)?;
             }

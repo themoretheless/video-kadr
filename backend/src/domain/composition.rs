@@ -1476,6 +1476,10 @@ pub enum AudioVoiceEffect {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ImageSourceTiming {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timeline_start: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timeline_duration: Option<f64>,
     pub source_start: f64,
     pub speed: f64,
     #[serde(default, skip_serializing_if="Option::is_none")]
@@ -1484,6 +1488,10 @@ pub struct ImageSourceTiming {
 }
 impl ImageSourceTiming {
     pub fn validate(&self) -> Result<(), CompositionError> {
+        if self.timeline_start.is_some_and(|value| !(0.0..=86400.0).contains(&value))
+            || self.timeline_duration.is_some_and(|value| !(0.0 < value && value <= 86400.0)) {
+            return Err(CompositionError::InvalidPlacement);
+        }
         if !self.source_start.is_finite() || !(0.0..=86400.0).contains(&self.source_start)
             || !self.speed.is_finite() || !(0.0625..=16.0).contains(&self.speed) {
             return Err(CompositionError::InvalidPlacement);

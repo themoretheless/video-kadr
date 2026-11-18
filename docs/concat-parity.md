@@ -14336,6 +14336,11 @@ still preserves the marker in both fragments. The server regression
 exports and reimports the intermediate still template for both media
 kinds. Chromium switched from video to a PNG and back, then checked
 the restored constant-speed clock and the held frame in preview.
+The intermediate still also retains fractional start and duration for
+template export. The server test removes the empty curve as Concat does,
+reimports the still, and fills the slot with video or audio. Both return
+to a constant-speed clip starting at 0.1250004 s for 0.5000004 s, with the
+new source starting at zero.
 
 The current worktree was rechecked across Concat import/export, native
 template packaging, import, library and poster suites. Server tests
