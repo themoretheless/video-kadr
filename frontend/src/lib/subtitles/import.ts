@@ -491,15 +491,19 @@ function applyAssOverride(style: AssStyle, baseStyle: AssStyle | undefined, tag:
     style.tracking = tracking
     return true
   }
-  const geometry = /^(bord|shad|[xy]shad)([+-]?(?:\d+(?:\.\d*)?|\.\d+))$/i.exec(tag)
+  const geometry = /^(bord|shad|[xy]shad)([+-]?(?:\d+(?:\.\d*)?|\.\d+))?$/i.exec(tag)
   if (geometry) {
     const property = geometry[1]!.toLowerCase()
     const distance = assNumber(geometry[2], property === 'xshad' || property === 'yshad' ? -100 : 0, 100)
-    if (hasText || distance === undefined) return false
-    if (property === 'bord') style.strokeWidthPx = distance
-    if (property === 'shad' || property === 'xshad') style.shadowX = distance
-    if (property === 'shad' || property === 'yshad') style.shadowY = distance
-    if (property !== 'bord') style.shadowColor ??= '#000000FF'
+    if (hasText || (geometry[2] !== undefined && distance === undefined)) return false
+    const fields: readonly ('strokeWidthPx' | 'shadowX' | 'shadowY')[] = property === 'bord' ? ['strokeWidthPx']
+      : property === 'shad' ? ['shadowX', 'shadowY'] : property === 'xshad' ? ['shadowX'] : ['shadowY']
+    for (const field of fields) {
+      const value = distance ?? baseStyle?.[field]
+      if (value === undefined) delete style[field]
+      else style[field] = value
+    }
+    if (property !== 'bord' && distance !== undefined) style.shadowColor ??= '#000000FF'
     return true
   }
   const color = /^([134]?)c(&H[0-9a-f]{1,8}&?)?$/i.exec(tag)

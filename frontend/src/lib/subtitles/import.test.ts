@@ -164,6 +164,17 @@ Dialogue: 0:00:01.00,0:00:02.00,Default,First{\i1\fnDejaVu Sans} second
     expect(report.simplifiedCueCount).toBe(1)
   })
 
+  it('resets ASS border and shadow geometry without changing their colors', () => {
+    const [cue] = parseSubtitleDocument(String.raw`[V4+ Styles]
+Format: Name, Outline, Shadow
+Style: Default,2,3
+[Events]
+Format: Start, End, Style, Text
+Dialogue: 0:00:00.00,0:00:01.00,Default,{\bord8\shad5\xshad-2\3c&H0000FF&\bord\xshad}Reset
+`)
+    expect(cue?.style).toMatchObject({strokeWidthPx:2, shadowX:3, shadowY:5, strokeColor:'#FF0000FF'})
+  })
+
   it('refuses malformed, inverted, excessive and empty cues before mutation', () => {
     for (const event of [
       'Dialogue: 0:00:02.00,0:00:01.00,text',
