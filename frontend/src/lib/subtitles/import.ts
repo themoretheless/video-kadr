@@ -124,7 +124,7 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
       const karaokeMarkers: Omit<SubtitleKaraokeSpan, 'end'>[] = []
       let hasText = false
       const dialogue = values.slice(fields.length - 1).join(',')
-      const unstyled = dialogue.replace(/\{([^}]*)\}/g, (whole, block: string, offset: number) => {
+      const unstyled = dialogue.replace(/(?<!\\)\{([^}]*)\}/g, (whole, block: string, offset: number) => {
         const preceding = dialogue.slice(previousBlockEnd, offset)
         hasText ||= preceding.trim().length > 0
         textOffset += preceding.length
@@ -238,7 +238,7 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
         return ''
       })
       const normalizeText = (value: string) => value.replace(/\\N/g, '\n')
-        .replace(/\\n/g, cueWrapStyle === 2 ? '\n' : ' ').replace(/\\h/g, '\u00a0')
+        .replace(/\\n/g, cueWrapStyle === 2 ? '\n' : ' ').replace(/\\h/g, '\u00a0').replace(/\\([{}])/g, '$1')
       const normalizedText = normalizeText(unstyled)
       const text = normalizedText.trim()
       const trimOffset = normalizedText.length - normalizedText.trimStart().length

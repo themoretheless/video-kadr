@@ -241,6 +241,21 @@ Dialogue: 0:00:00.00,0:00:03.00,{\kt12.59\k.99}A{\ko}B{\kf+20.5}C{\kt\K}D
     },
   )
 
+  it('preserves escaped ASS braces and normalizes karaoke offsets around them', () => {
+    const report = parseSubtitleDocumentWithReport(String.raw`[Events]
+Format: Start, End, Text
+Dialogue: 0:00:00.00,0:00:02.00, {\k20}\{😀\}{comment}{\k30}\}end
+`)
+    expect(report.cues[0]).toMatchObject({
+      text: '{😀}}end',
+      karaoke: [
+        { start: 0, end: 4, startTicks: 0, endTicks: 200000 },
+        { start: 4, end: 8, startTicks: 200000, endTicks: 500000 },
+      ],
+    })
+    expect(report.simplifiedCueCount).toBe(0)
+  })
+
   it('refuses malformed, inverted, excessive and empty cues before mutation', () => {
     for (const event of [
       'Dialogue: 0:00:02.00,0:00:01.00,text',
