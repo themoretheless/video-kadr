@@ -105,7 +105,7 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
       const eventMargins = assMargins(field => values[fields.indexOf(field)]?.trim())
       let styleMargins = namedStyle?.margins
       let baseStyle = namedStyle?.style
-      let baseSecondaryColor = namedStyle?.secondaryColor
+      let baseSecondaryColor = namedStyle?.secondaryColor ?? ASS_DEFAULT_SECONDARY_COLOR
       let secondaryColor = baseSecondaryColor
       let style = { ...baseStyle }
       let anchor = namedStyle?.anchor
@@ -152,13 +152,13 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
           }
           const reset = /^r(.*)$/.exec(tag)
           if (reset) {
+            const target = styles.get(reset[1]!.trim()) ?? namedStyle
+            baseSecondaryColor = target?.secondaryColor ?? ASS_DEFAULT_SECONDARY_COLOR
+            secondaryColor = baseSecondaryColor
             if (hasText) simplified = true
             else {
-              const target = styles.get(reset[1]!.trim()) ?? namedStyle
               const alignment = style.align
               baseStyle = target?.style
-              baseSecondaryColor = target?.secondaryColor
-              secondaryColor = baseSecondaryColor
               style = { ...baseStyle }
               rotationDegrees = target?.rotationDegrees
               baseScale = target?.scale
@@ -180,9 +180,8 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
           const wrap = /^q([0-3])$/i.exec(tag)
           const fontSize = /^fs([+-]?(?:\d+(?:\.\d*)?|\.\d+))?$/i.exec(tag)
           if (secondary) {
-            const base = baseSecondaryColor ?? ASS_DEFAULT_SECONDARY_COLOR
-            const rgb = (assColor(secondary[1]) ?? base).slice(0, 7)
-            secondaryColor = rgb + (secondaryColor ?? base).slice(7)
+            const rgb = (assColor(secondary[1]) ?? baseSecondaryColor).slice(0, 7)
+            secondaryColor = rgb + secondaryColor.slice(7)
           } else if (wrap) cueWrapStyle = Number(wrap[1])
           else if (fontSize) {
             const rawSize = fontSize[1]
@@ -210,9 +209,8 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
           else if (alpha) {
             const channel = alpha[1]!.toLowerCase()
             if (channel === '2a' || channel === 'alpha') {
-              const base = baseSecondaryColor ?? ASS_DEFAULT_SECONDARY_COLOR
-              const opacity = alpha[2] === undefined ? base.slice(7) : assOpacity(alpha[2])
-              secondaryColor = (secondaryColor ?? base).slice(0, 7) + opacity
+              const opacity = alpha[2] === undefined ? baseSecondaryColor.slice(7) : assOpacity(alpha[2])
+              secondaryColor = secondaryColor.slice(0, 7) + opacity
             }
             if (channel !== '2a') {
               if (hasText) simplified = true
@@ -232,7 +230,7 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
           } else if (!applyAssOverride(style, baseStyle, tag, hasText)) simplified = true
         }
         const marker = karaokeMarkers.at(-1)
-        if (marker?.start === textOffset && secondaryColor !== undefined) {
+        if (marker?.start === textOffset) {
           karaokeMarkers[karaokeMarkers.length - 1] = { ...marker, secondaryColor }
         } else if (marker && secondaryColor !== previousSecondaryColor) simplified = true
         return ''
@@ -311,7 +309,7 @@ function parseAss(body: string, canvas: {width: number; height: number} | undefi
         endTicks: assTimestamp(values[fields.indexOf('end')]!.trim()),
         text,
         ...(karaoke.length ? { karaoke } : {}),
-        ...(karaoke.length && baseSecondaryColor ? { karaokeSecondaryColor: baseSecondaryColor } : {}),
+        ...(karaoke.length && namedStyle?.secondaryColor ? { karaokeSecondaryColor: namedStyle.secondaryColor } : {}),
         ...(cueWrapStyle === 2 ? { noAutoWrap: true } : {}),
         ...(Object.keys(style).length ? { style } : {}),
         ...(position ? { position } : {}),

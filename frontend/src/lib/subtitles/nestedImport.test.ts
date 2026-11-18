@@ -286,16 +286,19 @@ it('imports per-syllable ASS secondary color and opacity into the native rendere
  const result = importNestedSubtitles(project(), 'root', String.raw`[V4+ Styles]
 Format: Name, SecondaryColour
 Style: Default,&H000000FF
+Style: Alternate,&H4000FF00
 [Events]
 Format: Start, End, Style, Text
-Dialogue: 0:00:00.00,0:00:01.00,Default,{\k20\2c&HFF0000&\2a&H80&}A{\k20}B{\2c\2a\k20}C
+Dialogue: 0:00:00.00,0:00:01.00,Default,{\k20\2c&HFF0000&\2a&H80&}A{\k20}B{\2c\2a\k20}C{\rAlternate\k10}D{\r\k10}E
 `, allocator())
- expect(result.simplifiedCueCount).toBe(0)
+ expect(result.simplifiedCueCount).toBe(1)
  expect(result.document.compositions.root!.content.tracks[0]!.clips[0]).toMatchObject({
   karaoke: [
    {start:0,end:1,secondaryColor:{red:0,green:0,blue:1,alpha:127/255}},
    {start:1,end:2,secondaryColor:{red:0,green:0,blue:1,alpha:127/255}},
    {start:2,end:3,secondaryColor:{red:1,green:0,blue:0,alpha:1}},
+   {start:3,end:4,secondaryColor:{red:0,green:1,blue:0,alpha:191/255}},
+   {start:4,end:5,secondaryColor:{red:1,green:0,blue:0,alpha:1}},
   ],
  })
 })
